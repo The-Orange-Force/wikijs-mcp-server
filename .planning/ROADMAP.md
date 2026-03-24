@@ -57,10 +57,10 @@ Plans:
   1. GET /.well-known/oauth-protected-resource returns valid JSON containing resource, authorization_servers, scopes_supported, and bearer_methods_supported fields
   2. The authorization_servers array points to the correct Azure AD v2.0 authorization endpoint derived from AZURE_TENANT_ID
   3. The endpoint is accessible without any authentication (no Bearer token required)
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Create scope-to-tool mapping, add RFC 9728 metadata endpoint with buildApp factory, integration tests
 
 ### Phase 4: JWT Authentication
 **Goal**: Server can validate Azure AD Bearer tokens and reject unauthorized requests with spec-compliant error responses
@@ -101,6 +101,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. MCP Transport Port | 0/2 | Planning complete | - |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
-| 3. Discovery Metadata | 0/? | Not started | - |
+| 3. Discovery Metadata | 0/1 | Planning complete | - |
 | 4. JWT Authentication | 0/? | Not started | - |
 | 5. Route Protection and Observability | 0/? | Not started | - |
