@@ -47,8 +47,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Observability
 
 - [ ] **OBSV-01**: Validated JWT user identity (oid/preferred_username) logged with each MCP tool invocation
-- [ ] **OBSV-02**: Unique correlation ID generated per request and included in logs and error responses
-- [ ] **OBSV-03**: jose validation errors mapped to structured RFC 6750 error responses (error, error_description)
+- [x] **OBSV-02**: Unique correlation ID generated per request and included in logs and error responses
+- [x] **OBSV-03**: jose validation errors mapped to structured RFC 6750 error responses (error, error_description)
 
 ## v2 Requirements
 
@@ -109,8 +109,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROT-03 | Phase 5 | Pending |
 | PROT-04 | Phase 5 | Pending |
 | OBSV-01 | Phase 5 | Pending |
-| OBSV-02 | Phase 5 | Pending |
-| OBSV-03 | Phase 5 | Pending |
+| OBSV-02 | Phase 5 | Complete |
+| OBSV-03 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 25 total

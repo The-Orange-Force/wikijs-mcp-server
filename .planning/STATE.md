@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-24T20:37:53.580Z"
-last_activity: 2026-03-24 -- Completed 04-02-PLAN.md (JWT auth middleware plugin with scope enforcement)
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-24T20:44:25.389Z"
+last_activity: 2026-03-24 -- Completed 05-01-PLAN.md (RFC 6750 error mapping, correlation ID, request context)
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 8
-  completed_plans: 6
-  percent: 75
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 4 complete. Auth middleware ready for Phase 5 route protection integration.
+**Current focus:** Phase 5 in progress. Error mapping, request context, and logging config complete. Plan 02 (route wiring) next.
 
 ## Current Position
 
-Phase: 4 of 5 (JWT Authentication) -- COMPLETE
-Plan: 2 of 2 in current phase (done)
+Phase: 5 of 5 (Route Protection and Observability)
+Plan: 1 of 2 in current phase (done)
 Status: Executing
-Last activity: 2026-03-24 -- Completed 04-02-PLAN.md (JWT auth middleware plugin with scope enforcement)
+Last activity: 2026-03-24 -- Completed 05-01-PLAN.md (RFC 6750 error mapping, correlation ID, request context)
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████████░░] 75%
 | Phase 03 P01 | 3min | 2 tasks | 6 files |
 | Phase 04 P01 | 3min | 2 tasks | 4 files |
 | Phase 04 P02 | 4min | 1 task | 3 files |
+| Phase 05 P01 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 04-01]: JWTClaimValidationFailed requires JWTPayload object as second constructor arg in jose v6
 - [Phase 04-02]: jose v6 removed KeyLike type -- AuthPluginOptions.jwks typed as JWTVerifyGetKey (function form only)
 - [Phase 04-02]: fastify-plugin v4.5 wraps auth plugin for encapsulation breaking so request.user decorator visible across all routes
+- [Phase 05]: uuid installed as direct dependency (was missing despite plan claiming it existed)
+- [Phase 05]: requestIdHeader: false with manual X-Request-ID UUID validation in genReqId to prevent log injection
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T20:33:16Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-24T20:44:25.387Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
