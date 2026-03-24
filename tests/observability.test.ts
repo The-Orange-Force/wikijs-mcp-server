@@ -388,3 +388,137 @@ describe("Tool invocation logging", () => {
     expect(toolLogs[0].username).toBe(testUsername);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tool observability integration tests
+// ---------------------------------------------------------------------------
+
+describe("Tool observability integration", () => {
+  let app: FastifyInstance;
+  let logCapture: ReturnType<typeof createLogCapture>;
+  let validToken: string;
+
+  beforeAll(async () => {
+    validToken = await createTestToken();
+    logCapture = createLogCapture();
+    app = await buildTestApp(undefined, undefined, {
+      logger: { level: "trace", stream: logCapture.stream },
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    logCapture.logs.length = 0;
+  });
+
+  /**
+   * Helper: sends an MCP initialize request followed by a tools/call request.
+   * Each tools/call goes through a fresh McpServer+transport (stateless mode),
+   * so each test needs its own initialize + tools/call sequence.
+   */
+  async function callTool(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+  ) {
+    // Initialize MCP session
+    await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: `Bearer ${validToken}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0.0" },
+        },
+      },
+    });
+
+    // Clear logs so only tool invocation logs are asserted
+    logCapture.logs.length = 0;
+
+    // Call the tool
+    const res = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: `Bearer ${validToken}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: toolName,
+          arguments: toolArgs,
+        },
+      },
+    });
+
+    // Wait for pino stream flush
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    return res;
+  }
+
+  it("get_page: logs toolName, duration, userId, username at info level", async () => {
+    await callTool("get_page", { id: 1 });
+
+    const infoLogs = logCapture.logs.filter(
+      (l) => l.level === 30 && l.toolName === "get_page",
+    );
+    expect(infoLogs.length).toBe(1);
+
+    const log = infoLogs[0];
+    expect(log.toolName).toBe("get_page");
+    expect(typeof log.duration).toBe("number");
+    expect(log.duration).toBeGreaterThanOrEqual(0);
+    expect(log.userId).toBeDefined();
+    expect(log.username).toBeDefined();
+  });
+
+  it("search_pages: logs toolName, duration, userId, username at info level", async () => {
+    await callTool("search_pages", { query: "test" });
+
+    const infoLogs = logCapture.logs.filter(
+      (l) => l.level === 30 && l.toolName === "search_pages",
+    );
+    expect(infoLogs.length).toBe(1);
+
+    const log = infoLogs[0];
+    expect(log.toolName).toBe("search_pages");
+    expect(typeof log.duration).toBe("number");
+    expect(log.duration).toBeGreaterThanOrEqual(0);
+    expect(log.userId).toBeDefined();
+    expect(log.username).toBeDefined();
+  });
+
+  it("list_users: logs toolName, duration, userId, username at info level (zero-arg tool)", async () => {
+    await callTool("list_users", {});
+
+    const infoLogs = logCapture.logs.filter(
+      (l) => l.level === 30 && l.toolName === "list_users",
+    );
+    expect(infoLogs.length).toBe(1);
+
+    const log = infoLogs[0];
+    expect(log.toolName).toBe("list_users");
+    expect(typeof log.duration).toBe("number");
+    expect(log.duration).toBeGreaterThanOrEqual(0);
+    expect(log.userId).toBeDefined();
+    expect(log.username).toBeDefined();
+  });
+});
