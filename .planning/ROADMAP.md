@@ -44,10 +44,10 @@ Plans:
   2. Server refuses to start with a clear, actionable error message if any required OAuth environment variable is missing
   3. example.env documents all new environment variables with descriptions
   4. jose createRemoteJWKSet is initialized with the Azure AD JWKS URI derived from AZURE_TENANT_ID
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Create config module with Zod validation, Azure AD env vars, JWKS init, config tests, wire into server.ts
 
 ### Phase 3: Discovery Metadata
 **Goal**: MCP clients can discover the server's authorization requirements via a standard RFC 9728 endpoint
@@ -100,7 +100,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. MCP Transport Port | 0/2 | Planning complete | - |
-| 2. OAuth Configuration | 0/? | Not started | - |
+| 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 0/? | Not started | - |
 | 4. JWT Authentication | 0/? | Not started | - |
 | 5. Route Protection and Observability | 0/? | Not started | - |
