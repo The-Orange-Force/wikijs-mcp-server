@@ -2,7 +2,7 @@ import fastify, { FastifyInstance } from "fastify";
 import { WikiJsApi } from "./api.js";
 import { createMcpServer } from "./mcp-tools.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { config as dotenvConfig } from "dotenv";
+import { config, logConfig } from "./config.js";
 
 /**
  * Creates and configures a Fastify server with MCP routes.
@@ -82,30 +82,21 @@ export function buildServer(wikiJsApi: WikiJsApi): FastifyInstance {
 // ---------------------------------------------------------------------------
 
 async function start() {
-  dotenvConfig();
+  logConfig(config);
 
-  const port = parseInt(process.env.PORT || "3200");
-  const baseUrl = process.env.WIKIJS_BASE_URL || "http://localhost:3000";
-  const token = process.env.WIKIJS_TOKEN || "";
-
-  console.log("WikiJS MCP server config:");
-  console.log(`  PORT: ${port}`);
-  console.log(`  WIKIJS_BASE_URL: ${baseUrl}`);
-  console.log(`  WIKIJS_TOKEN: ${token.substring(0, 10)}...`);
-
-  const wikiJsApi = new WikiJsApi(baseUrl, token);
+  const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);
   const server = buildServer(wikiJsApi);
 
   try {
     const isConnected = await wikiJsApi.checkConnection();
     if (!isConnected) {
       console.warn(
-        "WARNING: Could not connect to Wiki.js API. Server will start but functionality may be limited.",
+        "Warning: Could not connect to Wiki.js API. Server started but functionality may be limited.",
       );
     }
 
-    await server.listen({ port, host: "0.0.0.0" });
-    console.log(`WikiJS MCP server listening on port ${port}`);
+    await server.listen({ port: config.port, host: "0.0.0.0" });
+    console.log(`WikiJS MCP server started on port ${config.port}`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);

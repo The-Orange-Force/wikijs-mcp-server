@@ -52,12 +52,3 @@ export interface ResponseResult {
   slug?: string;
   message?: string;
 }
-
-// Типы для конфигурации MCP сервера
-export interface ServerConfig {
-  port: number;
-  wikijs: {
-    baseUrl: string;
-    token: string;
-  };
-}
