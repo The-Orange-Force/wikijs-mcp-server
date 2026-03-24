@@ -120,6 +120,10 @@ Plans:
   1. All 17 tool handlers in `src/mcp-tools.ts` are wrapped with `wrapToolHandler()`
   2. Production tool invocations log `toolName`, `duration`, `userId`, and `username` from requestContext
   3. `requestContext` AsyncLocalStorage established in `mcp-routes.ts` is read by wrapped tool handlers
+**Plans:** 1 plan
+
+Plans:
+- [ ] 07-01-PLAN.md — Add debug args log to wrapper, wrap all 17 tool handlers, integration + unit tests
 
 ### Phase 8: Dead Code & Tech Debt Cleanup
 **Goal**: Remove orphaned code and fix stale references identified by milestone audit
@@ -145,5 +149,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 4. JWT Authentication | 2/2 | Complete   | 2026-03-24 |
 | 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
 | 6. Scope Format Alignment | 0/1 | Planning complete | - |
-| 7. Wire Tool Observability | 0/0 | Not started | - |
+| 7. Wire Tool Observability | 0/1 | Planning complete | - |
 | 8. Dead Code & Tech Debt Cleanup | 0/0 | Not started | - |
