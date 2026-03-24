@@ -106,6 +106,10 @@ Plans:
   1. `src/scopes.ts` uses colon notation (`wikijs:read`, `wikijs:write`, `wikijs:admin`)
   2. `src/auth/middleware.ts` imports scopes from `src/scopes.ts` (single source of truth)
   3. Discovery endpoint returns colon-notation scopes matching what auth middleware enforces
+**Plans:** 1 plan
+
+Plans:
+- [ ] 06-01-PLAN.md — Align scopes.ts to colon notation, replace middleware VALID_SCOPES with imported SUPPORTED_SCOPES, update test assertions
 
 ### Phase 7: Wire Tool Observability
 **Goal**: Production MCP tool invocations log authenticated user identity and timing through wrapToolHandler
@@ -140,6 +144,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
 | 4. JWT Authentication | 2/2 | Complete   | 2026-03-24 |
 | 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
-| 6. Scope Format Alignment | 0/0 | Not started | - |
+| 6. Scope Format Alignment | 0/1 | Planning complete | - |
 | 7. Wire Tool Observability | 0/0 | Not started | - |
 | 8. Dead Code & Tech Debt Cleanup | 0/0 | Not started | - |
