@@ -15,11 +15,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### OAuth Configuration
 
-- [ ] **CONF-01**: Server reads AZURE_TENANT_ID from environment variables
-- [ ] **CONF-02**: Server reads AZURE_CLIENT_ID from environment variables
-- [ ] **CONF-03**: Server reads MCP_RESOURCE_URL from environment variables
-- [ ] **CONF-04**: Server fails fast at startup with clear error if any OAuth env var is missing
-- [ ] **CONF-05**: example.env updated with all new environment variables
+- [x] **CONF-01**: Server reads AZURE_TENANT_ID from environment variables
+- [x] **CONF-02**: Server reads AZURE_CLIENT_ID from environment variables
+- [x] **CONF-03**: Server reads MCP_RESOURCE_URL from environment variables
+- [x] **CONF-04**: Server fails fast at startup with clear error if any OAuth env var is missing
+- [x] **CONF-05**: example.env updated with all new environment variables
 
 ### Discovery
 
@@ -89,11 +89,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRNS-01 | Phase 1 | Complete |
 | TRNS-02 | Phase 1 | Complete |
 | TRNS-03 | Phase 1 | Complete |
-| CONF-01 | Phase 2 | Pending |
-| CONF-02 | Phase 2 | Pending |
-| CONF-03 | Phase 2 | Pending |
-| CONF-04 | Phase 2 | Pending |
-| CONF-05 | Phase 2 | Pending |
+| CONF-01 | Phase 2 | Complete |
+| CONF-02 | Phase 2 | Complete |
+| CONF-03 | Phase 2 | Complete |
+| CONF-04 | Phase 2 | Complete |
+| CONF-05 | Phase 2 | Complete |
 | DISC-01 | Phase 3 | Pending |
 | DISC-02 | Phase 3 | Pending |
 | DISC-03 | Phase 3 | Pending |
