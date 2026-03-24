@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-24T20:24:53Z"
-last_activity: 2026-03-24 -- Completed 04-01-PLAN.md (auth types, jose error mapper, test token factory)
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-24T20:33:16Z"
+last_activity: 2026-03-24 -- Completed 04-02-PLAN.md (JWT auth middleware plugin with scope enforcement)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 5
-  percent: 63
+  completed_plans: 6
+  percent: 75
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 4 in progress. Auth types, error mapping, and test helpers complete (Plan 01). Moving to Plan 02 (middleware plugin).
+**Current focus:** Phase 4 complete. Auth middleware ready for Phase 5 route protection integration.
 
 ## Current Position
 
-Phase: 4 of 5 (JWT Authentication)
-Plan: 1 of 2 in current phase (done)
+Phase: 4 of 5 (JWT Authentication) -- COMPLETE
+Plan: 2 of 2 in current phase (done)
 Status: Executing
-Last activity: 2026-03-24 -- Completed 04-01-PLAN.md (auth types, jose error mapper, test token factory)
+Last activity: 2026-03-24 -- Completed 04-02-PLAN.md (JWT auth middleware plugin with scope enforcement)
 
-Progress: [██████░░░░] 63%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 5min
-- Total execution time: 0.37 hours
+- Total plans completed: 6
+- Average duration: 4min
+- Total execution time: 0.43 hours
 
 **By Phase:**
 
@@ -47,8 +47,8 @@ Progress: [██████░░░░] 63%
 | Phase 02 | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 8min, 4min, 3min, 3min
-- Trend: improving
+- Last 5 plans: 8min, 4min, 3min, 3min, 4min
+- Trend: stable
 
 *Updated after each plan completion*
 | Phase 01 P01 | 6min | 2 tasks | 5 files |
@@ -56,6 +56,7 @@ Progress: [██████░░░░] 63%
 | Phase 02 P01 | 4min | 2 tasks | 7 files |
 | Phase 03 P01 | 3min | 2 tasks | 6 files |
 | Phase 04 P01 | 3min | 2 tasks | 4 files |
+| Phase 04 P02 | 4min | 1 task | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 03-01]: resource_documentation omitted (not null) when MCP_RESOURCE_DOCS_URL unset per RFC 9728
 - [Phase 04-01]: jose v6 JWTExpired does not extend JWTClaimValidationFailed (instanceof returns false) -- order guard kept defensively
 - [Phase 04-01]: JWTClaimValidationFailed requires JWTPayload object as second constructor arg in jose v6
+- [Phase 04-02]: jose v6 removed KeyLike type -- AuthPluginOptions.jwks typed as JWTVerifyGetKey (function form only)
+- [Phase 04-02]: fastify-plugin v4.5 wraps auth plugin for encapsulation breaking so request.user decorator visible across all routes
 
 ### Pending Todos
 
@@ -92,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T20:24:53Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-24T20:33:16Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

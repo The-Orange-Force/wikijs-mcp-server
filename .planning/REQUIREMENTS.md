@@ -29,13 +29,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Authentication
 
-- [ ] **AUTH-01**: Server extracts Bearer token from Authorization header on protected routes
-- [ ] **AUTH-02**: Server validates JWT signature against Azure AD JWKS using jose createRemoteJWKSet
-- [ ] **AUTH-03**: Server validates audience claim (aud) matches AZURE_CLIENT_ID
-- [ ] **AUTH-04**: Server validates issuer claim (iss) matches Azure AD v2.0 issuer format
-- [ ] **AUTH-05**: Server validates token expiry (exp) and not-before (nbf) claims
+- [x] **AUTH-01**: Server extracts Bearer token from Authorization header on protected routes
+- [x] **AUTH-02**: Server validates JWT signature against Azure AD JWKS using jose createRemoteJWKSet
+- [x] **AUTH-03**: Server validates audience claim (aud) matches AZURE_CLIENT_ID
+- [x] **AUTH-04**: Server validates issuer claim (iss) matches Azure AD v2.0 issuer format
+- [x] **AUTH-05**: Server validates token expiry (exp) and not-before (nbf) claims
 - [x] **AUTH-06**: Missing or invalid token returns HTTP 401 with WWW-Authenticate header containing resource_metadata URL
-- [ ] **AUTH-07**: Valid token with insufficient scopes returns HTTP 403 with WWW-Authenticate error="insufficient_scope"
+- [x] **AUTH-07**: Valid token with insufficient scopes returns HTTP 403 with WWW-Authenticate error="insufficient_scope"
 
 ### Route Protection
 
@@ -97,13 +97,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DISC-01 | Phase 3 | Complete |
 | DISC-02 | Phase 3 | Complete |
 | DISC-03 | Phase 3 | Complete |
-| AUTH-01 | Phase 4 | Pending |
-| AUTH-02 | Phase 4 | Pending |
-| AUTH-03 | Phase 4 | Pending |
-| AUTH-04 | Phase 4 | Pending |
-| AUTH-05 | Phase 4 | Pending |
+| AUTH-01 | Phase 4 | Complete |
+| AUTH-02 | Phase 4 | Complete |
+| AUTH-03 | Phase 4 | Complete |
+| AUTH-04 | Phase 4 | Complete |
+| AUTH-05 | Phase 4 | Complete |
 | AUTH-06 | Phase 4 | Complete |
-| AUTH-07 | Phase 4 | Pending |
+| AUTH-07 | Phase 4 | Complete |
 | PROT-01 | Phase 5 | Pending |
 | PROT-02 | Phase 5 | Pending |
 | PROT-03 | Phase 5 | Pending |

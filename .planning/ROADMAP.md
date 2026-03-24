@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: MCP Transport Port** - Port MCP JSON-RPC and SSE endpoints from raw Node.js HTTP into Fastify TypeScript server
 - [ ] **Phase 2: OAuth Configuration** - Add Azure AD environment variables, jose dependency, and startup validation
 - [x] **Phase 3: Discovery Metadata** - Implement RFC 9728 Protected Resource Metadata endpoint (completed 2026-03-24)
-- [ ] **Phase 4: JWT Authentication** - Build Bearer token validation middleware using jose and Azure AD JWKS
+- [x] **Phase 4: JWT Authentication** - Build Bearer token validation middleware using jose and Azure AD JWKS (completed 2026-03-24)
 - [ ] **Phase 5: Route Protection and Observability** - Apply auth middleware to MCP routes and add structured request logging
 
 ## Phase Details
@@ -71,7 +71,7 @@ Plans:
   2. A request with no token, expired token, wrong audience, or invalid signature returns HTTP 401 with a WWW-Authenticate header containing the resource_metadata URL
   3. A request with a valid token but insufficient scopes returns HTTP 403 with WWW-Authenticate error="insufficient_scope"
   4. The middleware extracts and makes available the authenticated user's identity claims (oid, preferred_username) for downstream use
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 04-01-PLAN.md — Auth types, jose error-to-RFC 6750 mapper, WWW-Authenticate header builders, test helpers
@@ -103,5 +103,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. MCP Transport Port | 2/2 | Complete | 2026-03-24 |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
-| 4. JWT Authentication | 1/2 | In Progress | - |
+| 4. JWT Authentication | 2/2 | Complete   | 2026-03-24 |
 | 5. Route Protection and Observability | 0/2 | Planning complete | - |
