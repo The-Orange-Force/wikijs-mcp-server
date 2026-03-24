@@ -10,7 +10,7 @@ import {
 describe("Scope-to-tool mapping", () => {
   it("SUPPORTED_SCOPES contains exactly the three expected scopes", () => {
     expect(SUPPORTED_SCOPES).toEqual(
-      expect.arrayContaining(["wikijs.read", "wikijs.write", "wikijs.admin"]),
+      expect.arrayContaining(["wikijs:read", "wikijs:write", "wikijs:admin"]),
     );
     expect(SUPPORTED_SCOPES).toHaveLength(3);
   });
@@ -40,7 +40,7 @@ describe("Scope-to-tool mapping", () => {
     expect(Object.keys(TOOL_SCOPE_MAP)).toHaveLength(allTools.length);
   });
 
-  it("assigns read tools to wikijs.read", () => {
+  it("assigns read tools to wikijs:read", () => {
     const readTools = SCOPE_TOOL_MAP[SCOPES.READ];
     expect(readTools).toContain("get_page");
     expect(readTools).toContain("get_page_content");
@@ -52,7 +52,7 @@ describe("Scope-to-tool mapping", () => {
     expect(readTools).toHaveLength(7);
   });
 
-  it("assigns write tools to wikijs.write", () => {
+  it("assigns write tools to wikijs:write", () => {
     const writeTools = SCOPE_TOOL_MAP[SCOPES.WRITE];
     expect(writeTools).toContain("create_page");
     expect(writeTools).toContain("update_page");
@@ -60,7 +60,7 @@ describe("Scope-to-tool mapping", () => {
     expect(writeTools).toHaveLength(3);
   });
 
-  it("assigns admin tools to wikijs.admin", () => {
+  it("assigns admin tools to wikijs:admin", () => {
     const adminTools = SCOPE_TOOL_MAP[SCOPES.ADMIN];
     expect(adminTools).toContain("delete_page");
     expect(adminTools).toContain("force_delete_page");
@@ -73,14 +73,14 @@ describe("Scope-to-tool mapping", () => {
   });
 
   it("TOOL_SCOPE_MAP returns correct scope for specific tools", () => {
-    expect(TOOL_SCOPE_MAP["get_page"]).toBe("wikijs.read");
-    expect(TOOL_SCOPE_MAP["create_page"]).toBe("wikijs.write");
-    expect(TOOL_SCOPE_MAP["delete_page"]).toBe("wikijs.admin");
+    expect(TOOL_SCOPE_MAP["get_page"]).toBe("wikijs:read");
+    expect(TOOL_SCOPE_MAP["create_page"]).toBe("wikijs:write");
+    expect(TOOL_SCOPE_MAP["delete_page"]).toBe("wikijs:admin");
   });
 
   it("SCOPES object has correct constant values", () => {
-    expect(SCOPES.READ).toBe("wikijs.read");
-    expect(SCOPES.WRITE).toBe("wikijs.write");
-    expect(SCOPES.ADMIN).toBe("wikijs.admin");
+    expect(SCOPES.READ).toBe("wikijs:read");
+    expect(SCOPES.WRITE).toBe("wikijs:write");
+    expect(SCOPES.ADMIN).toBe("wikijs:admin");
   });
 });

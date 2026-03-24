@@ -64,7 +64,7 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     });
     const body = res.json();
     expect(body.scopes_supported).toEqual(
-      expect.arrayContaining(["wikijs.read", "wikijs.write", "wikijs.admin"]),
+      expect.arrayContaining(["wikijs:read", "wikijs:write", "wikijs:admin"]),
     );
     expect(body.scopes_supported).toHaveLength(3);
   });
