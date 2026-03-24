@@ -102,6 +102,8 @@ describe("Route protection", () => {
     const body = res.json();
     expect(body.error).toBeDefined();
     expect(body.error_description).toBeDefined();
+    expect(body.correlation_id).toBeDefined();
+    expect(body.correlation_id).toBe(res.headers["x-request-id"]);
   });
 
   it("POST /mcp with 'Bearer invalid' returns 401", async () => {
@@ -115,6 +117,8 @@ describe("Route protection", () => {
     });
 
     expect(res.statusCode).toBe(401);
+    const body = res.json();
+    expect(body.correlation_id).toBe(res.headers["x-request-id"]);
   });
 
   it("GET /mcp without token returns 401", async () => {
@@ -125,6 +129,8 @@ describe("Route protection", () => {
 
     expect(res.statusCode).toBe(401);
     expect(res.headers["www-authenticate"]).toBeDefined();
+    const body = res.json();
+    expect(body.correlation_id).toBe(res.headers["x-request-id"]);
   });
 
   it("GET /health without token returns 200", async () => {
@@ -209,6 +215,9 @@ describe("Correlation ID", () => {
     expect(res.statusCode).toBe(401);
     expect(res.headers["x-request-id"]).toBeDefined();
     expect(UUID_REGEX.test(res.headers["x-request-id"] as string)).toBe(true);
+    const body = res.json();
+    expect(body.correlation_id).toBeDefined();
+    expect(body.correlation_id).toBe(res.headers["x-request-id"]);
   });
 
   it("404 response includes X-Request-ID header", async () => {

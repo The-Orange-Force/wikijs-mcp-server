@@ -59,7 +59,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       reply
         .code(401)
         .header('WWW-Authenticate', buildWwwAuthenticateNoToken(resourceMetadataUrl))
-        .send({ error: 'invalid_token', error_description: 'missing bearer token' });
+        .send({ error: 'invalid_token', error_description: 'missing bearer token', correlation_id: request.id });
       return reply;
     }
 
@@ -68,7 +68,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       reply
         .code(401)
         .header('WWW-Authenticate', buildWwwAuthenticateNoToken(resourceMetadataUrl))
-        .send({ error: 'invalid_token', error_description: 'missing bearer token' });
+        .send({ error: 'invalid_token', error_description: 'missing bearer token', correlation_id: request.id });
       return reply;
     }
 
@@ -95,6 +95,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
             error: 'insufficient_scope',
             error_description: 'token does not contain a required scope',
             required_scopes: [...VALID_SCOPES],
+            correlation_id: request.id,
           });
         return reply;
       }
@@ -105,7 +106,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
         reply
           .code(401)
           .header('WWW-Authenticate', buildWwwAuthenticate401(resourceMetadataUrl, 'invalid_token', 'missing required claim: oid'))
-          .send({ error: 'invalid_token', error_description: 'missing required claim: oid' });
+          .send({ error: 'invalid_token', error_description: 'missing required claim: oid', correlation_id: request.id });
         return reply;
       }
 
@@ -127,7 +128,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
         reply
           .code(503)
           .header('Retry-After', '5')
-          .send({ error: mapped.error, error_description: mapped.description });
+          .send({ error: mapped.error, error_description: mapped.description, correlation_id: request.id });
         return reply;
       }
 
@@ -137,7 +138,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       reply
         .code(mapped.status)
         .header('WWW-Authenticate', buildWwwAuthenticate401(resourceMetadataUrl, mapped.error, mapped.description))
-        .send({ error: mapped.error, error_description: mapped.description });
+        .send({ error: mapped.error, error_description: mapped.description, correlation_id: request.id });
       return reply;
     }
   });
