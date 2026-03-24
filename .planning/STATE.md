@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-24T20:20:23.504Z"
-last_activity: 2026-03-24 -- Completed 03-01-PLAN.md (RFC 9728 discovery endpoint with scope-to-tool mapping)
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-24T20:24:53Z"
+last_activity: 2026-03-24 -- Completed 04-01-PLAN.md (auth types, jose error mapper, test token factory)
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 8
-  completed_plans: 4
-  percent: 50
+  completed_plans: 5
+  percent: 63
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 3 complete. RFC 9728 discovery endpoint and scope mapping ready. Moving to Phase 4 (token validation).
+**Current focus:** Phase 4 in progress. Auth types, error mapping, and test helpers complete (Plan 01). Moving to Plan 02 (middleware plugin).
 
 ## Current Position
 
-Phase: 3 of 5 (Discovery & Metadata)
-Plan: 1 of 1 in current phase (done)
+Phase: 4 of 5 (JWT Authentication)
+Plan: 1 of 2 in current phase (done)
 Status: Executing
-Last activity: 2026-03-24 -- Completed 03-01-PLAN.md (RFC 9728 discovery endpoint with scope-to-tool mapping)
+Last activity: 2026-03-24 -- Completed 04-01-PLAN.md (auth types, jose error mapper, test token factory)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 6min
-- Total execution time: 0.30 hours
+- Total plans completed: 5
+- Average duration: 5min
+- Total execution time: 0.37 hours
 
 **By Phase:**
 
@@ -47,7 +47,7 @@ Progress: [█████░░░░░] 50%
 | Phase 02 | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 8min, 4min
+- Last 5 plans: 6min, 8min, 4min, 3min, 3min
 - Trend: improving
 
 *Updated after each plan completion*
@@ -55,6 +55,7 @@ Progress: [█████░░░░░] 50%
 | Phase 01 P02 | 8min | 2 tasks | 16 files |
 | Phase 02 P01 | 4min | 2 tasks | 7 files |
 | Phase 03 P01 | 3min | 2 tasks | 6 files |
+| Phase 04 P01 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 03-01]: buildApp(config, wikiJsApi?) factory replaces module-level server creation for testability
 - [Phase 03-01]: Optional wikiJsApi parameter preserves backward compatibility with existing smoke tests
 - [Phase 03-01]: resource_documentation omitted (not null) when MCP_RESOURCE_DOCS_URL unset per RFC 9728
+- [Phase 04-01]: jose v6 JWTExpired does not extend JWTClaimValidationFailed (instanceof returns false) -- order guard kept defensively
+- [Phase 04-01]: JWTClaimValidationFailed requires JWTPayload object as second constructor arg in jose v6
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T20:17:33.855Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-24T20:24:53Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None

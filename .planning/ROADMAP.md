@@ -74,7 +74,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Auth types, jose error-to-RFC 6750 mapper, WWW-Authenticate header builders, test helpers
+- [x] 04-01-PLAN.md — Auth types, jose error-to-RFC 6750 mapper, WWW-Authenticate header builders, test helpers
 - [ ] 04-02-PLAN.md — Fastify auth middleware plugin with onRequest hook, scope validation, integration tests
 
 ### Phase 5: Route Protection and Observability
@@ -103,5 +103,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. MCP Transport Port | 2/2 | Complete | 2026-03-24 |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
-| 4. JWT Authentication | 0/2 | Planning complete | - |
+| 4. JWT Authentication | 1/2 | In Progress | - |
 | 5. Route Protection and Observability | 0/2 | Planning complete | - |

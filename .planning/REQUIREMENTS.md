@@ -34,7 +34,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AUTH-03**: Server validates audience claim (aud) matches AZURE_CLIENT_ID
 - [ ] **AUTH-04**: Server validates issuer claim (iss) matches Azure AD v2.0 issuer format
 - [ ] **AUTH-05**: Server validates token expiry (exp) and not-before (nbf) claims
-- [ ] **AUTH-06**: Missing or invalid token returns HTTP 401 with WWW-Authenticate header containing resource_metadata URL
+- [x] **AUTH-06**: Missing or invalid token returns HTTP 401 with WWW-Authenticate header containing resource_metadata URL
 - [ ] **AUTH-07**: Valid token with insufficient scopes returns HTTP 403 with WWW-Authenticate error="insufficient_scope"
 
 ### Route Protection
@@ -102,7 +102,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-03 | Phase 4 | Pending |
 | AUTH-04 | Phase 4 | Pending |
 | AUTH-05 | Phase 4 | Pending |
-| AUTH-06 | Phase 4 | Pending |
+| AUTH-06 | Phase 4 | Complete |
 | AUTH-07 | Phase 4 | Pending |
 | PROT-01 | Phase 5 | Pending |
 | PROT-02 | Phase 5 | Pending |
@@ -119,4 +119,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after Phase 1 completion*
+*Last updated: 2026-03-24 after Phase 4 Plan 01 completion*
