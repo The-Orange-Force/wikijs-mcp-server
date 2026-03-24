@@ -17,15 +17,12 @@
     "stop": "./scripts/stop_server.sh",
     "start:http": "./scripts/start_http.sh",
     "start:typescript": "./scripts/start_typescript.sh",
-    "setup:cursor": "./scripts/setup_cursor_mcp.sh",
-    "test": "./scripts/test.sh",
+    "test": "vitest run",
+    "test:smoke": "vitest run tests/smoke.test.ts",
+    "test:watch": "vitest",
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
-    "demo": "ts-node src/demo.ts",
-    "client": "node lib/mcp_client.js",
-    "server:stdio": "node lib/mcp_wikijs_stdin.js",
-    "test:http": "node scripts/test_mcp.js",
-    "test:stdin": "node scripts/test_mcp_stdin.js"
+    "server:stdio": "node lib/mcp_wikijs_stdin.js"
   },
   "keywords": [
     "wikijs",
@@ -54,22 +51,19 @@
     "tsconfig.json"
   ],
   "dependencies": {
-    "cors": "^2.8.5",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^16.5.0",
-    "express": "^4.21.2",
     "fastify": "^4.27.2",
     "graphql": "^16.8.1",
     "graphql-request": "^6.1.0",
-    "node-fetch": "^3.3.2",
-    "uuid": "^9.0.1",
     "zod": "^3.25.17"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "^20.11.19",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.1"
   },
   "type": "module"
 }
