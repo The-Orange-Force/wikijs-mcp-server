@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-24T19:39:44.877Z"
-last_activity: 2026-03-24 -- Completed 01-01-PLAN.md (MCP SDK tool registration)
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-24T19:50:13Z"
+last_activity: 2026-03-24 -- Completed 01-02-PLAN.md (MCP transport wiring and legacy cleanup)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 1
-  percent: 10
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -21,36 +21,37 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 1: MCP Transport Port
+**Current focus:** Phase 1 complete. Ready for Phase 2.
 
 ## Current Position
 
-Phase: 1 of 5 (MCP Transport Port)
-Plan: 1 of 2 in current phase
+Phase: 1 of 5 (MCP Transport Port) -- COMPLETE
+Plan: 2 of 2 in current phase (done)
 Status: Executing
-Last activity: 2026-03-24 -- Completed 01-01-PLAN.md (MCP SDK tool registration)
+Last activity: 2026-03-24 -- Completed 01-02-PLAN.md (MCP transport wiring and legacy cleanup)
 
-Progress: [#.........] 10%
+Progress: [##........] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 2
+- Average duration: 7min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 01 | 2 | 14min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 6min, 8min
+- Trend: stable
 
 *Updated after each plan completion*
 | Phase 01 P01 | 6min | 2 tasks | 5 files |
+| Phase 01 P02 | 8min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -63,7 +64,9 @@ Recent decisions affecting current work:
 - [Roadmap]: PROT and OBSV combined into Phase 5 (both are integration concerns on top of auth middleware)
 - [01-01]: Zod input schemas defined inline in registerTool() calls (SDK requires flat shapes, not z.object wrappers)
 - [01-01]: Type assertion 'as const' on content type literals for MCP SDK TypeScript compatibility
-- [Phase 01]: Zod input schemas defined inline in registerTool() calls (SDK requires flat shapes, not z.object wrappers)
+- [01-02]: Per-request McpServer+transport creation for stateless mode (SDK Protocol enforces single-transport ownership)
+- [01-02]: enableJsonResponse for direct JSON responses instead of SSE streaming
+- [01-02]: GET /mcp per MCP 2025-03-26 spec (not GET /mcp/events from CONTEXT.md)
 
 ### Pending Todos
 
@@ -71,11 +74,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- MCP transport unification (porting lib/fixed_mcp_http_server.js into Fastify) is the critical path blocker for all auth work
+- MCP transport unification is COMPLETE -- no longer a blocker for auth work
 - Claude Desktop OAuth client behavior may need testing during Phase 5 integration
 
 ## Session Continuity
 
-Last session: 2026-03-24T19:39:32.773Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-24T19:50:13Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

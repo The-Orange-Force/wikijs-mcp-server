@@ -12,7 +12,7 @@ This milestone adds OAuth 2.1 resource server capabilities to the existing WikiJ
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: MCP Transport Port** - Port MCP JSON-RPC and SSE endpoints from raw Node.js HTTP into Fastify TypeScript server
+- [x] **Phase 1: MCP Transport Port** - Port MCP JSON-RPC and SSE endpoints from raw Node.js HTTP into Fastify TypeScript server
 - [ ] **Phase 2: OAuth Configuration** - Add Azure AD environment variables, jose dependency, and startup validation
 - [ ] **Phase 3: Discovery Metadata** - Implement RFC 9728 Protected Resource Metadata endpoint
 - [ ] **Phase 4: JWT Authentication** - Build Bearer token validation middleware using jose and Azure AD JWKS
@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Install MCP SDK + vitest, create mcp-tools.ts with all 17 tool registrations and test stubs
-- [ ] 01-02-PLAN.md — Wire MCP into Fastify routes (POST /mcp, GET /mcp), remove REST routes, delete legacy files
+- [x] 01-01-PLAN.md — Install MCP SDK + vitest, create mcp-tools.ts with all 17 tool registrations and test stubs
+- [x] 01-02-PLAN.md — Wire MCP into Fastify routes (POST /mcp, GET /mcp), remove REST routes, delete legacy files
 
 ### Phase 2: OAuth Configuration
 **Goal**: Server is fully configured for Azure AD integration and fails fast with clear errors if misconfigured
@@ -100,7 +100,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. MCP Transport Port | 1/2 | In Progress | - |
+| 1. MCP Transport Port | 2/2 | Complete | 2026-03-24 |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 0/1 | Planning complete | - |
 | 4. JWT Authentication | 0/2 | Planning complete | - |
