@@ -60,11 +60,6 @@ export function buildApp(
   return server;
 }
 
-// Keep legacy export for backward compatibility (Phase 1/2 consumers)
-export function buildServer(wikiJsApi: WikiJsApi): FastifyInstance {
-  return buildApp(config, wikiJsApi);
-}
-
 // ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
