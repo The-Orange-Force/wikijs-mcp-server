@@ -71,10 +71,11 @@ Plans:
   2. A request with no token, expired token, wrong audience, or invalid signature returns HTTP 401 with a WWW-Authenticate header containing the resource_metadata URL
   3. A request with a valid token but insufficient scopes returns HTTP 403 with WWW-Authenticate error="insufficient_scope"
   4. The middleware extracts and makes available the authenticated user's identity claims (oid, preferred_username) for downstream use
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Auth types, jose error-to-RFC 6750 mapper, WWW-Authenticate header builders, test helpers
+- [ ] 04-02-PLAN.md — Fastify auth middleware plugin with onRequest hook, scope validation, integration tests
 
 ### Phase 5: Route Protection and Observability
 **Goal**: Auth middleware is applied to exactly the right routes, and every authenticated request is traceable in server logs
@@ -102,5 +103,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. MCP Transport Port | 0/2 | Planning complete | - |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 0/1 | Planning complete | - |
-| 4. JWT Authentication | 0/? | Not started | - |
+| 4. JWT Authentication | 0/2 | Planning complete | - |
 | 5. Route Protection and Observability | 0/2 | Planning complete | - |
