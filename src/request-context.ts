@@ -18,7 +18,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Logger } from "pino";
+import type { FastifyBaseLogger } from "fastify";
 
 /**
  * Request-scoped context carried through AsyncLocalStorage.
@@ -30,8 +30,8 @@ export interface RequestContext {
   userId?: string;
   /** User principal name (preferred_username claim) */
   username?: string;
-  /** Pino child logger with request-scoped bindings (correlationId, userId) */
-  log: Logger;
+  /** Pino-compatible logger with request-scoped bindings (correlationId, userId) */
+  log: FastifyBaseLogger;
 }
 
 /**

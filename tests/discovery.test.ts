@@ -1,35 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildApp } from "../src/server.js";
-import type { AppConfig } from "../src/config.js";
 import type { FastifyInstance } from "fastify";
+import { buildTestApp, makeTestConfig } from "./helpers/build-test-app.js";
 
 const FAKE_TENANT_ID = "550e8400-e29b-41d4-a716-446655440000";
-const FAKE_CLIENT_ID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 const FAKE_RESOURCE_URL = "https://mcp.example.com";
-
-function makeConfig(overrides?: Partial<AppConfig["azure"]>): AppConfig {
-  return {
-    port: 0,
-    wikijs: {
-      baseUrl: "http://localhost:3000",
-      token: "test-token",
-    },
-    azure: {
-      tenantId: FAKE_TENANT_ID,
-      clientId: FAKE_CLIENT_ID,
-      resourceUrl: FAKE_RESOURCE_URL,
-      jwksUri: `https://login.microsoftonline.com/${FAKE_TENANT_ID}/discovery/v2.0/keys`,
-      issuer: `https://login.microsoftonline.com/${FAKE_TENANT_ID}/v2.0`,
-      ...overrides,
-    },
-  };
-}
 
 describe("GET /.well-known/oauth-protected-resource", () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = buildApp(makeConfig());
+    app = await buildTestApp();
     await app.ready();
   });
 
@@ -138,9 +118,9 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     const docsUrl = "https://docs.example.com/mcp-server";
 
     beforeAll(async () => {
-      appWithDocs = buildApp(
-        makeConfig({ resourceDocsUrl: docsUrl } as any),
-      );
+      appWithDocs = await buildTestApp({
+        resourceDocsUrl: docsUrl,
+      } as any);
       await appWithDocs.ready();
     });
 

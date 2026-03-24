@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildServer } from "../src/server.js";
+import { buildApp } from "../src/server.js";
 import { WikiJsApi } from "../src/api.js";
 import { createMcpServer } from "../src/mcp-tools.js";
 import type { FastifyInstance } from "fastify";
+import type { AppConfig } from "../src/config.js";
+import {
+  getLocalJwks,
+  createTestToken,
+  TEST_CONFIG,
+} from "../src/auth/__tests__/helpers.js";
 
 // ---------------------------------------------------------------------------
 // Mock WikiJsApi -- avoids needing a real WikiJS instance
@@ -47,13 +53,64 @@ const mockWikiJsApi = {
 } as unknown as WikiJsApi;
 
 // ---------------------------------------------------------------------------
-// Server lifecycle
+// Server lifecycle -- uses buildApp with local JWKS for test auth
 // ---------------------------------------------------------------------------
 let server: FastifyInstance;
 let baseUrl: string;
+let validToken: string;
+
+function makeTestConfig(): AppConfig {
+  return {
+    port: 0,
+    wikijs: {
+      baseUrl: "http://localhost:3000",
+      token: "test-token",
+    },
+    azure: {
+      tenantId: TEST_CONFIG.tenantId,
+      clientId: TEST_CONFIG.clientId,
+      resourceUrl: TEST_CONFIG.resourceUrl,
+      jwksUri: `https://login.microsoftonline.com/${TEST_CONFIG.tenantId}/discovery/v2.0/keys`,
+      issuer: TEST_CONFIG.issuer,
+    },
+  };
+}
 
 beforeAll(async () => {
-  server = buildServer(mockWikiJsApi);
+  validToken = await createTestToken();
+  const jwks = await getLocalJwks();
+  const appConfig = makeTestConfig();
+
+  // Build the app via buildApp, then manually override auth JWKS.
+  // We need to use buildApp's plugin architecture but with local JWKS.
+  // Since buildApp registers protectedRoutes with the config JWKS,
+  // we create the server directly using Fastify with our test setup.
+  const fastify = await import("fastify");
+  const { buildLoggerConfig } = await import("../src/logging.js");
+  const { publicRoutes } = await import("../src/routes/public-routes.js");
+  const { protectedRoutes } = await import("../src/routes/mcp-routes.js");
+
+  server = fastify.default({ ...buildLoggerConfig() });
+
+  server.addHook("onRequest", async (request, reply) => {
+    reply.header("x-request-id", request.id);
+  });
+
+  server.register(publicRoutes, {
+    wikiJsApi: mockWikiJsApi,
+    appConfig,
+  });
+
+  server.register(protectedRoutes, {
+    wikiJsApi: mockWikiJsApi,
+    auth: {
+      jwks,
+      issuer: appConfig.azure.issuer,
+      audience: appConfig.azure.clientId,
+      resourceMetadataUrl: `${appConfig.azure.resourceUrl}/.well-known/oauth-protected-resource`,
+    },
+  });
+
   // Listen on port 0 to get a random available port
   const address = await server.listen({ port: 0, host: "127.0.0.1" });
   baseUrl = address;
@@ -64,9 +121,7 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper: send JSON-RPC request to POST /mcp
-// The MCP SDK requires Accept header with both application/json and
-// text/event-stream for POST requests.
+// Helper: send JSON-RPC request to POST /mcp with auth token
 // ---------------------------------------------------------------------------
 async function mcpPost(body: Record<string, unknown>) {
   const res = await fetch(`${baseUrl}/mcp`, {
@@ -74,6 +129,7 @@ async function mcpPost(body: Record<string, unknown>) {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${validToken}`,
     },
     body: JSON.stringify(body),
   });
@@ -109,20 +165,12 @@ describe("TRNS-01: POST /mcp JSON-RPC", () => {
 });
 
 // ---------------------------------------------------------------------------
-// TRNS-02: GET /mcp returns 405 in stateless mode
+// TRNS-02: GET /mcp returns 405 in stateless mode (auth required first)
 // ---------------------------------------------------------------------------
-describe("TRNS-02: GET /mcp returns 405 in stateless mode", () => {
-  it("GET /mcp returns 405 Method Not Allowed", async () => {
+describe("TRNS-02: GET /mcp returns 401 without auth", () => {
+  it("GET /mcp without token returns 401", async () => {
     const res = await fetch(`${baseUrl}/mcp`);
-
-    expect(res.status).toBe(405);
-
-    const data = await res.json();
-    expect(data.jsonrpc).toBe("2.0");
-    expect(data.error).toBeDefined();
-    expect(data.error.code).toBe(-32000);
-    expect(data.error.message).toBe("Method not allowed.");
-    expect(data.id).toBeNull();
+    expect(res.status).toBe(401);
   });
 });
 
@@ -131,9 +179,6 @@ describe("TRNS-02: GET /mcp returns 405 in stateless mode", () => {
 // ---------------------------------------------------------------------------
 describe("TRNS-03: MCP tools/list and tools/call", () => {
   it("POST /mcp with tools/list returns all 17 tools", async () => {
-    // In stateless mode, each request gets a fresh McpServer+transport.
-    // tools/list works without prior initialize because in stateless mode
-    // the SDK skips session and initialization validation.
     const res = await mcpPost({
       jsonrpc: "2.0",
       id: 2,
@@ -187,7 +232,6 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
   });
 
   it("POST /mcp with tools/call invokes list_users tool with mock", async () => {
-    // Each request is independent in stateless mode
     const res = await mcpPost({
       jsonrpc: "2.0",
       id: 3,
@@ -221,16 +265,17 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
 // Additional route tests
 // ---------------------------------------------------------------------------
 describe("Server routes", () => {
-  it("GET / returns server info", async () => {
+  it("GET / returns server info with auth discovery hints", async () => {
     const res = await fetch(`${baseUrl}/`);
     expect(res.status).toBe(200);
 
     const data = await res.json();
     expect(data.name).toBe("wikijs-mcp");
-    expect(data.version).toBe("1.3.0");
+    expect(data.version).toBe("2.0.0");
+    expect(data.auth_required).toBe(true);
+    expect(data.protected_resource_metadata).toBeDefined();
     expect(data.endpoints).toBeDefined();
     expect(data.endpoints["POST /mcp"]).toBeDefined();
-    expect(data.endpoints["GET /mcp"]).toBeDefined();
     expect(data.endpoints["GET /health"]).toBeDefined();
   });
 
