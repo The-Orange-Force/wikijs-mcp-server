@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-24T21:48:33.161Z"
-last_activity: "2026-03-24 -- Completed 05-03-PLAN.md (Gap closure: correlation_id in error bodies, dead import cleanup)"
+status: in-progress
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-24T21:52:30.808Z"
+last_activity: "2026-03-24 -- Completed 06-01-PLAN.md (Scope format alignment: colon notation, single source of truth)"
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** All 5 phases complete. JWT auth protects MCP routes, public routes open, full observability.
+**Current focus:** Phase 6 complete. Scope format aligned to colon notation across discovery and auth middleware.
 
 ## Current Position
 
-Phase: 5 of 5 (Route Protection and Observability)
-Plan: 3 of 3 in current phase (done)
+Phase: 6 of 8 (Scope Format Alignment)
+Plan: 1 of 1 in current phase (done)
 Status: Complete
-Last activity: 2026-03-24 -- Completed 05-03-PLAN.md (Gap closure: correlation_id in error bodies, dead import cleanup)
+Last activity: 2026-03-24 -- Completed 06-01-PLAN.md (Scope format alignment: colon notation, single source of truth)
 
 Progress: [██████████] 100%
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%
 | Phase 05 P01 | 3min | 2 tasks | 5 files |
 | Phase 05 P02 | 7min | 3 tasks | 10 files |
 | Phase 05 P03 | 2min | 2 tasks | 3 files |
+| Phase 06 P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 05-02]: reply.raw.setHeader alongside reply.header for X-Request-ID on raw-stream MCP responses
 - [Phase 05-02]: RequestContext.log typed as FastifyBaseLogger (not pino Logger) for Fastify compatibility
 - [Phase 05-02]: Shared buildTestApp helper centralizes test app construction with local JWKS
+- [Phase 06-01]: Colon notation (wikijs:read) chosen over dot notation per OAuth 2.0 / Azure AD convention
+- [Phase 06-01]: VALID_SCOPES removed entirely from middleware; SUPPORTED_SCOPES imported from src/scopes.ts
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T21:48:33.158Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-wire-tool-observability/07-CONTEXT.md
+Last session: 2026-03-24T21:52:00Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: .planning/phases/06-scope-format-alignment/06-01-SUMMARY.md

@@ -24,7 +24,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Discovery
 
 - [x] **DISC-01**: GET /.well-known/oauth-protected-resource returns RFC 9728 Protected Resource Metadata JSON
-- [ ] **DISC-02**: Metadata includes resource URL, authorization_servers, scopes_supported, bearer_methods_supported
+- [x] **DISC-02**: Metadata includes resource URL, authorization_servers, scopes_supported, bearer_methods_supported
 - [x] **DISC-03**: Discovery endpoint remains unauthenticated
 
 ### Authentication
@@ -95,7 +95,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONF-04 | Phase 2 | Complete |
 | CONF-05 | Phase 2 | Complete |
 | DISC-01 | Phase 3 | Complete |
-| DISC-02 | Phase 6 | Pending |
+| DISC-02 | Phase 6 | Complete |
 | DISC-03 | Phase 3 | Complete |
 | AUTH-01 | Phase 4 | Complete |
 | AUTH-02 | Phase 4 | Complete |
