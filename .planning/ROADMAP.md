@@ -87,11 +87,12 @@ Plans:
   3. Each MCP tool invocation logs the authenticated user's identity (oid/preferred_username) from the validated JWT
   4. Every request receives a unique correlation ID that appears in both server logs and error response bodies
   5. JWT validation failures produce structured RFC 6750 error responses with error and error_description fields
-**Plans:** 2 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — RFC 6750 error mapping, correlation ID config, request context module, and unit tests
-- [ ] 05-02-PLAN.md — Wire auth to MCP routes via plugin encapsulation, restructure server.ts, integration tests
+- [x] 05-01-PLAN.md — RFC 6750 error mapping, correlation ID config, request context module, and unit tests
+- [x] 05-02-PLAN.md — Wire auth to MCP routes via plugin encapsulation, restructure server.ts, integration tests
+- [ ] 05-03-PLAN.md — Gap closure: add correlation_id to error response bodies, remove orphaned imports
 
 ## Progress
 
@@ -104,4 +105,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
 | 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
 | 4. JWT Authentication | 2/2 | Complete   | 2026-03-24 |
-| 5. Route Protection and Observability | 0/2 | Planning complete | - |
+| 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
