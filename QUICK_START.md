@@ -40,7 +40,7 @@ nano .cursor/mcp.json
     "wikijs": {
       "transport": "http",
       "url": "http://localhost:3200/mcp",
-      "events": "http://localhost:3200/mcp/events",
+      "events": "http://localhost:3200/mcp",
       "cwd": ".",
       "env": {
         "WIKIJS_BASE_URL": "http://your-wiki.example.com",

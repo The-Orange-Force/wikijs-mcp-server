@@ -160,7 +160,7 @@ npm run setup:cursor
     "wikijs": {
       "transport": "http",
       "url": "http://localhost:3200/mcp",
-      "events": "http://localhost:3200/mcp/events",
+      "events": "http://localhost:3200/mcp",
       "cwd": ".",
       "env": {
         "WIKIJS_BASE_URL": "http://localhost:3000",
@@ -175,7 +175,7 @@ npm run setup:cursor
 
 - **`transport: "http"`** - mandatory HTTP transport
 - **`url: "http://localhost:3200/mcp"`** - exact URL for JSON-RPC
-- **`events: "http://localhost:3200/mcp/events"`** - URL for Server-Sent Events
+- **`events: "http://localhost:3200/mcp"`** - URL for Server-Sent Events (returns 405 in stateless mode)
 - **`WIKIJS_TOKEN`** - real Wiki.js API token (not placeholder!)
 
 #### Verification
