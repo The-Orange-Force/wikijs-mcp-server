@@ -126,15 +126,22 @@ Plans:
 - [ ] 07-01-PLAN.md — Add debug args log to wrapper, wrap all 17 tool handlers, integration + unit tests
 
 ### Phase 8: Dead Code & Tech Debt Cleanup
-**Goal**: Remove orphaned code and fix stale references identified by milestone audit
+**Goal**: Remove orphaned code, fix stale references, and delete unused exports identified by milestone audit
 **Depends on**: Phase 6, Phase 7
 **Requirements**: None (tech debt)
 **Gap Closure:** Closes integration gaps and tech debt from audit
 **Success Criteria** (what must be TRUE):
   1. `src/auth-errors.ts` and `tests/auth-errors.test.ts` are deleted
   2. Stale `GET /mcp/events` references in `public-routes.ts` and `mcp-routes.ts` are corrected
-  3. Unused `SCOPE_TOOL_MAP` and `TOOL_SCOPE_MAP` are removed from `src/scopes.ts`
-  4. All tests pass after cleanup
+  3. `SCOPE_TOOL_MAP` and `TOOL_SCOPE_MAP` are preserved in `src/scopes.ts` for v2 per-tool scope enforcement (ADVN-01)
+  4. Legacy files `src/tools.ts` and `src/schemas.ts` are deleted
+  5. Dead `buildServer` export is removed from `src/server.ts`
+  6. All tests pass after cleanup
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Delete orphaned files (auth-errors, tools, schemas), remove buildServer dead export, verify test suite
+- [ ] 08-02-PLAN.md — Fix stale /mcp/events references in code and docs, update ROADMAP success criteria
 
 ## Progress
 
@@ -150,4 +157,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
 | 6. Scope Format Alignment | 0/1 | Planning complete | - |
 | 7. Wire Tool Observability | 0/1 | Planning complete | - |
-| 8. Dead Code & Tech Debt Cleanup | 0/0 | Not started | - |
+| 8. Dead Code & Tech Debt Cleanup | 0/2 | Planning complete | - |
