@@ -24,7 +24,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Discovery
 
 - [x] **DISC-01**: GET /.well-known/oauth-protected-resource returns RFC 9728 Protected Resource Metadata JSON
-- [x] **DISC-02**: Metadata includes resource URL, authorization_servers, scopes_supported, bearer_methods_supported
+- [ ] **DISC-02**: Metadata includes resource URL, authorization_servers, scopes_supported, bearer_methods_supported
 - [x] **DISC-03**: Discovery endpoint remains unauthenticated
 
 ### Authentication
@@ -46,7 +46,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Observability
 
-- [x] **OBSV-01**: Validated JWT user identity (oid/preferred_username) logged with each MCP tool invocation
+- [ ] **OBSV-01**: Validated JWT user identity (oid/preferred_username) logged with each MCP tool invocation
 - [x] **OBSV-02**: Unique correlation ID generated per request and included in logs and error responses
 - [x] **OBSV-03**: jose validation errors mapped to structured RFC 6750 error responses (error, error_description)
 
@@ -95,7 +95,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONF-04 | Phase 2 | Complete |
 | CONF-05 | Phase 2 | Complete |
 | DISC-01 | Phase 3 | Complete |
-| DISC-02 | Phase 3 | Complete |
+| DISC-02 | Phase 6 | Pending |
 | DISC-03 | Phase 3 | Complete |
 | AUTH-01 | Phase 4 | Complete |
 | AUTH-02 | Phase 4 | Complete |
@@ -108,7 +108,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROT-02 | Phase 5 | Complete |
 | PROT-03 | Phase 5 | Complete |
 | PROT-04 | Phase 5 | Complete |
-| OBSV-01 | Phase 5 | Complete |
+| OBSV-01 | Phase 7 | Pending |
 | OBSV-02 | Phase 5 | Complete |
 | OBSV-03 | Phase 5 | Complete |
 
@@ -119,4 +119,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after Phase 4 Plan 01 completion*
+*Last updated: 2026-03-24 after gap closure phase creation (Phases 6-8)*

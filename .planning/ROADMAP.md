@@ -17,6 +17,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Discovery Metadata** - Implement RFC 9728 Protected Resource Metadata endpoint (completed 2026-03-24)
 - [x] **Phase 4: JWT Authentication** - Build Bearer token validation middleware using jose and Azure AD JWKS (completed 2026-03-24)
 - [ ] **Phase 5: Route Protection and Observability** - Apply auth middleware to MCP routes and add structured request logging
+- [ ] **Phase 6: Scope Format Alignment** - Align scope notation between discovery endpoint and auth middleware
+- [ ] **Phase 7: Wire Tool Observability** - Connect wrapToolHandler to all 17 MCP tool registrations
+- [ ] **Phase 8: Dead Code & Tech Debt Cleanup** - Remove orphaned modules, fix stale references, delete unused exports
 
 ## Phase Details
 
@@ -94,6 +97,37 @@ Plans:
 - [x] 05-02-PLAN.md — Wire auth to MCP routes via plugin encapsulation, restructure server.ts, integration tests
 - [ ] 05-03-PLAN.md — Gap closure: add correlation_id to error response bodies, remove orphaned imports
 
+### Phase 6: Scope Format Alignment
+**Goal**: Discovery endpoint and auth middleware use the same scope format so clients can successfully acquire and use tokens
+**Depends on**: Phase 3, Phase 4
+**Requirements**: DISC-02
+**Gap Closure:** Closes gaps from audit
+**Success Criteria** (what must be TRUE):
+  1. `src/scopes.ts` uses colon notation (`wikijs:read`, `wikijs:write`, `wikijs:admin`)
+  2. `src/auth/middleware.ts` imports scopes from `src/scopes.ts` (single source of truth)
+  3. Discovery endpoint returns colon-notation scopes matching what auth middleware enforces
+
+### Phase 7: Wire Tool Observability
+**Goal**: Production MCP tool invocations log authenticated user identity and timing through wrapToolHandler
+**Depends on**: Phase 5
+**Requirements**: OBSV-01
+**Gap Closure:** Closes gaps from audit
+**Success Criteria** (what must be TRUE):
+  1. All 17 tool handlers in `src/mcp-tools.ts` are wrapped with `wrapToolHandler()`
+  2. Production tool invocations log `toolName`, `duration`, `userId`, and `username` from requestContext
+  3. `requestContext` AsyncLocalStorage established in `mcp-routes.ts` is read by wrapped tool handlers
+
+### Phase 8: Dead Code & Tech Debt Cleanup
+**Goal**: Remove orphaned code and fix stale references identified by milestone audit
+**Depends on**: Phase 6, Phase 7
+**Requirements**: None (tech debt)
+**Gap Closure:** Closes integration gaps and tech debt from audit
+**Success Criteria** (what must be TRUE):
+  1. `src/auth-errors.ts` and `tests/auth-errors.test.ts` are deleted
+  2. Stale `GET /mcp/events` references in `public-routes.ts` and `mcp-routes.ts` are corrected
+  3. Unused `SCOPE_TOOL_MAP` and `TOOL_SCOPE_MAP` are removed from `src/scopes.ts`
+  4. All tests pass after cleanup
+
 ## Progress
 
 **Execution Order:**
@@ -106,3 +140,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
 | 4. JWT Authentication | 2/2 | Complete   | 2026-03-24 |
 | 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
+| 6. Scope Format Alignment | 0/0 | Not started | - |
+| 7. Wire Tool Observability | 0/0 | Not started | - |
+| 8. Dead Code & Tech Debt Cleanup | 0/0 | Not started | - |
