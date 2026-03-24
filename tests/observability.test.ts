@@ -306,6 +306,53 @@ describe("Tool invocation logging", () => {
     expect(Number.isInteger(duration)).toBe(true);
   });
 
+  it("debug-level log emitted before handler invocation with toolName and args", async () => {
+    const logCapture = createLogCapture();
+    const testLogger = pino(
+      { level: "trace" },
+      logCapture.stream,
+    );
+
+    const mockHandler = async (args: { query: string }) => ({
+      results: [`found: ${args.query}`],
+    });
+    const wrappedHandler = wrapToolHandler("search_pages", mockHandler);
+
+    await requestContext.run(
+      {
+        correlationId: "test-debug-id",
+        userId: "user-oid-debug",
+        username: "debuguser@example.com",
+        log: testLogger as unknown as FastifyBaseLogger,
+      },
+      async () => {
+        await wrappedHandler({ query: "test" });
+      },
+    );
+
+    // Wait for stream to flush
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Find debug-level (20) log with tool args
+    const debugLogs = logCapture.logs.filter(
+      (l) => l.level === 20 && l.toolName === "search_pages",
+    );
+    expect(debugLogs.length).toBe(1);
+
+    const debugLog = debugLogs[0];
+    expect(debugLog.toolName).toBe("search_pages");
+    expect(debugLog.args).toEqual({ query: "test" });
+    expect(debugLog.msg).toBe("Tool request: search_pages");
+
+    // Debug log should appear BEFORE info log (check array index ordering)
+    const allToolLogs = logCapture.logs.filter(
+      (l) => l.toolName === "search_pages",
+    );
+    const debugIndex = allToolLogs.findIndex((l) => l.level === 20);
+    const infoIndex = allToolLogs.findIndex((l) => l.level === 30);
+    expect(debugIndex).toBeLessThan(infoIndex);
+  });
+
   it("user identity in tool logs matches the authenticated user", async () => {
     const logCapture = createLogCapture();
     const testLogger = pino(
