@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-24T20:17:33.857Z"
+last_updated: "2026-03-24T20:20:23.504Z"
 last_activity: 2026-03-24 -- Completed 03-01-PLAN.md (RFC 9728 discovery endpoint with scope-to-tool mapping)
 progress:
   total_phases: 5
