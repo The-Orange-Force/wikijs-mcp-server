@@ -5,19 +5,15 @@
  * Auth is enforced via a scoped preHandler hook that only runs
  * for routes registered inside this plugin.
  *
- * Uses Phase 4's auth plugin for JWT validation, Phase 5 Plan 01's
- * RFC 6750 error mapping for structured error responses, and
- * AsyncLocalStorage for propagating request context to MCP tool handlers.
+ * Uses Phase 4's scoped auth plugin for JWT validation and RFC 6750
+ * error responses, and AsyncLocalStorage for propagating request
+ * context to MCP tool handlers.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "../mcp-tools.js";
 import { WikiJsApi } from "../api.js";
-import {
-  mapJoseErrorToRfc6750,
-  mapMissingTokenError,
-} from "../auth-errors.js";
 import { requestContext } from "../request-context.js";
 import authPlugin from "../auth/middleware.js";
 import type { AuthPluginOptions } from "../auth/middleware.js";
