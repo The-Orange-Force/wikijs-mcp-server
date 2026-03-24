@@ -25,7 +25,7 @@ Port MCP JSON-RPC and SSE endpoints from the raw Node.js HTTP server (`lib/fixed
 - Remove GET /tools endpoint (redundant with MCP tools/list)
 - Keep GET / as server info (name, version, available endpoints)
 - Keep GET /health as unauthenticated diagnostic
-- Final route surface: GET /, GET /health, POST /mcp, GET /mcp/events
+- Final route surface: GET /, GET /health, POST /mcp, GET /mcp (MCP 2025-03-26 Streamable HTTP uses single /mcp endpoint; GET returns 405 in stateless mode)
 
 ### MCP SDK integration
 - Use official @modelcontextprotocol/sdk package
