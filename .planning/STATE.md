@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-24T22:15:34.372Z"
-last_activity: "2026-03-24 -- Completed 07-01-PLAN.md (Wire tool observability: all 17 handlers wrapped with debug+info logging)"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-24T22:15:30Z"
+last_activity: "2026-03-24 -- Completed 08-02-PLAN.md (Fixed stale /mcp/events references in code and docs)"
 progress:
   total_phases: 8
   completed_phases: 8
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 7 complete. All 17 MCP tool handlers wrapped with wrapToolHandler for observability.
+**Current focus:** Phase 8 complete. All stale /mcp/events references fixed in production code and docs.
 
 ## Current Position
 
-Phase: 7 of 8 (Wire Tool Observability)
-Plan: 1 of 1 in current phase (done)
+Phase: 8 of 8 (Dead Code & Tech Debt Cleanup)
+Plan: 2 of 2 in current phase (done)
 Status: Complete
-Last activity: 2026-03-24 -- Completed 07-01-PLAN.md (Wire tool observability: all 17 handlers wrapped with debug+info logging)
+Last activity: 2026-03-24 -- Completed 08-02-PLAN.md (Fixed stale /mcp/events references in code and docs)
 
-Progress: [█████████░] 85%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [█████████░] 85%
 | Phase 06 P01 | 2min | 2 tasks | 4 files |
 | Phase 07 P01 | 4min | 2 tasks | 3 files |
 | Phase 08 P01 | 2min | 2 tasks | 5 files |
+| Phase 08 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T22:15:24.256Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: None
+Last session: 2026-03-24T22:15:30Z
+Stopped at: Completed 08-02-PLAN.md
+Resume file: .planning/phases/08-dead-code-cleanup/08-02-SUMMARY.md

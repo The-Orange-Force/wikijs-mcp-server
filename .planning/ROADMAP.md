@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Route Protection and Observability** - Apply auth middleware to MCP routes and add structured request logging
 - [ ] **Phase 6: Scope Format Alignment** - Align scope notation between discovery endpoint and auth middleware
 - [ ] **Phase 7: Wire Tool Observability** - Connect wrapToolHandler to all 17 MCP tool registrations
-- [ ] **Phase 8: Dead Code & Tech Debt Cleanup** - Remove orphaned modules, fix stale references, delete unused exports
+- [x] **Phase 8: Dead Code & Tech Debt Cleanup** - Remove orphaned modules, fix stale references, delete unused exports (completed 2026-03-24)
 
 ## Phase Details
 
@@ -137,7 +137,7 @@ Plans:
   4. Legacy files `src/tools.ts` and `src/schemas.ts` are deleted
   5. Dead `buildServer` export is removed from `src/server.ts`
   6. All tests pass after cleanup
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — Delete orphaned files (auth-errors, tools, schemas), remove buildServer dead export, verify test suite
@@ -157,4 +157,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 5. Route Protection and Observability | 2/3 | Gap closure pending | - |
 | 6. Scope Format Alignment | 0/1 | Planning complete | - |
 | 7. Wire Tool Observability | 0/1 | Planning complete | - |
-| 8. Dead Code & Tech Debt Cleanup | 0/2 | Planning complete | - |
+| 8. Dead Code & Tech Debt Cleanup | 2/2 | Complete   | 2026-03-24 |
