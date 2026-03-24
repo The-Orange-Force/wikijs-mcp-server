@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Claude Desktop receives SSE events from GET /mcp/events on the Fastify server
   3. Existing WikiJS tools (page CRUD, search, user management) all work identically after the port
   4. The raw Node.js HTTP MCP server (lib/fixed_mcp_http_server.js) is no longer needed for HTTP transport
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Install MCP SDK + vitest, create mcp-tools.ts with all 17 tool registrations and test stubs
+- [ ] 01-02-PLAN.md — Wire MCP into Fastify routes (POST /mcp, GET /mcp), remove REST routes, delete legacy files
 
 ### Phase 2: OAuth Configuration
 **Goal**: Server is fully configured for Azure AD integration and fails fast with clear errors if misconfigured
@@ -99,7 +99,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. MCP Transport Port | 0/? | Not started | - |
+| 1. MCP Transport Port | 0/2 | Planning complete | - |
 | 2. OAuth Configuration | 0/? | Not started | - |
 | 3. Discovery Metadata | 0/? | Not started | - |
 | 4. JWT Authentication | 0/? | Not started | - |
