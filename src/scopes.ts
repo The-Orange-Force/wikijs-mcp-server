@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 
 export const SCOPES = {
-  READ: "wikijs.read",
-  WRITE: "wikijs.write",
-  ADMIN: "wikijs.admin",
+  READ: "wikijs:read",
+  WRITE: "wikijs:write",
+  ADMIN: "wikijs:admin",
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];

@@ -14,6 +14,7 @@ import {
   buildWwwAuthenticate401,
   buildWwwAuthenticate403,
 } from './errors.js';
+import { SUPPORTED_SCOPES } from '../scopes.js';
 
 /**
  * Options for the auth plugin. Accepts injected JWKS for testability
@@ -29,9 +30,6 @@ export interface AuthPluginOptions {
   /** RFC 9728 resource_metadata URL for WWW-Authenticate headers */
   resourceMetadataUrl: string;
 }
-
-/** Valid scopes for WikiJS MCP server (v1: any one suffices) */
-export const VALID_SCOPES = ['wikijs:read', 'wikijs:write', 'wikijs:admin'] as const;
 
 // TypeScript declaration merging for request.user
 declare module 'fastify' {
@@ -85,16 +83,16 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       // Step 3: Validate scopes (AUTH-07)
       // Azure AD v2.0 delegated tokens use scp claim as space-delimited string
       const scopes = typeof adPayload.scp === 'string' ? adPayload.scp.split(' ') : [];
-      const hasValidScope = scopes.some(s => (VALID_SCOPES as readonly string[]).includes(s));
+      const hasValidScope = scopes.some(s => SUPPORTED_SCOPES.includes(s));
 
       if (!hasValidScope) {
         reply
           .code(403)
-          .header('WWW-Authenticate', buildWwwAuthenticate403(resourceMetadataUrl, [...VALID_SCOPES]))
+          .header('WWW-Authenticate', buildWwwAuthenticate403(resourceMetadataUrl, [...SUPPORTED_SCOPES]))
           .send({
             error: 'insufficient_scope',
             error_description: 'token does not contain a required scope',
-            required_scopes: [...VALID_SCOPES],
+            required_scopes: [...SUPPORTED_SCOPES],
             correlation_id: request.id,
           });
         return reply;
