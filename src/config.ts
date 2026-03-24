@@ -14,6 +14,10 @@ export const envSchema = z
     AZURE_TENANT_ID: z.string().uuid("AZURE_TENANT_ID must be a valid UUID"),
     AZURE_CLIENT_ID: z.string().uuid("AZURE_CLIENT_ID must be a valid UUID"),
     MCP_RESOURCE_URL: z.string().url("MCP_RESOURCE_URL must be a valid URL"),
+    MCP_RESOURCE_DOCS_URL: z
+      .string()
+      .url("MCP_RESOURCE_DOCS_URL must be a valid URL")
+      .optional(),
   })
   .transform((env) => ({
     port: env.PORT,
@@ -25,6 +29,7 @@ export const envSchema = z
       tenantId: env.AZURE_TENANT_ID,
       clientId: env.AZURE_CLIENT_ID,
       resourceUrl: env.MCP_RESOURCE_URL,
+      resourceDocsUrl: env.MCP_RESOURCE_DOCS_URL,
       jwksUri: `https://login.microsoftonline.com/${env.AZURE_TENANT_ID}/discovery/v2.0/keys`,
       issuer: `https://login.microsoftonline.com/${env.AZURE_TENANT_ID}/v2.0`,
     },
