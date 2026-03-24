@@ -1,61 +1,59 @@
 #!/bin/bash
 
-# Скрипт остановки MCP серверов для Wiki.js
-# Останавливает все запущенные процессы MCP сервера
+# Stop all WikiJS MCP server processes
 
-# Получаем абсолютный путь к директории проекта (на уровень выше от scripts)
+# Get absolute path to project directory (one level up from scripts)
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Переходим в директорию проекта
+# Change to project directory
 cd "$PROJECT_DIR"
 
-echo "🛑 Останавливаем MCP серверы Wiki.js..."
+echo "Stopping WikiJS MCP servers..."
 
-# Остановка по PID файлу если он существует
+# Stop by PID file if it exists
 if [ -f server.pid ]; then
     PID=$(cat server.pid)
     if ps -p $PID > /dev/null 2>&1; then
-        echo "Останавливаем процесс с PID: $PID"
+        echo "Stopping process with PID: $PID"
         kill $PID
         sleep 2
-        # Принудительная остановка если процесс все еще запущен
+        # Force stop if process is still running
         if ps -p $PID > /dev/null 2>&1; then
-            echo "Принудительная остановка процесса $PID"
+            echo "Force stopping process $PID"
             kill -9 $PID
         fi
     else
-        echo "Процесс с PID $PID уже не запущен"
+        echo "Process with PID $PID is not running"
     fi
     rm -f server.pid
-    echo "Файл server.pid удален"
+    echo "Removed server.pid file"
 fi
 
-# Остановка всех процессов MCP сервера по имени
-echo "Останавливаем все процессы MCP сервера..."
-pkill -f "fixed_mcp_http_server.js" && echo "✅ Остановлен fixed_mcp_http_server.js" || echo "ℹ️ fixed_mcp_http_server.js не запущен"
-pkill -f "mcp_wikijs_stdin.js" && echo "✅ Остановлен mcp_wikijs_stdin.js" || echo "ℹ️ mcp_wikijs_stdin.js не запущен"
-pkill -f "mcp_http_server.js" && echo "✅ Остановлен mcp_http_server.js" || echo "ℹ️ mcp_http_server.js не запущен"
+# Stop all MCP server processes by name
+echo "Stopping all MCP server processes..."
+pkill -f "dist/server.js" && echo "Stopped dist/server.js" || echo "dist/server.js not running"
+pkill -f "mcp_wikijs_stdin.js" && echo "Stopped mcp_wikijs_stdin.js" || echo "mcp_wikijs_stdin.js not running"
 
-# Ждем завершения процессов
+# Wait for processes to terminate
 sleep 1
 
-# Проверяем, остались ли запущенные процессы
-RUNNING_PROCESSES=$(ps aux | grep -E "(fixed_mcp_http_server|mcp_wikijs_stdin|mcp_http_server)" | grep -v grep | wc -l)
+# Check for remaining processes
+RUNNING_PROCESSES=$(ps aux | grep -E "(dist/server\.js|mcp_wikijs_stdin)" | grep -v grep | wc -l)
 
 if [ $RUNNING_PROCESSES -eq 0 ]; then
-    echo "✅ Все MCP серверы успешно остановлены"
+    echo "All MCP servers stopped successfully"
 else
-    echo "⚠️ Обнаружены все еще запущенные процессы MCP:"
-    ps aux | grep -E "(fixed_mcp_http_server|mcp_wikijs_stdin|mcp_http_server)" | grep -v grep
+    echo "WARNING: Some MCP processes are still running:"
+    ps aux | grep -E "(dist/server\.js|mcp_wikijs_stdin)" | grep -v grep
     echo ""
-    echo "Для принудительной остановки запустите:"
-    echo "pkill -9 -f 'mcp'"
+    echo "To force stop, run:"
+    echo "pkill -9 -f 'dist/server.js'"
 fi
 
-# Удаляем лог-файлы если они существуют
-if [ -f fixed_server.log ]; then
-    rm -f fixed_server.log
-    echo "🗑️ Удален файл логов fixed_server.log"
+# Remove log files if they exist
+if [ -f server.log ]; then
+    rm -f server.log
+    echo "Removed server.log"
 fi
 
-echo "🏁 Остановка завершена" 
+echo "Stop complete"

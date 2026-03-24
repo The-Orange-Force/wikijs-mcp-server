@@ -1,55 +1,60 @@
 #!/bin/bash
 
-# Скрипт запуска MCP HTTP сервера для Wiki.js
-# Основная рабочая версия с поддержкой JSON-RPC и прямых вызовов инструментов
+# Start the WikiJS MCP HTTP server (Fastify + MCP SDK)
+# Primary start script for the MCP JSON-RPC endpoint
 
-# Получаем абсолютный путь к директории проекта (на уровень выше от scripts)
+# Get absolute path to project directory (one level up from scripts)
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Переходим в директорию проекта
+# Change to project directory
 cd "$PROJECT_DIR"
 
-# Убить существующие процессы MCP сервера, если они запущены
-echo "Останавливаем существующие MCP серверы..."
-pkill -f "fixed_mcp_http_server.js" || true
+# Kill existing MCP server processes if running
+echo "Stopping existing MCP servers..."
+pkill -f "dist/server.js" || true
 pkill -f "mcp_wikijs_stdin.js" || true
-pkill -f "mcp_http_server.js" || true
 
-# Ждем завершения процессов
+# Wait for processes to terminate
 sleep 1
 
-# Загрузить переменные окружения из .env файла
+# Load environment variables from .env file
 if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
-    echo "Загружены переменные из .env файла"
+    echo "Loaded environment variables from .env file"
 else
-    echo "Файл .env не найден. Рекомендуется создать его на основе example.env"
+    echo ".env file not found. Please create one based on example.env"
 fi
 
-# Установить значения по умолчанию, если переменные не заданы
+# Set defaults if variables are not set
 export PORT=${PORT:-3200}
 export WIKIJS_BASE_URL=${WIKIJS_BASE_URL:-http://localhost:3000}
 
-# Проверить наличие обязательных переменных
+# Check for required variables
 if [ -z "$WIKIJS_TOKEN" ]; then
-    echo "Ошибка: WIKIJS_TOKEN не задан. Создайте .env файл на основе example.env"
+    echo "Error: WIKIJS_TOKEN is not set. Create a .env file based on example.env"
     exit 1
 fi
 
-# Запуск исправленного HTTP сервера
-echo "Запуск MCP HTTP сервера для Wiki.js на порту $PORT с базовым URL $WIKIJS_BASE_URL"
-node lib/fixed_mcp_http_server.js > fixed_server.log 2>&1 &
+# Ensure TypeScript is compiled
+if [ ! -f "dist/server.js" ]; then
+    echo "TypeScript not compiled. Running build..."
+    npm run build
+fi
 
-# Сохраняем PID
+# Start the Fastify MCP server
+echo "Starting WikiJS MCP server on port $PORT with base URL $WIKIJS_BASE_URL"
+node dist/server.js > server.log 2>&1 &
+
+# Save PID
 echo $! > server.pid
-echo "MCP HTTP сервер запущен, PID: $(cat server.pid)"
+echo "WikiJS MCP server started, PID: $(cat server.pid)"
 
-# Проверка доступности API через 2 секунды
+# Check API availability after 2 seconds
 sleep 2
 if curl -s http://localhost:$PORT/health > /dev/null; then
-  echo "API доступен, сервер работает корректно"
+  echo "API available, server running correctly"
   curl -s http://localhost:$PORT/health
 else
-  echo "Ошибка: API недоступен"
-  cat fixed_server.log
-fi 
+  echo "Error: API unavailable"
+  cat server.log
+fi

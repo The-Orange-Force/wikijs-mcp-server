@@ -45,7 +45,6 @@
     "src/",
     "lib/",
     "scripts/",
-    ".cursor/",
     "*.md",
     "example.env",
     "tsconfig.json"
