@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: MCP Transport Port** - Port MCP JSON-RPC and SSE endpoints from raw Node.js HTTP into Fastify TypeScript server
 - [ ] **Phase 2: OAuth Configuration** - Add Azure AD environment variables, jose dependency, and startup validation
-- [ ] **Phase 3: Discovery Metadata** - Implement RFC 9728 Protected Resource Metadata endpoint
+- [x] **Phase 3: Discovery Metadata** - Implement RFC 9728 Protected Resource Metadata endpoint (completed 2026-03-24)
 - [ ] **Phase 4: JWT Authentication** - Build Bearer token validation middleware using jose and Azure AD JWKS
 - [ ] **Phase 5: Route Protection and Observability** - Apply auth middleware to MCP routes and add structured request logging
 
@@ -57,7 +57,7 @@ Plans:
   1. GET /.well-known/oauth-protected-resource returns valid JSON containing resource, authorization_servers, scopes_supported, and bearer_methods_supported fields
   2. The authorization_servers array points to the correct Azure AD v2.0 authorization endpoint derived from AZURE_TENANT_ID
   3. The endpoint is accessible without any authentication (no Bearer token required)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 03-01-PLAN.md — Create scope-to-tool mapping, add RFC 9728 metadata endpoint with buildApp factory, integration tests
@@ -102,6 +102,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. MCP Transport Port | 2/2 | Complete | 2026-03-24 |
 | 2. OAuth Configuration | 0/1 | Planning complete | - |
-| 3. Discovery Metadata | 0/1 | Planning complete | - |
+| 3. Discovery Metadata | 1/1 | Complete   | 2026-03-24 |
 | 4. JWT Authentication | 0/2 | Planning complete | - |
 | 5. Route Protection and Observability | 0/2 | Planning complete | - |

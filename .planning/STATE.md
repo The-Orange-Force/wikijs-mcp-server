@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-24T20:09:09.523Z"
-last_activity: 2026-03-24 -- Completed 02-01-PLAN.md (OAuth config module with Zod validation and JWKS init)
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-24T20:17:33.857Z"
+last_activity: 2026-03-24 -- Completed 03-01-PLAN.md (RFC 9728 discovery endpoint with scope-to-tool mapping)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 3
-  percent: 37
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 2 in progress. OAuth config module complete. Ready for remaining Phase 2 plans (if any) or Phase 3.
+**Current focus:** Phase 3 complete. RFC 9728 discovery endpoint and scope mapping ready. Moving to Phase 4 (token validation).
 
 ## Current Position
 
-Phase: 2 of 5 (OAuth Configuration)
+Phase: 3 of 5 (Discovery & Metadata)
 Plan: 1 of 1 in current phase (done)
 Status: Executing
-Last activity: 2026-03-24 -- Completed 02-01-PLAN.md (OAuth config module with Zod validation and JWKS init)
+Last activity: 2026-03-24 -- Completed 03-01-PLAN.md (RFC 9728 discovery endpoint with scope-to-tool mapping)
 
-Progress: [###.......] 37%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [###.......] 37%
 | Phase 01 P01 | 6min | 2 tasks | 5 files |
 | Phase 01 P02 | 8min | 2 tasks | 16 files |
 | Phase 02 P01 | 4min | 2 tasks | 7 files |
+| Phase 03 P01 | 3min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,9 @@ Recent decisions affecting current work:
 - [02-01]: vitest.config.ts provides test env vars so module-level loadConfig succeeds during import
 - [02-01]: z.output<typeof envSchema> for AppConfig type (correct for schemas with .transform)
 - [02-01]: Node engine bumped to >=20.0.0 for vitest v4 compatibility
+- [Phase 03-01]: buildApp(config, wikiJsApi?) factory replaces module-level server creation for testability
+- [Phase 03-01]: Optional wikiJsApi parameter preserves backward compatibility with existing smoke tests
+- [Phase 03-01]: resource_documentation omitted (not null) when MCP_RESOURCE_DOCS_URL unset per RFC 9728
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T20:04:40Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-24T20:17:33.855Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
