@@ -53,6 +53,7 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^16.5.0",
     "fastify": "^4.27.2",
+    "fastify-plugin": "^4.5.1",
     "graphql": "^16.8.1",
     "graphql-request": "^6.1.0",
     "jose": "^6.2.2",
