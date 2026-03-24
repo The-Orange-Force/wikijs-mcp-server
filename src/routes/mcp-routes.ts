@@ -1,7 +1,7 @@
 /**
  * Protected MCP routes as a Fastify encapsulated plugin.
  *
- * POST /mcp and GET /mcp/events require a valid Bearer token.
+ * POST /mcp and GET /mcp require a valid Bearer token.
  * Auth is enforced via a scoped preHandler hook that only runs
  * for routes registered inside this plugin.
  *

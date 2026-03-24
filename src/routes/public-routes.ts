@@ -43,7 +43,7 @@ export async function publicRoutes(
       "GET /": "Server info",
       "GET /health": "Health check (unauthenticated)",
       "POST /mcp": "MCP JSON-RPC endpoint (requires Bearer token)",
-      "GET /mcp/events": "MCP SSE events (requires Bearer token)",
+      "GET /mcp": "MCP SSE endpoint -- returns 405 in stateless mode (requires Bearer token)",
       "GET /.well-known/oauth-protected-resource":
         "RFC 9728 discovery (unauthenticated)",
     },
