@@ -1,4 +1,5 @@
-import { describe, it } from "vitest";
+import { describe, it, expect } from "vitest";
+import { createMcpServer } from "../src/mcp-tools.js";
 
 describe("TRNS-01: POST /mcp JSON-RPC", () => {
   it.todo("POST /mcp with initialize request returns a valid JSON-RPC response");
@@ -14,5 +15,10 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
 });
 
 describe("Module import", () => {
-  it.todo("createMcpServer returns an McpServer instance");
+  it("createMcpServer returns an McpServer instance", () => {
+    const mockApi = {} as any;
+    const server = createMcpServer(mockApi);
+    expect(server).toBeDefined();
+    expect(typeof server.connect).toBe("function");
+  });
 });
