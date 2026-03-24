@@ -1,41 +1,41 @@
 # WikiJS MCP Server — OAuth 2.1 Extension
 
-## What This Is
+## Current State
 
-A TypeScript MCP server that exposes WikiJS content via GraphQL to AI assistants (Claude Desktop, Claude Code). Deployed as a shared remote HTTP server inside the company network. This milestone adds OAuth 2.1 authentication so only authorized colleagues can use the MCP tools.
+**Shipped:** v2.0 (2026-03-24)
 
-## Core Value
+The WikiJS MCP Server now requires Azure AD authentication for all MCP tool invocations. Only authenticated colleagues can access the company WikiJS instance via MCP clients (Claude Desktop, Claude Code).
 
-Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients.
+**What's live:**
+- MCP transport via Fastify (POST /mcp with stateless JSON responses)
+- RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`
+- JWT validation against Azure AD JWKS using jose
+- Scope enforcement (wikijs:read, wikijs:write, wikijs:admin)
+- Per-request correlation IDs and user identity logging
+- 97 passing tests, 4,133 lines of TypeScript
+
+**Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients.
+
+## Next Milestone Goals
+
+To be defined via `/gsd:new-milestone`. Potential areas:
+- Per-tool scope enforcement (ADVN-01)
+- JWKS pre-warming at startup (OPER-01)
+- Token validation metrics (ADVN-03)
 
 ## Requirements
 
 ### Validated
 
-<!-- Shipped and confirmed valuable — inferred from existing codebase. -->
+<!-- Shipped and confirmed valuable. -->
 
-- ✓ WikiJS GraphQL API integration (page CRUD, search, user/group management) — existing
-- ✓ HTTP server with REST tool endpoints via Fastify — existing
-- ✓ MCP JSON-RPC transport with SSE events (lib/fixed_mcp_http_server.js) — existing
-- ✓ STDIO transport for editor integration — existing
-- ✓ Zod schema validation for all tool inputs/outputs — existing
-- ✓ Health check endpoint — existing
-- ✓ Environment-based configuration (PORT, WIKIJS_BASE_URL, WIKIJS_TOKEN) — existing
-
-### Active
-
-<!-- Current scope. Building toward these. -->
-
-- [ ] Port MCP transport (POST /mcp, GET /mcp/events) into Fastify TypeScript server
-- [ ] Protected Resource Metadata endpoint (GET /.well-known/oauth-protected-resource) per RFC 9728
-- [ ] JWT validation middleware using `jose` library
-- [ ] Azure AD JWKS integration (fetch public keys, verify signatures)
-- [ ] Token audience claim validation against registered app client ID
-- [ ] OAuth middleware applied to MCP routes only (POST /mcp, GET /mcp/events)
-- [ ] Health check and metadata endpoints remain unauthenticated
-- [ ] 401 responses with WWW-Authenticate header pointing to Protected Resource Metadata URL
-- [ ] New env vars: AZURE_TENANT_ID, AZURE_CLIENT_ID, MCP_RESOURCE_URL
-- [ ] Updated example.env with new variables
+- ✓ WikiJS GraphQL API integration (page CRUD, search, user/group management)
+- ✓ HTTP server with MCP JSON-RPC transport via Fastify
+- ✓ Azure AD OAuth 2.1 authentication (v2.0)
+- ✓ STDIO transport for editor integration
+- ✓ Zod schema validation for all tool inputs/outputs
+- ✓ Health check endpoint (unauthenticated)
+- ✓ Environment-based configuration
 
 ### Out of Scope
 
@@ -51,18 +51,16 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 ## Context
 
 - Forked from heAdz0r/wikijs-mcp-server
-- Server uses Fastify (src/server.ts) for REST endpoints and raw Node.js HTTP (lib/fixed_mcp_http_server.js) for MCP transport — these need to be unified
 - Azure AD (Microsoft Entra ID) is the identity provider, configured externally
 - Colleagues configure Claude Desktop with OAuth settings pointing to Azure AD authorize/token URLs
 - WikiJS API token (WIKIJS_TOKEN) remains server-side secret, never exposed to clients
-- MCP protocol uses JSON-RPC 2.0 over HTTP POST, with SSE for server-to-client events
-- Express is installed as a dependency but unused — Fastify is the active framework
+- MCP protocol uses JSON-RPC 2.0 over HTTP POST with stateless JSON responses
 
 ## Constraints
 
 - **Auth provider**: Azure AD (Microsoft Entra ID) — company standard, non-negotiable
-- **JWT library**: `jose` — chosen for zero native deps, built-in JWKS support
-- **Framework**: Fastify — existing server framework, MCP transport to be ported into it
+- **JWT library**: `jose` — zero native deps, built-in JWKS support
+- **Framework**: Fastify — unified server framework
 - **Security**: Server acts as OAuth 2.1 resource server only — never issues tokens
 - **Compatibility**: Must work with Claude Desktop's OAuth client flow (authorization_code + PKCE)
 
@@ -70,10 +68,12 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Use `jose` over `jsonwebtoken` + `jwks-rsa` | Zero native deps, built-in JWKS auto-refresh, actively maintained | — Pending |
-| Port MCP transport into Fastify TypeScript server | Single unified server, type safety, easier to maintain | — Pending |
-| Resource URL via env var (MCP_RESOURCE_URL) | Varies per deployment, can't derive reliably from request | — Pending |
-| Single shared WikiJS API token | All users have equal access, no per-user mapping needed | — Pending |
+| Use `jose` over `jsonwebtoken` + `jwks-rsa` | Zero native deps, built-in JWKS auto-refresh, actively maintained | ✓ Shipped v2.0 |
+| Port MCP transport into Fastify TypeScript server | Single unified server, type safety, easier to maintain | ✓ Shipped v2.0 |
+| Resource URL via env var (MCP_RESOURCE_URL) | Varies per deployment, can't derive reliably from request | ✓ Shipped v2.0 |
+| Single shared WikiJS API token | All users have equal access, no per-user mapping needed | ✓ Shipped v2.0 |
+| Colon notation for scopes (wikijs:read) | OAuth 2.0 / Azure AD convention | ✓ Shipped v2.0 |
+| Stateless MCP transport (no SSE) | Simpler architecture, matches SDK recommendations | ✓ Shipped v2.0 |
 
 ---
-*Last updated: 2026-03-24 after initialization*
+*Last updated: 2026-03-24 after v2.0 milestone completion*

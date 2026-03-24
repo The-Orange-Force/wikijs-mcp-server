@@ -1,11 +1,9 @@
-# Requirements: WikiJS MCP Server — OAuth 2.1 Extension
+# Requirements Archive: WikiJS MCP Server — OAuth 2.1 Extension (v2.0)
 
-**Defined:** 2026-03-24
+**Archived:** 2026-03-24
 **Core Value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
 
-## v1 Requirements
-
-Requirements for initial release. Each maps to roadmap phases.
+## v1 Requirements (All Complete)
 
 ### MCP Transport
 
@@ -40,7 +38,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Route Protection
 
 - [x] **PROT-01**: POST /mcp requires valid Bearer token
-- [x] **PROT-02**: GET /mcp/events requires valid Bearer token
+- [x] **PROT-02**: GET /mcp/events requires valid Bearer token (now GET /mcp with 405 in stateless mode)
 - [x] **PROT-03**: GET /health remains unauthenticated
 - [x] **PROT-04**: GET /.well-known/oauth-protected-resource remains unauthenticated
 
@@ -50,39 +48,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **OBSV-02**: Unique correlation ID generated per request and included in logs and error responses
 - [x] **OBSV-03**: jose validation errors mapped to structured RFC 6750 error responses (error, error_description)
 
-## v2 Requirements
-
-Deferred to future release. Tracked but not in current roadmap.
-
-### Advanced Auth
-
-- **ADVN-01**: Per-tool scope enforcement (wikijs:read, wikijs:write, wikijs:admin)
-- **ADVN-02**: Scope challenge / step-up authorization for MCP clients
-- **ADVN-03**: Token validation metrics (counters for validated/rejected tokens, latency)
-
-### Operational
-
-- **OPER-01**: JWKS pre-warming at server startup to eliminate cold-start latency
-
-## Out of Scope
-
-Explicitly excluded. Documented to prevent scope creep.
-
-| Feature | Reason |
-|---------|--------|
-| Token issuance / Authorization Server | Server is resource server only; Azure AD issues tokens |
-| Dynamic Client Registration (DCR) | Azure AD doesn't support DCR; MCP spec lists as MAY; pre-registered client IDs suffice |
-| Per-user WikiJS permissions | All users share equal access via single WikiJS API token |
-| CORS for browser clients | MCP clients are native apps (Claude Desktop/Code), not browsers |
-| Rate limiting | Orthogonal to auth; can be added later via @fastify/rate-limit |
-| Token caching / session management | JWT validation with cached JWKS is sub-millisecond; caching adds revocation risk |
-| mTLS / DPoP proof-of-possession | MCP clients don't support it; Bearer tokens sufficient for corporate network |
-| OpenID Connect userinfo endpoint | Not a resource server responsibility; Azure AD provides userinfo |
-| STDIO transport OAuth | OAuth only applies to HTTP transport per project scope |
-
 ## Traceability
-
-Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -112,11 +78,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBSV-02 | Phase 5 | Complete |
 | OBSV-03 | Phase 5 | Complete |
 
-**Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
-- Unmapped: 0
+**Coverage:** 25/25 v1 requirements satisfied
 
 ---
-*Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after gap closure phase creation (Phases 6-8)*
+*Archived: 2026-03-24*
