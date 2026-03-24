@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-24T20:44:25.389Z"
-last_activity: 2026-03-24 -- Completed 05-01-PLAN.md (RFC 6750 error mapping, correlation ID, request context)
+status: completed
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-24T20:55:56.979Z"
+last_activity: 2026-03-24 -- Completed 05-02-PLAN.md (Route protection, tool wrapper, observability tests)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Phase 5 in progress. Error mapping, request context, and logging config complete. Plan 02 (route wiring) next.
+**Current focus:** All 5 phases complete. JWT auth protects MCP routes, public routes open, full observability.
 
 ## Current Position
 
 Phase: 5 of 5 (Route Protection and Observability)
-Plan: 1 of 2 in current phase (done)
-Status: Executing
-Last activity: 2026-03-24 -- Completed 05-01-PLAN.md (RFC 6750 error mapping, correlation ID, request context)
+Plan: 2 of 2 in current phase (done)
+Status: Complete
+Last activity: 2026-03-24 -- Completed 05-02-PLAN.md (Route protection, tool wrapper, observability tests)
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [█████████░] 88%
 | Phase 04 P01 | 3min | 2 tasks | 4 files |
 | Phase 04 P02 | 4min | 1 task | 3 files |
 | Phase 05 P01 | 3min | 2 tasks | 5 files |
+| Phase 05 P02 | 7min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,10 @@ Recent decisions affecting current work:
 - [Phase 04-02]: fastify-plugin v4.5 wraps auth plugin for encapsulation breaking so request.user decorator visible across all routes
 - [Phase 05]: uuid installed as direct dependency (was missing despite plan claiming it existed)
 - [Phase 05]: requestIdHeader: false with manual X-Request-ID UUID validation in genReqId to prevent log injection
+- [Phase 05-02]: Phase 4 auth plugin registered in encapsulated protectedRoutes scope for clean route-level auth
+- [Phase 05-02]: reply.raw.setHeader alongside reply.header for X-Request-ID on raw-stream MCP responses
+- [Phase 05-02]: RequestContext.log typed as FastifyBaseLogger (not pino Logger) for Fastify compatibility
+- [Phase 05-02]: Shared buildTestApp helper centralizes test app construction with local JWKS
 
 ### Pending Todos
 
@@ -98,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T20:44:25.387Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-24T20:55:44.022Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

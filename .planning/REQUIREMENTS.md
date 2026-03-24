@@ -39,14 +39,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Route Protection
 
-- [ ] **PROT-01**: POST /mcp requires valid Bearer token
-- [ ] **PROT-02**: GET /mcp/events requires valid Bearer token
-- [ ] **PROT-03**: GET /health remains unauthenticated
-- [ ] **PROT-04**: GET /.well-known/oauth-protected-resource remains unauthenticated
+- [x] **PROT-01**: POST /mcp requires valid Bearer token
+- [x] **PROT-02**: GET /mcp/events requires valid Bearer token
+- [x] **PROT-03**: GET /health remains unauthenticated
+- [x] **PROT-04**: GET /.well-known/oauth-protected-resource remains unauthenticated
 
 ### Observability
 
-- [ ] **OBSV-01**: Validated JWT user identity (oid/preferred_username) logged with each MCP tool invocation
+- [x] **OBSV-01**: Validated JWT user identity (oid/preferred_username) logged with each MCP tool invocation
 - [x] **OBSV-02**: Unique correlation ID generated per request and included in logs and error responses
 - [x] **OBSV-03**: jose validation errors mapped to structured RFC 6750 error responses (error, error_description)
 
@@ -104,11 +104,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-05 | Phase 4 | Complete |
 | AUTH-06 | Phase 4 | Complete |
 | AUTH-07 | Phase 4 | Complete |
-| PROT-01 | Phase 5 | Pending |
-| PROT-02 | Phase 5 | Pending |
-| PROT-03 | Phase 5 | Pending |
-| PROT-04 | Phase 5 | Pending |
-| OBSV-01 | Phase 5 | Pending |
+| PROT-01 | Phase 5 | Complete |
+| PROT-02 | Phase 5 | Complete |
+| PROT-03 | Phase 5 | Complete |
+| PROT-04 | Phase 5 | Complete |
+| OBSV-01 | Phase 5 | Complete |
 | OBSV-02 | Phase 5 | Complete |
 | OBSV-03 | Phase 5 | Complete |
 
