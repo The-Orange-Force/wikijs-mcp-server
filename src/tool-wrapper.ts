@@ -31,6 +31,7 @@ export function wrapToolHandler<TArgs, TResult>(
 ): (args: TArgs) => Promise<TResult> {
   return async (args: TArgs): Promise<TResult> => {
     const ctx = requestContext.getStore();
+    ctx?.log.debug({ toolName, args }, `Tool request: ${toolName}`);
     const start = performance.now();
     try {
       const result = await handler(args);

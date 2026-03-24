@@ -295,7 +295,7 @@ describe("Tool invocation logging", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const toolLogs = logCapture.logs.filter(
-      (l) => l.toolName === "quick_tool",
+      (l) => l.level === 30 && l.toolName === "quick_tool",
     );
     expect(toolLogs.length).toBe(1);
 
@@ -381,7 +381,7 @@ describe("Tool invocation logging", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const toolLogs = logCapture.logs.filter(
-      (l) => l.toolName === "identity_tool",
+      (l) => l.level === 30 && l.toolName === "identity_tool",
     );
     expect(toolLogs.length).toBe(1);
     expect(toolLogs[0].userId).toBe(testUserId);

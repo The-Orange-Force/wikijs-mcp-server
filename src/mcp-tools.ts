@@ -9,6 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { WikiJsApi } from "./api.js";
+import { wrapToolHandler } from "./tool-wrapper.js";
 
 /**
  * Creates and returns a fully configured McpServer instance with all 17
@@ -23,19 +24,38 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
     version: "1.3.0",
   });
 
+  // Tool name constants (used in both registerTool and wrapToolHandler)
+  const TOOL_GET_PAGE = "get_page";
+  const TOOL_GET_PAGE_CONTENT = "get_page_content";
+  const TOOL_LIST_PAGES = "list_pages";
+  const TOOL_SEARCH_PAGES = "search_pages";
+  const TOOL_CREATE_PAGE = "create_page";
+  const TOOL_UPDATE_PAGE = "update_page";
+  const TOOL_DELETE_PAGE = "delete_page";
+  const TOOL_LIST_ALL_PAGES = "list_all_pages";
+  const TOOL_SEARCH_UNPUBLISHED_PAGES = "search_unpublished_pages";
+  const TOOL_FORCE_DELETE_PAGE = "force_delete_page";
+  const TOOL_GET_PAGE_STATUS = "get_page_status";
+  const TOOL_PUBLISH_PAGE = "publish_page";
+  const TOOL_LIST_USERS = "list_users";
+  const TOOL_SEARCH_USERS = "search_users";
+  const TOOL_CREATE_USER = "create_user";
+  const TOOL_LIST_GROUPS = "list_groups";
+  const TOOL_UPDATE_USER = "update_user";
+
   // ---------------------------------------------------------------------------
   // Page tools (10)
   // ---------------------------------------------------------------------------
 
   mcpServer.registerTool(
-    "get_page",
+    TOOL_GET_PAGE,
     {
       description: "Get a Wiki.js page by its ID",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_GET_PAGE, async ({ id }) => {
       try {
         const page = await wikiJsApi.getPageById(id);
         return {
@@ -47,18 +67,18 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "get_page_content",
+    TOOL_GET_PAGE_CONTENT,
     {
       description: "Get the content of a Wiki.js page by its ID",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_GET_PAGE_CONTENT, async ({ id }) => {
       try {
         const content = await wikiJsApi.getPageContent(id);
         return {
@@ -70,11 +90,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "list_pages",
+    TOOL_LIST_PAGES,
     {
       description: "List Wiki.js pages",
       inputSchema: {
@@ -85,7 +105,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           .describe("Sort order"),
       },
     },
-    async ({ limit, orderBy }) => {
+    wrapToolHandler(TOOL_LIST_PAGES, async ({ limit, orderBy }) => {
       try {
         const pages = await wikiJsApi.getPagesList(limit, orderBy);
         return {
@@ -97,11 +117,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "search_pages",
+    TOOL_SEARCH_PAGES,
     {
       description: "Search Wiki.js pages",
       inputSchema: {
@@ -109,7 +129,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
         limit: z.number().int().positive().optional().describe("Max results"),
       },
     },
-    async ({ query, limit }) => {
+    wrapToolHandler(TOOL_SEARCH_PAGES, async ({ query, limit }) => {
       try {
         const pages = await wikiJsApi.searchPages(query, limit);
         return {
@@ -121,11 +141,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "create_page",
+    TOOL_CREATE_PAGE,
     {
       description: "Create a new Wiki.js page",
       inputSchema: {
@@ -135,7 +155,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
         description: z.string().optional().describe("Page description"),
       },
     },
-    async ({ title, content, path, description }) => {
+    wrapToolHandler(TOOL_CREATE_PAGE, async ({ title, content, path, description }) => {
       try {
         const result = await wikiJsApi.createPage(title, content, path, description);
         return {
@@ -147,11 +167,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "update_page",
+    TOOL_UPDATE_PAGE,
     {
       description: "Update the content of a Wiki.js page",
       inputSchema: {
@@ -159,7 +179,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
         content: z.string().min(1).describe("New page content"),
       },
     },
-    async ({ id, content }) => {
+    wrapToolHandler(TOOL_UPDATE_PAGE, async ({ id, content }) => {
       try {
         const result = await wikiJsApi.updatePage(id, content);
         return {
@@ -171,18 +191,18 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "delete_page",
+    TOOL_DELETE_PAGE,
     {
       description: "Delete a Wiki.js page",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_DELETE_PAGE, async ({ id }) => {
       try {
         const result = await wikiJsApi.deletePage(id);
         return {
@@ -194,11 +214,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "list_all_pages",
+    TOOL_LIST_ALL_PAGES,
     {
       description: "List all Wiki.js pages including unpublished",
       inputSchema: {
@@ -213,7 +233,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           .describe("Include unpublished pages"),
       },
     },
-    async ({ limit, orderBy, includeUnpublished }) => {
+    wrapToolHandler(TOOL_LIST_ALL_PAGES, async ({ limit, orderBy, includeUnpublished }) => {
       try {
         const pages = await wikiJsApi.getAllPagesList(
           limit,
@@ -229,11 +249,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "search_unpublished_pages",
+    TOOL_SEARCH_UNPUBLISHED_PAGES,
     {
       description: "Search unpublished Wiki.js pages",
       inputSchema: {
@@ -241,7 +261,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
         limit: z.number().int().positive().optional().describe("Max results"),
       },
     },
-    async ({ query, limit }) => {
+    wrapToolHandler(TOOL_SEARCH_UNPUBLISHED_PAGES, async ({ query, limit }) => {
       try {
         const pages = await wikiJsApi.searchUnpublishedPages(query, limit);
         return {
@@ -253,18 +273,18 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "force_delete_page",
+    TOOL_FORCE_DELETE_PAGE,
     {
       description: "Force delete a Wiki.js page including unpublished",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_FORCE_DELETE_PAGE, async ({ id }) => {
       try {
         const result = await wikiJsApi.forceDeletePage(id);
         return {
@@ -276,7 +296,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   // ---------------------------------------------------------------------------
@@ -284,14 +304,14 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
   // ---------------------------------------------------------------------------
 
   mcpServer.registerTool(
-    "get_page_status",
+    TOOL_GET_PAGE_STATUS,
     {
       description: "Get the publication status of a Wiki.js page",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_GET_PAGE_STATUS, async ({ id }) => {
       try {
         const status = await wikiJsApi.getPageStatus(id);
         return {
@@ -303,18 +323,18 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "publish_page",
+    TOOL_PUBLISH_PAGE,
     {
       description: "Publish a Wiki.js page",
       inputSchema: {
         id: z.number().int().positive().describe("Page ID"),
       },
     },
-    async ({ id }) => {
+    wrapToolHandler(TOOL_PUBLISH_PAGE, async ({ id }) => {
       try {
         const result = await wikiJsApi.publishPage(id);
         return {
@@ -326,7 +346,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   // ---------------------------------------------------------------------------
@@ -334,12 +354,12 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
   // ---------------------------------------------------------------------------
 
   mcpServer.registerTool(
-    "list_users",
+    TOOL_LIST_USERS,
     {
       description: "Get list of Wiki.js users",
       inputSchema: {},
     },
-    async () => {
+    wrapToolHandler(TOOL_LIST_USERS, async () => {
       try {
         const users = await wikiJsApi.getUsersList();
         return {
@@ -351,18 +371,18 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "search_users",
+    TOOL_SEARCH_USERS,
     {
       description: "Search Wiki.js users",
       inputSchema: {
         query: z.string().min(1).describe("Search query"),
       },
     },
-    async ({ query }) => {
+    wrapToolHandler(TOOL_SEARCH_USERS, async ({ query }) => {
       try {
         const users = await wikiJsApi.searchUsers(query);
         return {
@@ -374,11 +394,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   mcpServer.registerTool(
-    "create_user",
+    TOOL_CREATE_USER,
     {
       description: "Create a new Wiki.js user",
       inputSchema: {
@@ -400,7 +420,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           .describe("Send welcome email"),
       },
     },
-    async ({
+    wrapToolHandler(TOOL_CREATE_USER, async ({
       email,
       name,
       passwordRaw,
@@ -428,7 +448,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   // ---------------------------------------------------------------------------
@@ -436,12 +456,12 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
   // ---------------------------------------------------------------------------
 
   mcpServer.registerTool(
-    "list_groups",
+    TOOL_LIST_GROUPS,
     {
       description: "Get list of Wiki.js groups",
       inputSchema: {},
     },
-    async () => {
+    wrapToolHandler(TOOL_LIST_GROUPS, async () => {
       try {
         const groups = await wikiJsApi.getGroupsList();
         return {
@@ -453,7 +473,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   // ---------------------------------------------------------------------------
@@ -461,7 +481,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
   // ---------------------------------------------------------------------------
 
   mcpServer.registerTool(
-    "update_user",
+    TOOL_UPDATE_USER,
     {
       description: "Update a Wiki.js user name",
       inputSchema: {
@@ -469,7 +489,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
         name: z.string().min(1).describe("New user name"),
       },
     },
-    async ({ id, name }) => {
+    wrapToolHandler(TOOL_UPDATE_USER, async ({ id, name }) => {
       try {
         const result = await wikiJsApi.updateUser(id, name);
         return {
@@ -481,7 +501,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
           isError: true,
         };
       }
-    },
+    }),
   );
 
   return mcpServer;
