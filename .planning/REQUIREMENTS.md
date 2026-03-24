@@ -11,7 +11,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **TRNS-01**: MCP JSON-RPC handler (POST /mcp) ported from lib/fixed_mcp_http_server.js into Fastify TypeScript server
 - [ ] **TRNS-02**: SSE events endpoint (GET /mcp/events) ported into Fastify TypeScript server
-- [ ] **TRNS-03**: MCP initialize, tools/list, and tools/call methods work correctly after port
+- [x] **TRNS-03**: MCP initialize, tools/list, and tools/call methods work correctly after port
 
 ### OAuth Configuration
 
@@ -88,7 +88,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | TRNS-01 | Phase 1 | Pending |
 | TRNS-02 | Phase 1 | Pending |
-| TRNS-03 | Phase 1 | Pending |
+| TRNS-03 | Phase 1 | Complete |
 | CONF-01 | Phase 2 | Pending |
 | CONF-02 | Phase 2 | Pending |
 | CONF-03 | Phase 2 | Pending |
