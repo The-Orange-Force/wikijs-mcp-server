@@ -107,6 +107,8 @@ export async function buildTestApp(
   // Global onRequest hook: set X-Request-ID response header on EVERY response
   server.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
+    // Also set on raw response for routes that write directly to reply.raw
+    reply.raw.setHeader("x-request-id", request.id as string);
   });
 
   // Public routes -- no auth required

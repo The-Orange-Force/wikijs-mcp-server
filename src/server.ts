@@ -35,6 +35,9 @@ export function buildApp(
   // 401s, 404s, and all errors (Pitfall 4 from research).
   server.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
+    // Also set on raw response for routes that write directly to reply.raw
+    // (e.g., MCP transport.handleRequest bypasses Fastify's reply mechanism)
+    reply.raw.setHeader("x-request-id", request.id as string);
   });
 
   // Public routes -- no auth required
