@@ -122,7 +122,7 @@ Plans:
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 1/1 | Complete    | 2026-03-25 |
 | 12. Authorization Redirect Endpoint | 1/1 | Complete    | 2026-03-25 |
-| 13. Token Proxy Endpoint | 1/1 | Complete   | 2026-03-25 |
+| 13. Token Proxy Endpoint | 1/1 | Complete    | 2026-03-25 |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
 
 ---
