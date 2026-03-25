@@ -109,7 +109,9 @@ Plans:
   2. The `oauthProxyRoutes` plugin is registered in both the production server (`server.ts`) and test helper (`build-test-app.ts`)
   3. All proxy endpoints remain publicly accessible while `POST /mcp` continues to require JWT authentication
   4. The full discovery chain works: client reads protected resource metadata, follows to authorization server metadata, registers, authorizes, obtains tokens, and invokes MCP tools
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 14-01-PLAN.md — Metadata switchover, mock fetch injection, test updates, and E2E discovery chain test
 
 ## Progress
 
@@ -121,7 +123,7 @@ Plans:
 | 11. Discovery and Registration Endpoints | 0/1 | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/1 | Not started | - |
 | 13. Token Proxy Endpoint | 0/1 | Not started | - |
-| 14. Wire Up and Protected Resource Metadata Switch | 0/? | Not started | - |
+| 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
 
 ---
 *Created: 2026-03-25*
