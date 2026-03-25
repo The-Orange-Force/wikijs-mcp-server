@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: OAuth Authorization Proxy
 status: completed
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-25T21:08:17.073Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-03-25T21:08:24.198Z"
 last_activity: "2026-03-25 — Executed 10-01: scope mapper, resource stripper, Azure endpoint constructor"
 progress:
   total_phases: 5
@@ -72,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:06:36.109Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-authorization-redirect-endpoint/12-CONTEXT.md
+Last session: 2026-03-25T21:08:24.196Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-wire-up-and-protected-resource-metadata-switch/14-CONTEXT.md
