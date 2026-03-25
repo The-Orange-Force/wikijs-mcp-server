@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapScopes, stripResourceParam } from "../scope-mapper.js";
+import { mapScopes, stripResourceParam, unmapScopes } from "../scope-mapper.js";
 
 const CLIENT_ID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -71,5 +71,39 @@ describe("stripResourceParam", () => {
 
   it("returns empty object for empty input", () => {
     expect(stripResourceParam({})).toEqual({});
+  });
+});
+
+describe("unmapScopes", () => {
+  it("strips api://{clientId}/ prefix from a single MCP scope", () => {
+    expect(
+      unmapScopes(`api://${CLIENT_ID}/wikijs:read openid`, CLIENT_ID),
+    ).toBe("wikijs:read openid");
+  });
+
+  it("strips api://{clientId}/ prefix from multiple MCP scopes", () => {
+    expect(
+      unmapScopes(
+        `api://${CLIENT_ID}/wikijs:read api://${CLIENT_ID}/wikijs:write openid offline_access`,
+        CLIENT_ID,
+      ),
+    ).toBe("wikijs:read wikijs:write openid offline_access");
+  });
+
+  it("passes through scopes without api:// prefix unchanged", () => {
+    expect(unmapScopes("openid offline_access", CLIENT_ID)).toBe(
+      "openid offline_access",
+    );
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(unmapScopes("", CLIENT_ID)).toBe("");
+  });
+
+  it("leaves scopes with a different clientId prefix unchanged", () => {
+    const otherClientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    expect(
+      unmapScopes(`api://${otherClientId}/wikijs:read openid`, CLIENT_ID),
+    ).toBe(`api://${otherClientId}/wikijs:read openid`);
   });
 });
