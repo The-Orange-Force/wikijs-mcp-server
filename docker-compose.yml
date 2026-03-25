@@ -1,0 +1,43 @@
+# wikijs-mcp-server — Docker Compose service definition
+#
+# ── Caddy integration ──────────────────────────────────────────────────────────
+# No `ports:` mapping is intentional. This container is NOT reachable from the
+# Docker host directly. Caddy accesses it via the `caddy_net` Docker network
+# using the service name for DNS resolution:
+#
+#   Caddyfile snippet:
+#   ------------------
+#   your-domain.example.com {
+#     reverse_proxy wikijs-mcp-server:${PORT}
+#   }
+#   (PORT comes from your .env file, default 8000)
+#
+# Publishing a port here would expose the JWT-protected MCP endpoint over plain
+# HTTP on the host network, bypassing Caddy's TLS termination.
+#
+# ── Pre-requisites ─────────────────────────────────────────────────────────────
+# The `caddy_net` external network must exist before running `docker compose up`.
+# If it does not exist yet, create it first:
+#   docker network create caddy_net
+# (Or start your Caddy compose stack first — it typically creates caddy_net.)
+#
+# ── WIKIJS_BASE_URL warning ────────────────────────────────────────────────────
+# In your .env file, WIKIJS_BASE_URL must use the actual host IP or hostname,
+# NOT `localhost`. Inside a container, `localhost` resolves to the container's
+# own loopback interface, not the Docker host where Wiki.js may be running.
+# Example: WIKIJS_BASE_URL=http://192.168.1.10:3000
+
+services:
+  wikijs-mcp-server:
+    build: .
+    image: wikijs-mcp:latest
+    container_name: wikijs-mcp-server
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true
+    name: caddy_net
