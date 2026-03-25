@@ -43,10 +43,10 @@ Phase 8: Dead Code Cleanup — Orphaned files and stale references removed
   3. `docker compose up -d` starts the container and the HTTP server binds to `0.0.0.0:PORT` — confirmed by `curl http://localhost:PORT/health` returning 200 from within the container network
   4. `docker inspect wikijs-mcp-server --format '{{.State.Health.Status}}'` returns `healthy` after the HEALTHCHECK start period
   5. Caddy proxies requests to the container via `wikijs-mcp-server:PORT` on `caddy_net` — no port published to the Docker host
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 09-01: Create .dockerignore, Dockerfile (multi-stage), and docker-compose.yml
+- [ ] 09-01-PLAN.md — Create .dockerignore, Dockerfile (two-stage node:20-slim), and docker-compose.yml
 
 ## Progress
 
