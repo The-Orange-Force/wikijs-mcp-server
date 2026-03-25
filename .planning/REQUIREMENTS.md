@@ -60,25 +60,25 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCOPE-01 | — | Pending |
-| SCOPE-02 | — | Pending |
-| META-01 | — | Pending |
-| META-02 | — | Pending |
-| META-03 | — | Pending |
-| REGN-01 | — | Pending |
-| AUTHZ-01 | — | Pending |
-| AUTHZ-02 | — | Pending |
-| TOKN-01 | — | Pending |
-| TOKN-02 | — | Pending |
-| TOKN-03 | — | Pending |
-| INTG-01 | — | Pending |
-| INTG-02 | — | Pending |
+| SCOPE-01 | Phase 10 | Pending |
+| SCOPE-02 | Phase 10 | Pending |
+| META-01 | Phase 11 | Pending |
+| META-02 | Phase 11 | Pending |
+| META-03 | Phase 14 | Pending |
+| REGN-01 | Phase 11 | Pending |
+| AUTHZ-01 | Phase 12 | Pending |
+| AUTHZ-02 | Phase 12 | Pending |
+| TOKN-01 | Phase 13 | Pending |
+| TOKN-02 | Phase 13 | Pending |
+| TOKN-03 | Phase 13 | Pending |
+| INTG-01 | Phase 14 | Pending |
+| INTG-02 | Phase 14 | Pending |
 
 **Coverage:**
 - v2.2 requirements: 13 total
-- Mapped to phases: 0
-- Unmapped: 13 ⚠️
+- Mapped to phases: 13
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*
