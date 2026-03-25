@@ -69,7 +69,9 @@ Plans:
   2. GET `/.well-known/openid-configuration` returns identical content to the above endpoint
   3. POST `/register` accepts an RFC 7591 DCR request body and returns a JSON response containing the pre-configured Azure AD `client_id` with no `client_secret` (public client)
   4. All three endpoints are publicly accessible without JWT authentication
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — OAuth proxy plugin with discovery metadata and DCR endpoints
 
 ### Phase 12: Authorization Redirect Endpoint
 **Goal**: MCP clients can initiate the OAuth authorization code flow through the proxy
@@ -112,7 +114,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
-| 11. Discovery and Registration Endpoints | 0/? | Not started | - |
+| 11. Discovery and Registration Endpoints | 0/1 | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/? | Not started | - |
 | 13. Token Proxy Endpoint | 0/? | Not started | - |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/? | Not started | - |
