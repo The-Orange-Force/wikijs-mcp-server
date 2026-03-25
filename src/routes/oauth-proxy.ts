@@ -13,6 +13,8 @@
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 import { SUPPORTED_SCOPES } from "../scopes.js";
+import { mapScopes } from "../oauth-proxy/scope-mapper.js";
+import { buildAzureEndpoints } from "../oauth-proxy/azure-endpoints.js";
 
 /**
  * Options for the OAuth proxy routes plugin.
@@ -79,5 +81,103 @@ export async function oauthProxyRoutes(
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /authorize -- OAuth authorization redirect proxy (Phase 12)
+  // ---------------------------------------------------------------------------
+
+  /** Params whitelisted for forwarding to Azure AD. */
+  const ALLOWED_PARAMS = new Set([
+    "client_id",
+    "redirect_uri",
+    "response_type",
+    "scope",
+    "state",
+    "code_challenge",
+    "code_challenge_method",
+    "nonce",
+    "prompt",
+    "login_hint",
+  ]);
+
+  const azureAuthorizeUrl = buildAzureEndpoints(appConfig.azure.tenantId).authorize;
+
+  fastify.get("/authorize", async (request, reply) => {
+    const query = request.query as Record<string, string>;
+
+    // -- 1. Validate client_id (pre-redirect -- JSON errors) --
+    const clientId = query.client_id;
+    if (!clientId) {
+      return reply.code(400).send({
+        error: "invalid_request",
+        error_description: "missing required parameter: client_id",
+      });
+    }
+    if (clientId !== appConfig.azure.clientId) {
+      request.log.warn({ receivedClientId: clientId }, "client_id mismatch");
+      return reply.code(400).send({
+        error: "invalid_client",
+        error_description: "unknown client_id",
+      });
+    }
+
+    // -- 2. Validate redirect_uri (pre-redirect -- JSON errors) --
+    const redirectUri = query.redirect_uri;
+    if (!redirectUri) {
+      return reply.code(400).send({
+        error: "invalid_request",
+        error_description: "missing required parameter: redirect_uri",
+      });
+    }
+
+    // -- 3. Helper for redirect-based errors --
+    const state = query.state;
+
+    function redirectError(error: string, description: string) {
+      const url = new URL(redirectUri);
+      url.searchParams.set("error", error);
+      url.searchParams.set("error_description", description);
+      if (state) {
+        url.searchParams.set("state", state);
+      }
+      return reply.redirect(url.toString());
+    }
+
+    // -- 4. Validate response_type (post-redirect -- redirect errors) --
+    const responseType = query.response_type;
+    if (!responseType) {
+      return redirectError("invalid_request", "missing required parameter: response_type");
+    }
+    if (responseType !== "code") {
+      return redirectError("unsupported_response_type", "response_type must be 'code'");
+    }
+
+    // -- 5. Build outbound scope string --
+    const rawScope = query.scope;
+    const clientScopes = rawScope ? rawScope.split(" ").filter(Boolean) : [];
+    const mapped = mapScopes(clientScopes, appConfig.azure.clientId);
+    const filtered = mapped.filter(
+      (s) => s !== "openid" && s !== "offline_access",
+    );
+    const finalScope = [...filtered, "openid", "offline_access"].join(" ");
+
+    // -- 6. Build outbound URL with whitelisted params --
+    const outbound = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (ALLOWED_PARAMS.has(key)) {
+        outbound.set(key, value);
+      } else {
+        request.log.debug({ param: key }, "dropping unknown parameter");
+      }
+    }
+    // Override scope with the final mapped scope string
+    outbound.set("scope", finalScope);
+
+    const azureUrl = `${azureAuthorizeUrl}?${outbound.toString()}`;
+
+    // -- 7. Log and redirect --
+    request.log.info("authorization redirect");
+    return reply.redirect(azureUrl);
   });
 }
