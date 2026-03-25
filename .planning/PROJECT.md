@@ -16,12 +16,15 @@ The WikiJS MCP Server now requires Azure AD authentication for all MCP tool invo
 
 **Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients.
 
-## Next Milestone Goals
+## Current Milestone: v2.1 Docker Deployment
 
-To be defined via `/gsd:new-milestone`. Potential areas:
-- Per-tool scope enforcement (ADVN-01)
-- JWKS pre-warming at startup (OPER-01)
-- Token validation metrics (ADVN-03)
+**Goal:** Package the MCP server as a Docker container for self-hosted deployment.
+
+**Target features:**
+- Multi-stage Dockerfile (TypeScript compile → slim runtime image)
+- docker-compose.yml for single-service deployment (Wiki.js on separate host)
+- .dockerignore to exclude dev artifacts from build context
+- Docker HEALTHCHECK wired to existing /health endpoint
 
 ## Requirements
 
@@ -36,6 +39,15 @@ To be defined via `/gsd:new-milestone`. Potential areas:
 - ✓ Zod schema validation for all tool inputs/outputs
 - ✓ Health check endpoint (unauthenticated)
 - ✓ Environment-based configuration
+
+### Active
+
+<!-- Current scope. Building toward these. -->
+
+- [ ] Docker container packaging with multi-stage build
+- [ ] docker-compose.yml for single-service deployment
+- [ ] .dockerignore to exclude dev artifacts
+- [ ] Docker HEALTHCHECK using /health endpoint
 
 ### Out of Scope
 
@@ -76,4 +88,4 @@ To be defined via `/gsd:new-milestone`. Potential areas:
 | Stateless MCP transport (no SSE) | Simpler architecture, matches SDK recommendations | ✓ Shipped v2.0 |
 
 ---
-*Last updated: 2026-03-24 after v2.0 milestone completion*
+*Last updated: 2026-03-25 after v2.1 milestone start*

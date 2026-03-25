@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: ready
-stopped_at: Milestone v2.0 archived
-last_updated: "2026-03-24T23:55:00Z"
-last_activity: 2026-03-24 -- Milestone v2.0 completed and archived
+milestone: v2.1
+milestone_name: Docker Deployment
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-25T00:00:00Z"
+last_activity: 2026-03-25 -- Milestone v2.1 started
 progress:
   total_phases: 0
   completed_phases: 0
@@ -18,23 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-24)
+See: .planning/PROJECT.md (updated 2026-03-25)
 
-**Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Ready for next milestone. Run `/gsd:new-milestone` to start.
+**Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
+**Current focus:** v2.1 Docker Deployment — defining requirements
 
 ## Current Position
 
-Phase: None
-Plan: None
-Status: Ready for new milestone
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-25 — Milestone v2.1 started
 
 Progress: [----------] 0%
-
-## Next Steps
-
-1. Run `/gsd:new-milestone` to start the next milestone cycle
-2. This will update PROJECT.md, create new REQUIREMENTS.md, and generate ROADMAP.md
 
 ## Accumulated Context
 
@@ -49,8 +45,3 @@ None.
 ### Blockers/Concerns
 
 None.
-
-## Session Continuity
-
-Last session: 2026-03-24T23:55:00Z
-Status: Milestone v2.0 archived successfully
