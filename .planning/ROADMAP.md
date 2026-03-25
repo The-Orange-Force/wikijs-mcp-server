@@ -75,14 +75,16 @@ Plans:
 
 ### Phase 12: Authorization Redirect Endpoint
 **Goal**: MCP clients can initiate the OAuth authorization code flow through the proxy
-**Depends on**: Phase 10
+**Depends on**: Phase 10, Phase 11
 **Requirements**: AUTHZ-01, AUTHZ-02
 **Success Criteria** (what must be TRUE):
   1. GET `/authorize` with valid OAuth parameters returns a 302 redirect to the Azure AD authorization endpoint
   2. The redirect URL contains scopes mapped to Azure AD format with `offline_access` and `openid` appended, and the `resource` parameter stripped
   3. The client's `redirect_uri`, `state`, `code_challenge`, and `code_challenge_method` are passed through to Azure AD unchanged
   4. Requests missing required parameters (`client_id`, `redirect_uri`, `response_type`) receive an appropriate error response
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 12-01-PLAN.md — TDD: GET /authorize redirect proxy with scope mapping and validation
 
 ### Phase 13: Token Proxy Endpoint
 **Goal**: MCP clients can exchange authorization codes and refresh tokens through the proxy
@@ -115,7 +117,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 0/1 | Not started | - |
-| 12. Authorization Redirect Endpoint | 0/? | Not started | - |
+| 12. Authorization Redirect Endpoint | 0/1 | Not started | - |
 | 13. Token Proxy Endpoint | 0/? | Not started | - |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/? | Not started | - |
 
