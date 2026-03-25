@@ -7,13 +7,13 @@
 
 ### Docker
 
-- [ ] **DOCK-01**: Operator can build a production Docker image with `docker compose build`
-- [ ] **DOCK-02**: Built image contains only compiled output (`dist/`) and production dependencies — no TypeScript source, dev deps, or `.env` secrets
-- [ ] **DOCK-03**: Container starts the HTTP server on startup, binding to `0.0.0.0` on the configured `PORT`
-- [ ] **DOCK-04**: Docker reports the container healthy via HEALTHCHECK against `/health`
-- [ ] **DOCK-05**: Container is reachable by Caddy on the `caddy_net` network by service name `wikijs-mcp-server` — no port published to the host
-- [ ] **DOCK-06**: Container restarts automatically on failure (`restart: unless-stopped`)
-- [ ] **DOCK-07**: Operator provides all environment variables via a `.env` file referenced in `docker-compose.yml`
+- [x] **DOCK-01**: Operator can build a production Docker image with `docker compose build`
+- [x] **DOCK-02**: Built image contains only compiled output (`dist/`) and production dependencies — no TypeScript source, dev deps, or `.env` secrets
+- [x] **DOCK-03**: Container starts the HTTP server on startup, binding to `0.0.0.0` on the configured `PORT`
+- [x] **DOCK-04**: Docker reports the container healthy via HEALTHCHECK against `/health`
+- [x] **DOCK-05**: Container is reachable by Caddy on the `caddy_net` network by service name `wikijs-mcp-server` — no port published to the host
+- [x] **DOCK-06**: Container restarts automatically on failure (`restart: unless-stopped`)
+- [x] **DOCK-07**: Operator provides all environment variables via a `.env` file referenced in `docker-compose.yml`
 
 ## Future Requirements
 
@@ -32,13 +32,13 @@ None identified for v2.2+ at this time.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOCK-01 | Phase 9 | Pending |
-| DOCK-02 | Phase 9 | Pending |
-| DOCK-03 | Phase 9 | Pending |
-| DOCK-04 | Phase 9 | Pending |
-| DOCK-05 | Phase 9 | Pending |
-| DOCK-06 | Phase 9 | Pending |
-| DOCK-07 | Phase 9 | Pending |
+| DOCK-01 | Phase 9 | Complete |
+| DOCK-02 | Phase 9 | Complete |
+| DOCK-03 | Phase 9 | Complete |
+| DOCK-04 | Phase 9 | Complete |
+| DOCK-05 | Phase 9 | Complete |
+| DOCK-06 | Phase 9 | Complete |
+| DOCK-07 | Phase 9 | Complete |
 
 **Coverage:**
 - v2.1 requirements: 7 total
