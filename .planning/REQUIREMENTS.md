@@ -7,8 +7,8 @@
 
 ### Scope Mapping
 
-- [ ] **SCOPE-01**: Proxy maps bare MCP scopes (`wikijs:read`) to Azure AD format (`api://{client_id}/wikijs:read`) in all outbound requests, preserving OIDC scopes (`openid`, `offline_access`) unprefixed
-- [ ] **SCOPE-02**: Proxy strips RFC 8707 `resource` parameter before forwarding to Azure AD
+- [x] **SCOPE-01**: Proxy maps bare MCP scopes (`wikijs:read`) to Azure AD format (`api://{client_id}/wikijs:read`) in all outbound requests, preserving OIDC scopes (`openid`, `offline_access`) unprefixed
+- [x] **SCOPE-02**: Proxy strips RFC 8707 `resource` parameter before forwarding to Azure AD
 
 ### Metadata
 
@@ -60,8 +60,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCOPE-01 | Phase 10 | Pending |
-| SCOPE-02 | Phase 10 | Pending |
+| SCOPE-01 | Phase 10 | Complete |
+| SCOPE-02 | Phase 10 | Complete |
 | META-01 | Phase 11 | Pending |
 | META-02 | Phase 11 | Pending |
 | META-03 | Phase 14 | Pending |

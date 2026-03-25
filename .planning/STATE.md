@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: OAuth Authorization Proxy
-status: planning
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-25T21:05:16.873Z"
-last_activity: 2026-03-25 — Roadmap created with 5 phases (10-14), 13 requirements mapped
+status: completed
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-25T21:06:14.073Z"
+last_activity: "2026-03-25 — Executed 10-01: scope mapper, resource stripper, Azure endpoint constructor"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 1
   completed_plans: 1
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -21,29 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.2 OAuth Authorization Proxy — Phase 10 ready to plan
+**Current focus:** v2.2 OAuth Authorization Proxy — Phase 10 complete, ready for Phase 11
 
 ## Current Position
 
 Phase: 10 of 14 (Scope Mapper and Azure Endpoint Utils)
-Plan: —
-Status: Ready to plan
-Last activity: 2026-03-25 — Roadmap created with 5 phases (10-14), 13 requirements mapped
+Plan: 1 of 1 (complete)
+Status: Phase 10 complete
+Last activity: 2026-03-25 — Executed 10-01: scope mapper, resource stripper, Azure endpoint constructor
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1
+- Average duration: 2min
+- Total execution time: 2min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 10 | 1 | 2min | 2min |
 
 ## Accumulated Context
 
@@ -57,6 +57,9 @@ Recent decisions affecting current work:
 - Single Fastify plugin: src/routes/oauth-proxy.ts with fetch injection for testability
 - @fastify/formbody scoped inside OAuth proxy plugin only
 - Strip RFC 8707 `resource` parameter before all Azure AD requests (AADSTS9010010)
+- Import SUPPORTED_SCOPES from existing scopes.ts for single source of truth
+- OIDC_PASSTHROUGH as Set for O(1) lookup on openid/offline_access
+- Unknown scopes pass through unchanged for transparent proxy behavior
 
 ### Pending Todos
 
@@ -69,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:05:16.871Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-discovery-and-registration-endpoints/11-CONTEXT.md
+Last session: 2026-03-25T21:06:14.070Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None

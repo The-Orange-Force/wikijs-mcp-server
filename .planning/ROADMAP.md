@@ -39,7 +39,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 
 ### Phases
 
-- [ ] **Phase 10: Scope Mapper and Azure Endpoint Utils** - Pure-function utilities for scope transformation and Azure AD URL construction
+- [x] **Phase 10: Scope Mapper and Azure Endpoint Utils** - Pure-function utilities for scope transformation and Azure AD URL construction (completed 2026-03-25)
 - [ ] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses
 - [ ] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes
 - [ ] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD
@@ -56,7 +56,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
   2. The RFC 8707 `resource` parameter is identified and stripped from parameter sets before forwarding
   3. Azure AD authorization and token endpoint URLs are correctly constructed from tenant ID
   4. All scope mapping and URL construction functions have unit tests covering edge cases (empty scopes, mixed bare/OIDC, unknown scopes)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 10-01-PLAN.md — TDD: scope mapper, resource stripper, and Azure endpoint constructor
 
@@ -111,7 +111,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. Scope Mapper and Azure Endpoint Utils | 0/1 | Not started | - |
+| 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete   | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 0/? | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/? | Not started | - |
 | 13. Token Proxy Endpoint | 0/? | Not started | - |
