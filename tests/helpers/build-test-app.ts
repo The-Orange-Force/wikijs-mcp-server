@@ -13,6 +13,7 @@ import type { AppConfig } from "../../src/config.js";
 import { buildLoggerConfig } from "../../src/logging.js";
 import { publicRoutes } from "../../src/routes/public-routes.js";
 import { protectedRoutes } from "../../src/routes/mcp-routes.js";
+import { oauthProxyRoutes } from "../../src/routes/oauth-proxy.js";
 import { getLocalJwks, TEST_CONFIG } from "../../src/auth/__tests__/helpers.js";
 
 /** Mock WikiJsApi for tests that don't need real WikiJS */
@@ -116,6 +117,9 @@ export async function buildTestApp(
     wikiJsApi,
     appConfig,
   });
+
+  // OAuth authorization proxy routes -- no auth required
+  server.register(oauthProxyRoutes, { appConfig });
 
   // Protected MCP routes -- auth enforced via scoped preHandler
   server.register(protectedRoutes, {

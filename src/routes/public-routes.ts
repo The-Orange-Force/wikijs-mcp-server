@@ -46,6 +46,12 @@ export async function publicRoutes(
       "GET /mcp": "MCP SSE endpoint -- returns 405 in stateless mode (requires Bearer token)",
       "GET /.well-known/oauth-protected-resource":
         "RFC 9728 discovery (unauthenticated)",
+      "GET /.well-known/oauth-authorization-server":
+        "OAuth 2.0 Authorization Server Metadata (unauthenticated)",
+      "GET /.well-known/openid-configuration":
+        "OpenID Connect Discovery (unauthenticated)",
+      "POST /register":
+        "Dynamic Client Registration (unauthenticated)",
     },
   }));
 

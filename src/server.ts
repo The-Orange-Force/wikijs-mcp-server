@@ -4,6 +4,7 @@ import { type AppConfig, config, logConfig } from "./config.js";
 import { buildLoggerConfig } from "./logging.js";
 import { publicRoutes } from "./routes/public-routes.js";
 import { protectedRoutes } from "./routes/mcp-routes.js";
+import { oauthProxyRoutes } from "./routes/oauth-proxy.js";
 import { jwks } from "./config.js";
 
 /**
@@ -45,6 +46,9 @@ export function buildApp(
     wikiJsApi,
     appConfig,
   });
+
+  // OAuth authorization proxy routes -- no auth required
+  server.register(oauthProxyRoutes, { appConfig });
 
   // Protected MCP routes -- auth enforced via scoped preHandler
   server.register(protectedRoutes, {
