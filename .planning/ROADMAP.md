@@ -82,7 +82,7 @@ Plans:
   2. The redirect URL contains scopes mapped to Azure AD format with `offline_access` and `openid` appended, and the `resource` parameter stripped
   3. The client's `redirect_uri`, `state`, `code_challenge`, and `code_challenge_method` are passed through to Azure AD unchanged
   4. Requests missing required parameters (`client_id`, `redirect_uri`, `response_type`) receive an appropriate error response
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [x] 12-01-PLAN.md — TDD: GET /authorize redirect proxy with scope mapping and validation
 
