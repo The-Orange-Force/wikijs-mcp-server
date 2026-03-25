@@ -1,189 +1,347 @@
-# Stack Research
+# Stack Research: OAuth Authorization Proxy
 
-**Domain:** Docker container packaging — Node.js/TypeScript Fastify server
+**Domain:** OAuth 2.1 authorization proxy endpoints for MCP server
 **Researched:** 2026-03-25
 **Confidence:** HIGH
 
 ## Context: What This Covers
 
-This research is scoped to the Docker packaging milestone only. The existing
-application stack (TypeScript 5.3, Fastify 4, Node.js 20, jose, Zod, Vitest) is
-validated and not re-researched here. The question is: what Dockerfile, compose
-file, and tooling decisions are needed to containerize this specific server?
+This research is scoped to the v2.2 OAuth Authorization Proxy milestone. The existing
+application stack (TypeScript 5.3, Fastify 4, jose, Zod, Vitest, Docker) is validated
+and not re-researched. The question is: what NEW dependencies and patterns are needed
+to proxy OAuth authorize/token/registration/discovery requests to Azure AD?
 
-## Recommended Stack
+**Existing stack (validated, not changed):**
+- Fastify 4 (HTTP server)
+- jose (JWT/JWKS validation -- continues to validate tokens from Azure AD)
+- Zod (input validation)
+- graphql-request (WikiJS API client)
+- @modelcontextprotocol/sdk (MCP protocol)
 
-### Core Technologies
+**What we are adding:** OAuth proxy endpoints that sit between MCP clients (Claude
+Desktop) and Azure AD, transforming scope names and managing the authorization flow.
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| `node:20-alpine` | `node:20-alpine` (floating minor) | Base image for both builder and runtime stages | Alpine gives ~120 MB base vs ~350 MB for slim. This project has zero native C addons (jose, fastify, graphql-request, zod, uuid are all pure JS), so musl libc compatibility is not a concern. Alpine's minimal attack surface (0 CVEs vs 28 for slim in recent Snyk scans) is the right tradeoff for a security-sensitive OAuth resource server. |
-| Docker multi-stage build | Dockerfile syntax 1.x (built-in) | Separate build and runtime layers | Builder stage installs devDependencies and runs `tsc`. Runtime stage copies only `dist/` and production `node_modules`. Result: ~180 MB final image vs ~1.2 GB single-stage. No extra tooling required — standard Dockerfile `FROM ... AS ...` syntax. |
-| Docker Compose | Compose Specification (no version field) | Single-service deployment with env var injection | The `version` field is officially obsolete as of Compose V2 (Docker 1.27.0+) and generates deprecation warnings if present. Omit it. The Compose Specification is the current standard. |
+## Recommended Stack Additions
 
-### Supporting Libraries
+### New Dependencies
 
-No new npm packages are needed for Docker packaging. Everything required
-already exists in the project:
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| `@fastify/formbody` | `^7.0.0` | Parse `application/x-www-form-urlencoded` request bodies on the `/token` endpoint | Fastify 4 only parses `application/json` and `text/plain` by default. OAuth token requests (RFC 6749 Section 4.1.3) MUST use `application/x-www-form-urlencoded`. This is the official Fastify plugin for this content type, maintained by the Fastify org. v7.x is the Fastify 4-compatible line. Uses Node's built-in `querystring.parse` -- zero additional transitive deps. |
 
-| Library | Already In Project | Role in Docker Context |
-|---------|--------------------|------------------------|
-| `dotenv` | Yes (`^16.5.0`) | Loads `.env` at dev time. In Docker, env vars come from `docker-compose.yml` `environment:` block — dotenv is harmless (no-op) when vars are already set in the process environment. |
-| All other deps | Yes | Copied as-is into the runtime image via `npm ci --omit=dev` |
+### No New Dependencies Needed For
 
-### Development Tools
+| Capability | Why No New Dep | What To Use Instead |
+|------------|---------------|---------------------|
+| HTTP client for token proxy | Node.js 20 ships stable `fetch()` (undici-backed) | `globalThis.fetch` with `URLSearchParams` body -- automatically sets `Content-Type: application/x-www-form-urlencoded;charset=UTF-8` |
+| URL/query-string construction for authorization redirects | Node.js built-in `URL` and `URLSearchParams` | `new URL()` + `.searchParams.set()` for building Azure AD `/authorize` redirect URLs |
+| PKCE code challenge generation | Not needed -- proxy passes through PKCE params | MCP client generates `code_challenge` + `code_verifier`; proxy forwards them unchanged to Azure AD |
+| JSON response parsing from Azure AD token endpoint | Node.js `fetch()` built-in `.json()` | `response.json()` on the fetch response |
+| OpenID Connect discovery JSON | Fastify's built-in JSON response | Static JSON object returned by route handler -- no library needed |
+| Dynamic Client Registration | Static JSON response | Returns pre-configured Azure AD `client_id` -- no database or registration logic needed |
+| Scope mapping (bare to fully-qualified) | Simple string concatenation | `wikijs:read` -> `api://${clientId}/wikijs:read` -- pure TypeScript, no library |
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `.dockerignore` | Exclude `node_modules/`, `dist/`, `.env`, `src/`, test files from build context | Prevents shipping secrets, shrinks build context, avoids cache invalidation on source-unrelated changes. Pure file — no installation required. |
-| `wget` (Alpine built-in) | Docker `HEALTHCHECK` against `/health` endpoint | Alpine ships `wget` by default; `curl` is NOT included. Use `wget --no-verbose --tries=1 --spider http://127.0.0.1:${PORT}/health`. Must use `127.0.0.1` not `localhost` — Alpine may resolve `localhost` to `::1` (IPv6) while the server binds IPv4. |
+### Dependencies to REMOVE
 
-## Multi-Stage Build Recipe
+| Dependency | Current Version | Why Remove |
+|------------|----------------|------------|
+| `@azure/msal-node` | `^5.1.1` | **Not imported anywhere in `src/`.** Only used by `get-token.mjs` (a standalone developer helper script). MSAL is designed for client-side token acquisition (device code flow, auth code flow), NOT for proxying. The proxy needs raw HTTP control over the authorize/token flow -- MSAL abstracts away the exact parameters we need to manipulate (scope mapping, redirect_uri rewriting). Removing it also eliminates the musl libc concern that forced `node:20-slim` over Alpine in Docker. If the `get-token.mjs` script is still needed, it can use `npx @azure/msal-node` or be moved to a separate devDependency. |
 
-The project's `npm start` currently delegates to `scripts/start_http.sh`. In the
-Docker runtime stage, invoke Node directly to avoid shell script dependency:
+## Detailed Rationale
 
+### Why `@fastify/formbody` (Not a Custom Content Type Parser)
+
+Fastify supports registering custom content type parsers via `addContentTypeParser()`.
+We could write a 5-line parser using `node:querystring`. However:
+
+1. `@fastify/formbody` is an official Fastify org plugin with TypeScript types
+2. It handles edge cases (body size limits, charset normalization)
+3. It is a single dependency with zero transitive deps (uses Node built-in `querystring.parse`)
+4. It is the conventional approach in the Fastify ecosystem -- makes the codebase readable to anyone familiar with Fastify
+
+The plugin is registered at the Fastify instance level (or scoped to a plugin):
+
+```typescript
+import formbody from "@fastify/formbody";
+
+// Register for OAuth routes that receive form-encoded bodies
+server.register(formbody);
 ```
-node dist/server.js
+
+After registration, `request.body` on POST routes with `Content-Type: application/x-www-form-urlencoded` is a parsed object.
+
+**Flat parsing only** -- `@fastify/formbody` uses `querystring.parse` which produces
+flat key-value pairs (no nested objects). This is exactly what OAuth token requests
+need: `grant_type`, `code`, `client_id`, `redirect_uri`, `code_verifier` are all flat
+string values.
+
+### Why Native `fetch()` (Not `@fastify/reply-from`, `axios`, or `undici` Direct)
+
+The token proxy needs to:
+1. Receive a form-encoded POST from the MCP client
+2. Modify the scope parameter (prepend `api://{clientId}/`)
+3. Forward to Azure AD's token endpoint
+4. Return Azure AD's JSON response to the MCP client
+
+This is NOT a reverse proxy (transparent pass-through). It is a **transform proxy**:
+the request body is modified before forwarding. `@fastify/reply-from` and
+`@fastify/http-proxy` are designed for transparent proxying with header rewriting --
+they are overkill and the wrong abstraction for body transformation.
+
+Native `fetch()` gives us:
+- Full control over the outgoing request body (construct a new `URLSearchParams`)
+- Clean error handling (`response.ok`, `response.status`)
+- Zero additional dependencies
+- Built into Node.js 20 (stable, no longer experimental)
+
+```typescript
+// Token proxy pattern -- transform and forward
+const azureParams = new URLSearchParams();
+azureParams.set("client_id", config.azure.clientId);
+azureParams.set("grant_type", body.grant_type);
+azureParams.set("code", body.code);
+azureParams.set("redirect_uri", body.redirect_uri);
+azureParams.set("scope", mapScopes(body.scope, config.azure.clientId));
+if (body.code_verifier) azureParams.set("code_verifier", body.code_verifier);
+
+const azureResponse = await fetch(
+  `https://login.microsoftonline.com/${config.azure.tenantId}/oauth2/v2.0/token`,
+  { method: "POST", body: azureParams }
+);
+
+const tokenResponse = await azureResponse.json();
 ```
 
-The build stages:
+`URLSearchParams` as the `fetch()` body automatically sets
+`Content-Type: application/x-www-form-urlencoded;charset=UTF-8` -- no manual header
+required.
 
-**Stage 1 — builder**
-- `FROM node:20-alpine AS builder`
-- `WORKDIR /app`
-- `COPY package*.json ./` then `npm ci` (installs all deps including devDeps for `tsc`)
-- `COPY tsconfig.json .` and `COPY src/ ./src/`
-- `RUN npm run build` (runs `tsc`, outputs to `dist/`)
+### Why NOT `@azure/msal-node` for the Proxy
 
-**Stage 2 — runtime**
-- `FROM node:20-alpine AS runtime`
-- `WORKDIR /app`
-- `COPY package*.json ./` then `npm ci --omit=dev` (installs only production deps)
-- `COPY --from=builder /app/dist ./dist`
-- `COPY lib/ ./lib/` (STDIO transport stub, referenced in package.json scripts)
-- Non-root user: `addgroup -S appgroup && adduser -S appuser -G appgroup`, then `USER appuser`
-- `EXPOSE 8000` (matches `PORT` default in `config.ts`)
-- `HEALTHCHECK` with `wget` against `127.0.0.1:8000/health`
-- `CMD ["node", "dist/server.js"]`
+MSAL is a client-side authentication library. It is designed to:
+- Acquire tokens for a client application
+- Cache tokens in memory/disk
+- Handle device code flow, auth code flow from the client perspective
 
-### Why `npm ci --omit=dev` Not `--only=production`
+The OAuth proxy needs to:
+- Receive authorization/token requests from MCP clients
+- Transform parameters (scope mapping, redirect_uri injection)
+- Forward raw HTTP requests to Azure AD
+- Return Azure AD's raw responses
 
-`--omit=dev` is the current npm flag (npm 7+). `--only=production` is deprecated
-in npm 9 and generates warnings. They are functionally equivalent but `--omit=dev`
-is the correct spelling going forward.
+MSAL abstracts away the HTTP layer we need to control. Using MSAL would mean fighting
+the library to extract and modify the exact query/form parameters. Direct `fetch()` is
+simpler, more transparent, and aligns with the proxy's role as a thin HTTP translator.
 
-### ESM + NodeNext Compatibility Note
+Additionally, `@azure/msal-node` adds ~2.5 MB to `node_modules` and was the reason
+for choosing `node:20-slim` over `node:20-alpine` in Docker. Removing it opens the
+door to switching to Alpine (smaller image, fewer CVEs) in a future milestone.
 
-The project uses `"type": "module"` and `module: "NodeNext"` in tsconfig. The
-compiled output in `dist/` includes `.js` files with `import` statements and
-explicit `.js` extensions on all relative imports. `node dist/server.js` with
-Node.js 20 handles this correctly — no `--experimental-vm-modules` flag needed.
+### Why `URL` and `URLSearchParams` (Not a URL Manipulation Library)
 
-### Why NOT `node:20-alpine3.XX` (Pinned Alpine Version)
+The authorization endpoint proxy needs to:
+1. Parse the incoming request's query parameters
+2. Modify the `scope` parameter
+3. Add the `client_id` parameter (Azure AD's, not the MCP client's)
+4. Construct a redirect URL to Azure AD's `/authorize` endpoint
 
-Floating `node:20-alpine` pulls the latest Alpine patch for Node 20 LTS, which
-includes security patches automatically on `docker pull`. Pinning to
-`node:20-alpine3.21` trades security patches for strict reproducibility. For a
-self-hosted internal tool, floating minor is the right default. If the team moves
-to a CI/CD pipeline that rebuilds on a schedule, pinning becomes more appropriate
-then.
+Node.js built-in `URL` and `URLSearchParams` handle all of this:
 
-## Compose File Decisions
+```typescript
+// Authorization redirect construction
+const azureAuthUrl = new URL(
+  `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`
+);
+azureAuthUrl.searchParams.set("client_id", azureClientId);
+azureAuthUrl.searchParams.set("response_type", "code");
+azureAuthUrl.searchParams.set("redirect_uri", redirectUri);
+azureAuthUrl.searchParams.set("scope", mapScopes(requestedScope, azureClientId));
+azureAuthUrl.searchParams.set("state", state);
+azureAuthUrl.searchParams.set("code_challenge", codeChallenge);
+azureAuthUrl.searchParams.set("code_challenge_method", "S256");
 
-**No `version:` field** — omit entirely. It is obsolete and triggers deprecation
-warnings in current Docker Compose.
+reply.redirect(302, azureAuthUrl.toString());
+```
 
-**No `depends_on:` for Wiki.js** — Wiki.js runs on a separate host. The MCP
-server tolerates a disconnected Wiki.js at startup (logs a warning but starts
-successfully, per `server.ts`). Network configuration is handled externally.
+No URL manipulation library needed. `URL` handles encoding, normalization, and
+construction correctly per the WHATWG URL Standard.
 
-**Environment variables** — use `environment:` block with variable substitution
-(`${WIKIJS_BASE_URL}` etc.) so operators set values in a `.env` file on the host
-or in their shell. The Compose file should not contain secrets.
+## Integration Points with Existing Fastify Server
 
-**Port mapping** — `"8000:8000"` mapping using the same `PORT` default. Operators
-who change `PORT` via environment variable must update the left side of the mapping.
+### Route Registration Pattern
 
-**`restart: unless-stopped`** — appropriate for a long-running server in
-self-hosted deployment. Restarts on crash but respects explicit `docker stop`.
+The OAuth proxy endpoints should be registered as a new Fastify plugin, following the
+existing pattern of `publicRoutes` and `protectedRoutes`:
 
-## Alternatives Considered
+```typescript
+// New plugin: OAuth proxy routes (unauthenticated -- these ARE the auth endpoints)
+server.register(oauthProxyRoutes, {
+  appConfig,
+});
+```
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `node:20-alpine` | `node:20-slim` (Debian) | When native addons are present that require glibc. This project has none, so alpine is correct. |
-| `node:20-alpine` | `gcr.io/distroless/nodejs20-debian12` | When no shell access or debugging tools in the container is an acceptable operational constraint. Distroless is harder to debug (no shell, no wget for healthchecks requires a Node.js-based check script). Not worth the operational complexity for an internal tool. |
-| `npm ci --omit=dev` | Copy `node_modules` from builder stage | Copying node_modules from a builder to a runtime stage of the same base image works but is slower and larger than re-running `npm ci --omit=dev` in the runtime stage, because the full `node_modules` (including devDeps) gets written to a layer that then gets filtered. Re-running `npm ci --omit=dev` in the runtime stage is cleaner. |
-| `node dist/server.js` CMD | `npm start` CMD | `npm start` invokes `scripts/start_http.sh` which eventually calls node, adding a shell and npm process layer. Calling node directly is leaner and produces cleaner signal handling (SIGTERM reaches Node, not npm). |
-| `wget` for healthcheck | Install `curl` via `RUN apk add --no-cache curl` | Valid but adds a package install layer and increases image size. `wget` is already present in Alpine — use it. |
-| Omit `version:` in compose | `version: '3.8'` | Use only if you need to run on Compose V1 (legacy, pre-2022 Docker installs). Modern Docker Compose ignores the field and warns about it. |
+These routes are **unauthenticated** -- they are the mechanism by which MCP clients
+obtain tokens. The JWT auth middleware must NOT apply to them.
 
-## What NOT to Use
+### New Routes
+
+| Method | Path | Content-Type In | Content-Type Out | Purpose |
+|--------|------|-----------------|------------------|---------|
+| GET | `/.well-known/openid-configuration` | N/A | `application/json` | OIDC discovery metadata pointing to local proxy endpoints |
+| POST | `/oauth/register` | `application/json` | `application/json` | Dynamic Client Registration -- returns pre-configured Azure AD client_id |
+| GET | `/oauth/authorize` | N/A (query params) | 302 redirect | Redirect to Azure AD `/authorize` with scope mapping |
+| POST | `/oauth/token` | `application/x-www-form-urlencoded` | `application/json` | Forward token request to Azure AD with scope mapping |
+
+### Configuration Additions
+
+New environment variables needed:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| None new | Tenant ID, Client ID, Resource URL already exist | All Azure AD details already in `config.ts` |
+
+The proxy uses existing config values:
+- `AZURE_TENANT_ID` -- for constructing Azure AD endpoint URLs
+- `AZURE_CLIENT_ID` -- returned by Dynamic Client Registration; used as `client_id` in Azure AD requests
+- `MCP_RESOURCE_URL` -- for constructing local endpoint URLs in discovery metadata
+
+### Scope Mapping Logic
+
+This is the core transformation the proxy performs:
+
+```typescript
+// Bare MCP scope -> Fully-qualified Azure AD scope
+function mapScopes(bareScopes: string, clientId: string): string {
+  return bareScopes
+    .split(" ")
+    .map(scope => {
+      // Standard OIDC scopes pass through unchanged
+      if (["openid", "profile", "email", "offline_access"].includes(scope)) {
+        return scope;
+      }
+      // Custom scopes get the api:// prefix
+      return `api://${clientId}/${scope}`;
+    })
+    .join(" ");
+}
+```
+
+This function uses the existing `AZURE_CLIENT_ID` to construct fully-qualified scope
+names that Azure AD expects.
+
+### Protected Resource Metadata Update
+
+The existing `/.well-known/oauth-protected-resource` endpoint in `public-routes.ts`
+currently points `authorization_servers` to Azure AD directly. For the proxy, it must
+point to self:
+
+```typescript
+authorization_servers: [appConfig.azure.resourceUrl]
+```
+
+This tells MCP clients to discover OAuth endpoints at this server (not Azure AD).
+
+### `@fastify/formbody` Scoping
+
+Register `@fastify/formbody` only within the OAuth proxy plugin scope to avoid
+affecting the existing `/mcp` endpoint (which expects `application/json`):
+
+```typescript
+async function oauthProxyRoutes(fastify: FastifyInstance, opts: OAuthProxyOptions) {
+  // Scoped registration -- only affects routes in this plugin
+  fastify.register(formbody);
+
+  fastify.post("/oauth/token", async (request, reply) => {
+    const body = request.body as Record<string, string>;
+    // ... proxy logic
+  });
+}
+```
+
+Fastify's plugin encapsulation ensures the formbody parser only applies to routes
+registered inside this plugin.
+
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Single-stage Dockerfile | Bundles TypeScript compiler, ts-node, nodemon, all devDeps into the image — ~900 MB. Exposes source TypeScript in the container. | Multi-stage build (builder + runtime stages) |
-| `npm install` in Dockerfile | Non-deterministic: resolves latest semver ranges at build time, producing different installs across builds | `npm ci` — uses `package-lock.json` exactly |
-| `localhost` in HEALTHCHECK | Alpine may resolve `localhost` to `::1` (IPv6) when the server is bound to `0.0.0.0` (IPv4). Results in healthcheck failures that are hard to debug. | `127.0.0.1` explicitly |
-| `version: '3.8'` in compose | Generates `"version" attribute is obsolete` warnings in current Docker Compose. Serves no functional purpose. | Omit the field entirely |
-| Running as root in container | Security anti-pattern; amplifies impact of RCE vulnerabilities | `adduser -S` + `USER appuser` in Dockerfile |
-| `CMD ["npm", "start"]` | Adds npm process layer, shell script indirection. `npm` does not forward SIGTERM to Node — graceful shutdown may fail. | `CMD ["node", "dist/server.js"]` |
-| `.env` file in Docker build context | Risks shipping secrets into image layers | Add `.env` to `.dockerignore`; pass secrets via compose `environment:` or Docker secrets |
+| `@azure/msal-node` (keep existing) | Not used in `src/`, wrong abstraction for proxying, adds 2.5 MB, forced slim Docker image | Remove from dependencies; use `fetch()` for direct HTTP calls to Azure AD |
+| `axios` or `got` | Adds unnecessary dependency when Node.js 20 has stable `fetch()` | `globalThis.fetch()` |
+| `@fastify/http-proxy` or `@fastify/reply-from` | Designed for transparent reverse proxying, not body transformation | Direct `fetch()` calls with constructed request bodies |
+| `qs` (nested query string parser) | OAuth token parameters are flat key-value pairs; nested parsing is unnecessary and a security risk (prototype pollution) | `@fastify/formbody` with default `querystring.parse` |
+| `openid-client` | Full OIDC client library -- we are building a proxy, not a client. Would fight the library's abstractions. | Manual endpoint implementation (4 simple routes) |
+| `oauth4webapi` | Same problem as `openid-client` -- client-side abstraction over what we need to control server-side | Manual implementation |
+| `express` middleware (e.g., `body-parser`) | Project uses Fastify; mixing middleware frameworks is an anti-pattern | `@fastify/formbody` (Fastify-native) |
+| Session/state management library | The proxy is stateless. Authorization `state` parameter is generated by the MCP client and passed through. No server-side session state is needed. | Stateless pass-through of state/PKCE params |
+| Token caching library | PROJECT.md explicitly puts token storage/caching out of scope. The proxy passes Azure AD's response through to the MCP client unchanged. | Direct pass-through |
 
-## Stack Patterns by Variant
+## MCP Spec Alignment
 
-**If deploying to Kubernetes (future):**
-- Replace `docker-compose.yml` with a `Deployment` + `Service` manifest
-- Use `livenessProbe` and `readinessProbe` against `/health` instead of Docker `HEALTHCHECK`
-- Consider pinning `node:20-alpine3.XX` for reproducible builds in CI
-- `HEALTHCHECK` in Dockerfile is ignored by Kubernetes but harmless to keep
+The MCP authorization specification (draft, 2025-11-25 revision) has evolved:
 
-**If Wiki.js is on the same Docker host (same compose project):**
-- Add `depends_on: wikijs` and a `healthcheck:` for the wikijs service
-- Use Docker internal network name (`wikijs`) as `WIKIJS_BASE_URL`
+1. **Dynamic Client Registration is now OPTIONAL** (MAY support). The spec prefers
+   Client ID Metadata Documents. However, Claude Desktop currently uses DCR as a
+   fallback, so we implement it for compatibility.
 
-**If native addons are ever added (unlikely given current deps):**
-- Switch runtime stage to `node:20-slim` (Debian-based, glibc)
-- Keep builder on `node:20-alpine` or switch to `node:20-slim` to match glibc
+2. **The proxy pattern is explicitly supported**: the MCP server lists itself as the
+   authorization server in Protected Resource Metadata, exposes OIDC discovery pointing
+   to local endpoints, and forwards authorization/token requests to the real IdP.
 
-## Version Compatibility
+3. **PKCE is MUST for MCP clients**: Claude Desktop sends `code_challenge` and
+   `code_challenge_method=S256`. The proxy passes these through unchanged to Azure AD.
+   No PKCE generation or validation logic is needed on the proxy.
 
-| Package | Node.js 20 Alpine | Notes |
-|---------|-------------------|-------|
-| `node:20-alpine` | Native | Node.js 20 LTS + Alpine Linux; stable combination |
-| `fastify@^4.27.2` | Compatible | Pure JS; works with Node 20 on Alpine |
-| `jose@^6.2.2` | Compatible | ESM-only, pure JS, no native deps |
-| `graphql-request@^6.1.0` | Compatible | Pure JS |
-| `zod@^3.25.17` | Compatible | Pure JS |
-| `uuid@^13.0.0` | Compatible | Pure JS |
-| `@azure/msal-node@^5.1.1` | Compatible | Has some native-looking deps but pure JS for token cache |
+4. **Resource Indicators (RFC 8707)**: MCP clients MUST include a `resource` parameter
+   in authorization and token requests. Azure AD may or may not support this -- the
+   proxy should forward it and handle Azure AD's response gracefully.
+
+5. **Protected Resource Metadata (RFC 9728) is MUST**: Already implemented. Needs
+   update to point `authorization_servers` to self instead of Azure AD.
+
+## Version Compatibility Matrix
+
+| Package | Version | Fastify 4 | Node.js 20 | TypeScript 5.3 | ESM |
+|---------|---------|-----------|------------|----------------|-----|
+| `@fastify/formbody` | `^7.0.0` | Yes (v7.x line) | Yes | Yes (ships types) | Yes |
+| `globalThis.fetch` | Built-in | N/A | Stable since 18.0 | N/A | N/A |
+| `URL` / `URLSearchParams` | Built-in | N/A | Stable | N/A | N/A |
 
 ## Installation
 
-No new npm packages are needed. All Docker packaging is done via Dockerfile and
-`docker-compose.yml` — plain text files checked into the repository.
-
 ```bash
-# Verify the build locally after writing the Dockerfile:
-docker build -t wikijs-mcp-server .
-docker run --env-file .env -p 8000:8000 wikijs-mcp-server
+# Single new dependency
+npm install @fastify/formbody@^7.0.0
+
+# Remove unused dependency
+npm uninstall @azure/msal-node
 ```
+
+Net effect: dependency count decreases by 1 (remove msal-node, add formbody).
+`node_modules` size decreases significantly (msal-node is ~2.5 MB vs formbody ~15 KB).
+
+## Alternatives Considered
+
+| Category | Recommended | Alternative | Why Not Alternative |
+|----------|-------------|-------------|---------------------|
+| Form body parsing | `@fastify/formbody` | Custom `addContentTypeParser()` | 5 lines of code but loses type safety, body limit handling, and ecosystem familiarity. Not worth the marginal dependency savings. |
+| HTTP client for proxy | `globalThis.fetch()` | `undici.request()` (direct) | Undici is already bundled in Node.js 20 and powers `fetch()`. Direct undici usage gives lower-level control but fetch's ergonomics are better for our use case (simple POST, read JSON response). No benefit to going lower-level. |
+| HTTP client for proxy | `globalThis.fetch()` | `@fastify/reply-from` | Designed for transparent proxying (pipe request through). We need to transform the request body (scope mapping) before forwarding. Wrong abstraction. |
+| Token endpoint auth | No `client_secret` (public client) | `client_secret_post` | Azure AD app is configured as a public client (no secret). MCP clients are native desktop apps -- they cannot securely store a client secret. PKCE provides the security. |
+| Discovery endpoint | `/.well-known/openid-configuration` | `/.well-known/oauth-authorization-server` | MCP spec requires clients to support both. Azure AD uses OIDC discovery natively. Using the same convention reduces cognitive overhead. Implement OIDC discovery; MCP clients will find it. |
+| Scope mapping | String manipulation in TypeScript | Zod transform | Zod transform would validate AND transform scopes. However, the mapping is a simple `api://{id}/` prefix. Zod is better used for validating the incoming request shape; scope mapping is business logic, not validation. Keep them separate. |
 
 ## Sources
 
-- [Docker Hub node image](https://hub.docker.com/_/node/) — Tag variants confirmed (20-alpine, 20-slim)
-- [Snyk: Choosing the best Node.js Docker image](https://snyk.io/blog/choosing-the-best-node-js-docker-image/) — CVE comparison (alpine 0 vs slim 28), MEDIUM confidence (WebSearch verified with official hub)
-- [Docker Docs: Version and name top-level elements](https://docs.docker.com/reference/compose-file/version-and-name/) — Version field is obsolete, HIGH confidence (official docs)
-- [Docker community forum: version is obsolete](https://forums.docker.com/t/docker-compose-yml-version-is-obsolete/141313) — Confirms deprecation warnings, MEDIUM confidence
-- [dasroot.net: Do You Still Use version in Docker Compose? (2026-03)](https://dasroot.net/posts/2026/03/do-you-still-use-version-in-docker-compose/) — Current community practice, LOW confidence (single blog)
-- [Chatwoot issue: healthcheck fails, curl not found in Alpine](https://github.com/chatwoot/chatwoot/issues/13776) — wget vs curl on Alpine, HIGH confidence (confirmed by Alpine documentation)
-- [docker/for-mac issue: localhost resolves to ::1](https://github.com/docker/for-mac/issues/7269) — IPv6 localhost issue requiring 127.0.0.1, HIGH confidence (Docker official issue tracker)
-- [GoogleContainerTools/distroless](https://github.com/GoogleContainerTools/distroless) — Evaluated distroless; rejected for operational complexity, MEDIUM confidence
-- [iximiuz Labs: How to Choose Node.js Container Image](https://labs.iximiuz.com/tutorials/how-to-choose-nodejs-container-image) — musl vs glibc tradeoffs, MEDIUM confidence
-- [Fastify issue #935: not working in Docker](https://github.com/fastify/fastify/issues/935) — 0.0.0.0 binding requirement confirmed, HIGH confidence (official Fastify repo)
-- Source code review: `src/server.ts` line 81 confirms `host: "0.0.0.0"` binding; `src/config.ts` line 11 confirms `PORT` default is `8000`
+- [MCP Authorization Specification (draft)](https://modelcontextprotocol.io/specification/draft/basic/authorization) -- Authoritative spec for OAuth proxy pattern, endpoint requirements, PKCE, scope handling. HIGH confidence.
+- [MCP Authorization Spec Update (Nov 2025)](https://aaronparecki.com/2025/11/25/1/mcp-authorization-spec-update) -- Client ID Metadata Documents replacing DCR as primary registration mechanism. MEDIUM confidence (blog post, verified against spec).
+- [Logto: MCP Auth Spec Review (2025-03-26 edition)](https://blog.logto.io/mcp-auth-spec-review-2025-03-26) -- Detailed analysis of proxy pattern, scope mapping, token handling. MEDIUM confidence.
+- [Microsoft: OAuth 2.0 authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) -- Azure AD token endpoint parameters, form-encoded body format, PKCE support. HIGH confidence (official docs, updated 2026-01-09).
+- [Azure AD OpenID Configuration](https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration) -- Verified: no `registration_endpoint` in Azure AD (confirms need for proxy DCR), no `code_challenge_methods_supported` in metadata. HIGH confidence (live endpoint).
+- [@fastify/formbody GitHub](https://github.com/fastify/fastify-formbody) -- Version matrix (v7.x for Fastify 4), uses `querystring.parse`, TypeScript types included. HIGH confidence (official Fastify org repo).
+- [@fastify/formbody npm](https://www.npmjs.com/package/@fastify/formbody) -- Latest v7 is `7.0.2`, v8.0.2 is for Fastify 5. HIGH confidence.
+- [Node.js Fetch API](https://nodejs.org/en/learn/getting-started/fetch) -- Stable in Node.js 18+, `URLSearchParams` body auto-sets form-urlencoded Content-Type. HIGH confidence (official Node.js docs).
+- [MDN: Using the Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) -- `URLSearchParams` as body, Content-Type automatic. HIGH confidence.
 
 ---
-*Stack research for: Docker container packaging — wikijs-mcp-server v2.1*
+*Stack research for: OAuth Authorization Proxy -- wikijs-mcp-server v2.2*
 *Researched: 2026-03-25*

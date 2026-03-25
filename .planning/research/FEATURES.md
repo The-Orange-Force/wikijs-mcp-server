@@ -1,209 +1,333 @@
-# Feature Research: Docker Deployment of a Node.js/TypeScript MCP Server
+# Feature Landscape: OAuth Authorization Proxy for MCP Server
 
-**Domain:** Docker container packaging for a production Node.js/TypeScript HTTP service behind Caddy reverse proxy
+**Domain:** OAuth 2.1 authorization proxy enabling MCP clients (Claude Desktop, Claude Code) to authenticate against Azure AD without pre-configured client credentials
 **Researched:** 2026-03-25
-**Confidence:** HIGH
+**Overall Confidence:** HIGH
 
 ## Context
 
-The wikijs-mcp-server is an existing, fully functional Fastify/TypeScript MCP server with:
-- Configurable PORT (default 3200), `/health` (unauthenticated), `/.well-known/oauth-protected-resource` (unauthenticated), `POST /mcp` (JWT-authenticated)
-- All config via env vars, validated at startup by Zod
-- The host already has Caddy running in Docker on an external network called `caddy_net`
-- No existing Docker setup — this is a greenfield containerization
+The wikijs-mcp-server already has:
+- JWT validation against Azure AD JWKS using `jose`
+- RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource` (pointing to Azure AD as authorization server)
+- Scope enforcement (wikijs:read, wikijs:write, wikijs:admin)
+- 401 responses with `WWW-Authenticate` headers including `resource_metadata` URL
+- Per-request correlation IDs and structured logging
+
+The problem: Azure AD does not support RFC 7591 Dynamic Client Registration. MCP clients (Claude Desktop, Claude Code) expect to discover an authorization server, dynamically register, then complete an OAuth 2.1 authorization code + PKCE flow. Without a proxy layer, Claude clients cannot authenticate because they have no pre-registered client_id for Azure AD.
+
+The solution: The MCP server itself acts as an OAuth authorization server to MCP clients, proxying all OAuth operations to Azure AD behind the scenes using a pre-registered Azure AD app registration.
+
+---
+
+## Spec Version Landscape (Critical Context)
+
+Two MCP auth spec versions are relevant:
+
+| Spec Version | Architecture | Claude Support | Status |
+|---|---|---|---|
+| **2025-03-26** | MCP server acts as both authorization server AND resource server | Claude Code + Claude Desktop currently implement this | Active in production clients |
+| **2025-06-18** | MCP server is resource server ONLY; authorization server is separate entity discovered via RFC 9728 | Claude Code supports this; Claude Desktop partial | Newer, cleaner architecture |
+
+**Decision for this project:** Target the **2025-03-26 spec** because that is what Claude Desktop currently implements. The proxy endpoints we build will also be forward-compatible with 2025-06-18 because the proxy IS a separate authorization server -- it just happens to be co-located on the same domain. When clients upgrade to 2025-06-18, our `/.well-known/oauth-protected-resource` already points them to the right place.
 
 ---
 
 ## Feature Landscape
 
-### Table Stakes (Expected, Missing = Deployment is Broken)
+### Table Stakes (Expected -- Missing = Auth Flow Broken)
 
-These features are assumed by anyone operating Node.js services in Docker. Missing them means the container won't run correctly, will be insecure, or will be operationally unusable.
+These features are required for Claude Desktop/Code to complete the OAuth flow. Missing any one of them results in a non-functional authentication flow.
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Multi-stage Dockerfile** | Single-stage builds include TypeScript compiler, devDependencies, and source files in the runtime image — massively bloated (1GB+ vs <200MB). Operators and CI pipelines expect slim runtime images. | LOW | Two meaningful stages: (1) `builder` — installs all deps, runs `tsc`; (2) `runtime` — copies `dist/` + production node_modules only. Use `node:20-alpine` as base. `npm ci --omit=dev` in runtime stage. |
-| **Non-root user in container** | Running as root inside a container means a process escape gives host root access. The official `node:20-alpine` image ships a built-in `node` user (UID 1000). Every Node.js Docker guide treats non-root as table stakes, not a differentiator. | LOW | Add `USER node` in runtime stage. Use `--chown=node:node` on COPY instructions. The app already listens on port 3200 (non-privileged), so no `CAP_NET_BIND_SERVICE` needed. |
-| **HEALTHCHECK wired to /health** | Docker Compose and container orchestrators use HEALTHCHECK to determine if a container is ready/alive. Without it, a crashed or stuck process is indistinguishable from a healthy one. The `/health` endpoint already exists and is unauthenticated. | LOW | `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD wget -qO- http://localhost:3200/health \|\| exit 1`. Use `wget` (available in Alpine by default) not `curl` (not included in Alpine). Start period of 15s covers Fastify startup + JWKS fetch + Azure AD connectivity. |
-| **.dockerignore** | Without it, the build context includes `node_modules/` (hundreds of MB), `.git/`, `dist/` (stale), `.env` (secrets), and test artifacts. This leaks secrets into the image and dramatically slows builds. | LOW | Exclude: `node_modules/`, `dist/`, `.git/`, `.env`, `.env.*`, `coverage/`, `*.tsbuildinfo`, `.planning/`, `tests/`, `**/__tests__/`, `.vscode/`, `*.md` (except necessary ones), `docker-compose*`, `Dockerfile*`. Keep: `src/`, `package*.json`, `tsconfig.json`. |
-| **docker-compose.yml with external caddy_net** | The host already has a Caddy instance managing TLS and routing on `caddy_net`. Services must join this network to receive proxied traffic. Caddy resolves service names via Docker DNS (service name = hostname). | LOW | Declare `networks: caddy_net: external: true` at the top level. Attach the service to `caddy_net`. Do NOT expose port 3200 to the host (Caddy proxies on the internal network — port exposure to the host creates an auth bypass risk). |
-| **restart policy** | A crashed server that stays down is an operational incident. `unless-stopped` is the standard policy for persistent services: auto-restarts on crash, but respects manual `docker stop` (unlike `always`, which restarts even after manual stops). | LOW | `restart: unless-stopped`. Note: there is a known Docker issue where Node.js processes that exit via uncaught errors may not trigger the restart policy correctly — the existing server's startup Zod validation already ensures proper exit codes. |
-| **Environment variable pass-through** | All server config comes from env vars. The container must receive the same env vars the server already uses (`WIKIJS_BASE_URL`, `WIKIJS_TOKEN`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `MCP_RESOURCE_URL`, `PORT`). | LOW | Use `env_file: .env` in docker-compose.yml. Do NOT bake env vars into the image. The `.env` file is already in `.gitignore` and should be added to `.dockerignore`. |
+| Feature | Why Expected | Complexity | Depends On |
+|---------|--------------|------------|------------|
+| **OAuth Authorization Server Metadata** (`/.well-known/oauth-authorization-server`) | MCP clients MUST discover OAuth endpoints via RFC 8414. Claude Code fetches this first. Returns `authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `scopes_supported`, etc. | LOW | Existing `config.ts` for URLs |
+| **Dynamic Client Registration** (`POST /register`) | MCP spec says clients and servers SHOULD support RFC 7591 DCR. Claude Code uses DCR when no `--client-id` is pre-configured. The proxy returns the pre-registered Azure AD client_id to all registering clients. | MED | Azure AD app registration (external prereq) |
+| **Authorization Endpoint** (`GET /authorize`) | Receives OAuth authorization requests from the browser, maps bare scopes to Azure AD fully-qualified scopes (`wikijs:read` to `api://{client_id}/wikijs:read`), then redirects to Azure AD's `/oauth2/v2.0/authorize`. | MED | Scope mapping logic, Azure AD tenant config |
+| **Token Endpoint** (`POST /token`) | Exchanges authorization codes for access tokens by proxying the request to Azure AD's token endpoint. Handles `authorization_code` and `refresh_token` grant types. | MED | Azure AD token endpoint URL construction |
+| **Authorization Callback** (`GET /oauth/callback`) | Receives the redirect back from Azure AD after user authenticates. Maps the authorization code back to the original MCP client's redirect_uri and forwards it. | HIGH | Transaction state storage, PKCE relay |
+| **Scope Mapping** (bare to fully-qualified) | MCP clients send `wikijs:read`; Azure AD expects `api://{client_id}/wikijs:read`. The proxy must translate scopes in both directions: outbound (to Azure AD) and inbound (in token `scp` claim already works -- Azure AD returns short form). | MED | Existing `SCOPES` constants in `scopes.ts` |
+| **PKCE Relay** | Claude clients generate PKCE `code_challenge`. The proxy must relay this to Azure AD's authorize endpoint (Azure AD public clients require PKCE). NOT dual-PKCE -- single pass-through because tokens come from Azure AD, not the proxy. | MED | Understanding of PKCE flow |
+| **Updated Protected Resource Metadata** | The existing `/.well-known/oauth-protected-resource` must be updated to point `authorization_servers` to itself (not directly to Azure AD) so Claude discovers the proxy endpoints. | LOW | Existing `public-routes.ts` |
 
-### Differentiators (Not Required, But Meaningful for Production Operations)
+### Differentiators (Not Expected, But Valuable)
 
-Features that improve security, observability, or operational posture beyond a working baseline. Worth doing in this milestone if complexity is low.
+Features that improve robustness, developer experience, or forward-compatibility but are not strictly required for the basic auth flow.
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **`no-new-privileges` security option** | Prevents container processes from gaining new privileges via setuid/setgid binaries. Standard Docker security hardening, adds zero friction. OWASP Docker Security Cheat Sheet recommends it. | LOW | Add `security_opt: [no-new-privileges:true]` to the service in docker-compose.yml. Zero code changes. |
-| **`stop_grace_period`** | Docker's default SIGTERM-to-SIGKILL window is 10s. Fastify needs time to drain active connections, especially for any long-running MCP calls. Explicit grace period documents intent and prevents in-flight requests being killed. | LOW | `stop_grace_period: 30s` in docker-compose.yml. Fastify already has SIGTERM/SIGINT handlers via the SDK. Pairs with the server's existing graceful shutdown. |
-| **Explicit CMD vs npm start** | `npm start` adds a layer of process indirection. Signals (SIGTERM for `docker stop`) hit npm, not Node.js directly, causing a ~10s hard-kill delay instead of graceful shutdown. Specifying the Node binary directly in CMD ensures signals reach the app. | LOW | `CMD ["node", "dist/server.js"]` in Dockerfile instead of `CMD ["npm", "start"]`. Verify the compiled entry point path from `tsconfig.json`. |
-| **Layer caching optimization** | `COPY package*.json ./` then `RUN npm ci` before `COPY src/` exploits Docker layer cache. When only source changes (no dependency changes), the `npm ci` layer is reused — build time drops from ~60s to ~5s on iterative builds. | LOW | Standard pattern. COPY `package.json` and `package-lock.json` first, run `npm ci`, then COPY source. Already implied by multi-stage build but worth explicit attention. |
-| **`NODE_ENV=production` in runtime stage** | Fastify and several npm packages branch on `NODE_ENV`. Production mode disables development-only features (Pino pretty-print, stack traces in errors). Setting it in the Dockerfile ENV bakes it into the image rather than relying on the operator to set it. | LOW | `ENV NODE_ENV=production` in the final Dockerfile stage. Can still be overridden via `docker-compose.yml` `environment` if needed. |
-| **Named image tag in docker-compose.yml** | `image: wikijs-mcp-server:latest` on the service allows `docker images` to show a meaningful name, `docker pull` to work, and future CI/CD to push tagged versions. Without it, Compose auto-generates an opaque name like `wikijs-mcp-server_app`. | LOW | Add `image: wikijs-mcp-server:latest` (or versioned tag) to the service definition. Zero operational complexity. |
+| Feature | Value Proposition | Complexity | Depends On |
+|---------|-------------------|------------|------------|
+| **User Consent Screen** | MCP spec (2025-03-26 Section "Confused Deputy Problem") says proxy servers using static client IDs MUST obtain user consent before forwarding to third-party auth servers. Prevents authorization code theft attacks where an attacker crafts a malicious URL through the proxy. Without this, an attacker who knows the MCP server URL can craft OAuth links that silently grant them tokens. | HIGH | HTML rendering, cookie/state management, security review |
+| **Pre-configured Client Credential Support** (`--client-id` / `--callback-port`) | Claude Code supports `--client-id` and `--callback-port` flags to bypass DCR entirely. If the proxy also works with pre-configured credentials, operators can skip DCR registration and hardcode the Azure AD client_id in Claude Code config. This is the simplest path for corporate deployments. | LOW | Already works -- existing JWT validation accepts any valid Azure AD token. The proxy just needs to not break this path. |
+| **`authServerMetadataUrl` Override Support** | Claude Code supports `authServerMetadataUrl` in its config to point OAuth metadata discovery at an arbitrary URL. The proxy should return valid metadata at the standard path, but supporting alternate discovery paths is free robustness. | LOW | Standard metadata endpoint handles this |
+| **Refresh Token Proxying** | Proxying `refresh_token` grant type through the token endpoint. Azure AD issues refresh tokens for public clients with `offline_access` scope. Long-lived sessions depend on this. | MED | Token endpoint already handles multiple grant types |
+| **Health-Check Integration for Azure AD Connectivity** | Extend `/health` to verify Azure AD authorize/token endpoints are reachable, not just Wiki.js API. Useful for diagnosing proxy issues. | LOW | Existing health check pattern |
+| **Structured Proxy Logging** | Log all proxy operations (DCR, authorize redirects, token exchanges) with correlation IDs, timing, and user identity -- same observability as existing MCP tool calls. | MED | Existing `requestContext`, `wrapToolHandler` pattern |
+| **Forward Compatibility with 2025-06-18 Spec** | Structure proxy endpoints so they can be extracted to a separate service later. Keep proxy routes in their own Fastify plugin. If a client sends RFC 8707 `resource` parameter, pass it through. | LOW | Clean module boundaries |
+| **`MCP-Protocol-Version` Header Handling** | The 2025-03-26 spec says clients SHOULD include `MCP-Protocol-Version` header during metadata discovery. The server could use this to return different metadata for different spec versions (future-proofing). | LOW | Header parsing in metadata endpoint |
 
-### Anti-Features (Commonly Done, Creates Problems)
+### Anti-Features (Explicitly Do NOT Build)
 
-Features that appear helpful but introduce meaningful problems for this specific deployment.
+Features that would add complexity, create security vulnerabilities, or conflict with the project's architecture. Each has a specific reason for exclusion.
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| **Exposing container port to host (`ports: - "3200:3200"`)** | "I want to test the service directly without going through Caddy." | Exposes the auth-required MCP endpoint directly to the host network, bypassing Caddy's TLS termination and any firewall rules. A misconfigured or compromised host could reach the server without HTTPS. Defeats the purpose of the reverse proxy. | Leave `ports` out entirely. Caddy reaches the service via the `caddy_net` Docker network using the service's internal DNS name and port. For local testing, use `docker exec` or temporarily add `ports` to a dev override file (`docker-compose.override.yml`) that is gitignored. |
-| **`read_only: true` root filesystem** | Security hardening checklists include it. | Fastify's Pino logger writes to stdout (fine), but Node.js itself writes temporary files during module resolution and the `jose` JWKS cache may use fs. Breaks are non-obvious and hard to debug. The non-root user + `no-new-privileges` already provides strong isolation without this complexity. | Use `no-new-privileges` and non-root user instead. Add `read_only: true` only if a security audit specifically requires it, and pair with `tmpfs` mounts for `/tmp` and any runtime write paths. |
-| **Bundling Caddy config into this repo** | "Let's manage the Caddyfile alongside the service." | Caddy is an external dependency already managed separately on the host. Putting Caddy config here couples the lifecycle of the MCP server to Caddy config management. Caddy serves multiple services — its config is not owned by this repo. | Document the Caddy configuration required (virtual host, upstream, TLS) in a `DEPLOYMENT.md` or equivalent. Keep the Caddyfile in the Caddy service's own repo/directory. |
-| **Docker secrets instead of env_file** | "We should use Docker Swarm secrets for credentials." | This project does not use Docker Swarm or Kubernetes. Docker secrets in standalone Compose require Swarm mode. The overhead is not justified for a single-host deployment. | Use `env_file: .env` with a `.env` file that is gitignored, has restricted file permissions (`chmod 600 .env`), and is documented in `example.env`. |
-| **Multi-service docker-compose.yml (including Wiki.js)** | "Package everything together for easy deployment." | Wiki.js is explicitly on a separate host per PROJECT.md. Including it in this Compose file creates the illusion that they are co-deployed, leads to drift, and makes each service's lifecycle harder to manage independently. | Single-service Compose file. Wiki.js is external, referenced only by `WIKIJS_BASE_URL`. |
-| **Alpine custom user creation (adduser/addgroup)** | "Create a dedicated `mcpserver` user with a custom UID." | The official `node:20-alpine` image already ships a `node` user (UID 1000). Creating a custom user adds 2-3 Dockerfile lines and no meaningful security improvement for a single-purpose service. Custom UIDs only matter when you need to match host volume ownership. | Use the built-in `node` user: `USER node`. Simpler, well-understood, and sufficient. |
+| Anti-Feature | Why Avoid | What To Do Instead |
+|---|---|---|
+| **Token Issuance / Token Swap** | The 2025-03-26 spec's "Third-Party Authorization" section suggests the proxy should issue its own tokens bound to Azure AD sessions. This requires maintaining a token mapping store, implementing JWT signing, managing token lifecycles, and dramatically increases attack surface. The FastMCP `OAuthProxy` does this but it adds massive complexity. Our server already validates Azure AD tokens directly -- issuing proxy tokens is unnecessary overhead. | Pass through Azure AD tokens directly. The MCP server already validates them via JWKS. Claude receives an Azure AD access token and sends it to POST /mcp, where existing middleware validates it. |
+| **Dual-PKCE (Proxy-to-Azure + Client-to-Proxy)** | FastMCP implements two separate PKCE flows (client-to-proxy and proxy-to-upstream). This is needed when the proxy issues its own tokens. Since we pass through Azure AD tokens, we only need to relay the client's PKCE challenge to Azure AD. Adding a second PKCE layer adds complexity for zero security benefit. | Relay the client's `code_challenge` and `code_challenge_method` directly to Azure AD. On callback, forward the authorization code to the client. The client exchanges it at `/token`, which proxies to Azure AD with the client's `code_verifier`. |
+| **Client Secret Generation** | Azure AD app registration is configured as a public client (no client_secret). Generating proxy-specific client secrets would create a mismatched security model and confuse the OAuth flow. | Return `token_endpoint_auth_method: "none"` in DCR response. Public client, no secrets. |
+| **Per-Client Azure AD App Registration** | Creating a new Azure AD app registration per dynamically registered MCP client would be architecturally correct but operationally impossible -- Azure AD doesn't support programmatic app creation without admin consent, Graph API permissions, and significant provisioning latency. | All DCR clients share the same Azure AD app registration. The proxy returns the same `client_id` to every registering client. |
+| **CORS Configuration** | MCP clients are native desktop applications, not browsers. They do not make cross-origin requests. Adding CORS headers creates unnecessary attack surface. | No CORS headers on any proxy endpoint. |
+| **Token Caching / Session State Persistence** | Storing tokens server-side creates a stateful service that needs durable storage, encryption at rest, and cleanup. The current architecture is stateless (validate-and-forward). | Proxy is stateless for token storage. Transaction state (during the authorization flow) can be ephemeral in-memory with short TTLs. |
+| **OpenID Connect Discovery** (`/.well-known/openid-configuration`) | Some implementations use OIDC discovery. The MCP spec references RFC 8414 (OAuth Authorization Server Metadata), not OpenID Connect. Claude Code uses `/.well-known/oauth-authorization-server`. Adding OIDC discovery creates confusion about which endpoint is authoritative. | Only implement `/.well-known/oauth-authorization-server` per RFC 8414. |
+| **Multiple Authorization Server Support** | The 2025-06-18 spec allows multiple authorization servers in Protected Resource Metadata. Our deployment has exactly one: Azure AD (via the proxy). Supporting multiple adds routing complexity for no benefit. | Single authorization server in PRM response. |
+| **Browser-Based Admin UI for Client Registration** | Some OAuth servers provide web UIs for managing registered clients. This is unnecessary -- DCR is automated, and any troubleshooting happens via logs. | Use structured logging for registration events. |
+| **Rate Limiting on OAuth Endpoints** | Could prevent abuse but adds complexity. The proxy is behind Caddy, which can handle rate limiting at the reverse proxy layer if needed. | Defer to Caddy configuration if rate limiting becomes necessary. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Multi-stage Dockerfile
-    (required foundation — enables all other Dockerfile features)
-    |
-    +--enables--> Non-root user (USER node)
-    |
-    +--enables--> NODE_ENV=production
-    |
-    +--enables--> Explicit CMD (node dist/server.js)
-    |
-    +--enables--> HEALTHCHECK (health endpoint already exists)
-    |
-    +--requires--> Layer caching optimization (package.json COPY ordering)
-
-.dockerignore
-    (independent, improves build context for multi-stage build)
-
-docker-compose.yml
-    +--requires--> Multi-stage Dockerfile (or image already built)
-    +--requires--> External caddy_net network (already exists on host)
-    +--requires--> .env file (credentials, not in image)
-    |
-    +--adds--> restart policy (unless-stopped)
-    +--adds--> stop_grace_period (30s)
-    +--adds--> no-new-privileges security option
-    +--adds--> env_file reference
-
-External caddy_net network
-    (pre-existing host dependency — Caddy owns this network)
-    +--enables--> No ports exposed to host (security benefit)
-    +--enables--> Service name DNS resolution by Caddy
+Updated Protected Resource Metadata
+  |
+  v
+OAuth Authorization Server Metadata (/.well-known/oauth-authorization-server)
+  |
+  +---> Dynamic Client Registration (POST /register)
+  |
+  +---> Authorization Endpoint (GET /authorize)
+  |       |
+  |       +---> Scope Mapping (bare -> api://{client_id}/*)
+  |       |
+  |       +---> PKCE Relay (pass code_challenge to Azure AD)
+  |       |
+  |       +---> Authorization Callback (GET /oauth/callback)
+  |               |
+  |               +---> Transaction State (ephemeral, in-memory)
+  |
+  +---> Token Endpoint (POST /token)
+          |
+          +---> authorization_code grant (proxy to Azure AD)
+          |
+          +---> refresh_token grant (proxy to Azure AD)
 ```
 
-### Dependency Notes
-
-- **Multi-stage Dockerfile is the foundation:** All Dockerfile features (non-root user, HEALTHCHECK, CMD, layer caching) are configured inside the Dockerfile. The docker-compose.yml has no meaning without it.
-- **caddy_net is a host precondition, not something we create:** `external: true` tells Compose to use the existing network. If it doesn't exist, `docker compose up` fails fast with a clear error. This is the correct behavior — it forces operators to set up Caddy first.
-- **HEALTHCHECK depends on the `/health` endpoint:** The endpoint already exists and is unauthenticated. No application code changes needed.
-- **No-port-exposure depends on external network:** Caddy can only reach the container by service name if they share the `caddy_net` network. If the network is not set up, exposing a port is a fallback — but the correct fix is to set up the network, not expose ports.
-
----
-
-## MVP Definition
-
-### Launch With (v2.1)
-
-Minimum viable Docker deployment — what's needed for the server to run reliably in production behind Caddy.
-
-- [ ] **Multi-stage Dockerfile** — without this, the image is 1GB+ and unsuitable for deployment
-- [ ] **Non-root user (USER node)** — table stakes security; no justification to ship as root
-- [ ] **HEALTHCHECK on /health** — container lifecycle management requires it; endpoint already exists
-- [ ] **.dockerignore** — without it, `.env` leaks into build context and builds are slow
-- [ ] **docker-compose.yml with caddy_net external network** — the actual deployment descriptor
-- [ ] **restart: unless-stopped** — operational requirement; service must recover from crashes
-- [ ] **env_file: .env** — credentials pass-through from host to container
-- [ ] **stop_grace_period: 30s** — Fastify graceful shutdown requires a window beyond Docker's 10s default
-- [ ] **Explicit CMD: node dist/server.js** — correct signal handling with no npm process indirection
-
-### Add After Validation (v2.1.x)
-
-After confirming the service starts, stays healthy, and Caddy successfully proxies to it:
-
-- [ ] **`no-new-privileges` security option** — trivial to add, zero testing friction; add in same PR or immediately after
-- [ ] **Named image tag** — add when setting up any CI/CD pipeline for image builds
-
-### Future Consideration (v2.2+)
-
-- [ ] **Multi-arch image builds (amd64/arm64)** — only relevant if deploying on ARM hosts (Raspberry Pi, AWS Graviton). Not needed for x86 server.
-- [ ] **Distroless base image** — further attack surface reduction. Requires switching the HEALTHCHECK to a Node.js script (no `wget` in distroless). Add only if a security review requires it.
-- [ ] **OCI image labels** — `LABEL org.opencontainers.image.*` metadata. Useful for container registries but not operational functionality.
-- [ ] **`read_only: true` filesystem** — high-security hardening. Requires identifying all write paths and adding `tmpfs` mounts. Only if a security audit requires it.
+**Critical dependency chain for a single auth flow:**
+1. Client hits POST /mcp, gets 401 with `resource_metadata` URL (existing)
+2. Client fetches `/.well-known/oauth-protected-resource` (existing, needs update)
+3. Client fetches `/.well-known/oauth-authorization-server` (new)
+4. Client POSTs to `/register` for DCR (new)
+5. Client opens browser to `/authorize` (new)
+6. Proxy redirects browser to Azure AD `/oauth2/v2.0/authorize` with mapped scopes (new)
+7. User authenticates at Azure AD (external)
+8. Azure AD redirects to `/oauth/callback` (new)
+9. Proxy redirects browser to client's `redirect_uri` with authorization code (new)
+10. Client POSTs to `/token` with code + code_verifier (new)
+11. Proxy forwards to Azure AD token endpoint, returns token to client (new)
+12. Client sends Bearer token to POST /mcp (existing)
 
 ---
 
-## Feature Prioritization Matrix
+## Detailed Feature Analysis
 
-| Feature | Operational Value | Implementation Cost | Priority |
-|---------|------------------|---------------------|----------|
-| Multi-stage Dockerfile | HIGH | LOW | P1 |
-| Non-root user | HIGH | LOW | P1 |
-| HEALTHCHECK | HIGH | LOW | P1 |
-| .dockerignore | HIGH | LOW | P1 |
-| docker-compose.yml (caddy_net) | HIGH | LOW | P1 |
-| restart: unless-stopped | HIGH | LOW | P1 |
-| env_file pass-through | HIGH | LOW | P1 |
-| Explicit CMD (node binary) | MEDIUM | LOW | P1 |
-| stop_grace_period: 30s | MEDIUM | LOW | P1 |
-| NODE_ENV=production in image | MEDIUM | LOW | P1 |
-| Layer caching optimization | MEDIUM | LOW | P1 |
-| no-new-privileges security_opt | MEDIUM | LOW | P2 |
-| Named image tag | LOW | LOW | P2 |
-| Multi-arch builds | LOW | MEDIUM | P3 |
-| Distroless base image | LOW | MEDIUM | P3 |
-| read_only filesystem | LOW | HIGH | P3 |
+### 1. OAuth Authorization Server Metadata
 
-**Priority key:**
-- P1: Must have for a working, secure, production-ready deployment
-- P2: Should have; low effort, add in same milestone or immediately after
-- P3: Nice to have; defer until there is a concrete driver (CI/CD, security audit, new host platform)
+**What it returns:**
+```json
+{
+  "issuer": "https://mcp.example.com",
+  "authorization_endpoint": "https://mcp.example.com/authorize",
+  "token_endpoint": "https://mcp.example.com/token",
+  "registration_endpoint": "https://mcp.example.com/register",
+  "scopes_supported": ["wikijs:read", "wikijs:write", "wikijs:admin"],
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "token_endpoint_auth_methods_supported": ["none"],
+  "code_challenge_methods_supported": ["S256"]
+}
+```
+
+**Key design decisions:**
+- `issuer` is the MCP server's own URL (MCP_RESOURCE_URL), not Azure AD
+- Scopes are bare names (not `api://` prefixed) -- scope mapping happens internally
+- `token_endpoint_auth_methods_supported: ["none"]` because Azure AD app is a public client
+- S256 is the only PKCE method (Azure AD requires it, SHA256 is the standard)
+
+**Confidence:** HIGH -- directly from MCP spec RFC 8414 requirements
+
+### 2. Dynamic Client Registration
+
+**What it accepts and returns:**
+```json
+// Request from Claude Code
+POST /register
+{
+  "client_name": "Claude Code",
+  "redirect_uris": ["http://localhost:54212/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+
+// Response from proxy
+{
+  "client_id": "<azure-ad-client-id>",
+  "client_name": "Claude Code",
+  "redirect_uris": ["http://localhost:54212/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
+
+**Key design decisions:**
+- Returns the same Azure AD `client_id` to every registering client
+- Does NOT return a `client_secret` (public client)
+- Stores the redirect_uri for validation during the authorize step (ephemeral, in-memory)
+- Validates redirect_uris: must be `http://localhost:*` or `http://127.0.0.1:*`
+
+**Azure AD localhost behavior (HIGH confidence, from Microsoft docs):**
+Azure AD ignores the port component for localhost redirect URIs. Register `http://localhost/callback` in the Azure AD app registration, and Azure AD will accept `http://localhost:54212/callback`, `http://localhost:8080/callback`, etc. This is critical because Claude Code uses ephemeral ports.
+
+**Confidence:** HIGH -- RFC 7591 is well-specified, Azure AD localhost behavior verified from Microsoft docs
+
+### 3. Scope Mapping
+
+**Mapping rules:**
+| Client sends | Proxy sends to Azure AD | Direction |
+|---|---|---|
+| `wikijs:read` | `api://{AZURE_CLIENT_ID}/wikijs:read` | Outbound (authorize/token) |
+| `wikijs:write` | `api://{AZURE_CLIENT_ID}/wikijs:write` | Outbound (authorize/token) |
+| `wikijs:admin` | `api://{AZURE_CLIENT_ID}/wikijs:admin` | Outbound (authorize/token) |
+| `offline_access` | `offline_access` | Pass-through (OIDC standard scope) |
+| `openid` | `openid` | Pass-through (OIDC standard scope) |
+
+**OIDC scopes (openid, profile, email, offline_access) are NEVER prefixed** -- they are standard scopes handled by Azure AD directly. Only custom API scopes get the `api://` prefix.
+
+**Token response scopes:** Azure AD returns scopes in the `scp` claim as short form (`wikijs:read wikijs:write`) even though they were requested in fully-qualified form. The existing JWT validation middleware already parses `scp` correctly, so no mapping is needed on the inbound side.
+
+**Confidence:** HIGH -- verified from Azure AD docs and existing middleware code
+
+### 4. Authorization Flow (Authorize + Callback)
+
+**Authorize endpoint flow:**
+1. Receive `GET /authorize?response_type=code&client_id=X&redirect_uri=Y&scope=Z&state=S&code_challenge=C&code_challenge_method=S256`
+2. Validate `client_id` matches Azure AD client_id
+3. Validate `redirect_uri` is a registered localhost URI
+4. Map bare scopes to fully-qualified Azure AD scopes
+5. Generate a transaction ID, store `{state, redirect_uri, code_challenge, code_challenge_method}` in memory
+6. Redirect browser to `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` with mapped scopes, proxy's own callback URL, and a new `state` parameter that encodes the transaction ID
+7. Azure AD shows login page, user authenticates
+
+**Callback endpoint flow:**
+1. Receive `GET /oauth/callback?code=X&state=Y` from Azure AD redirect
+2. Look up transaction by state parameter
+3. Redirect browser to original client `redirect_uri` with the Azure AD authorization code and the original client state
+
+**Why this works:** The authorization code from Azure AD is bound to the `redirect_uri` used in the authorize request. When the client exchanges the code at `/token`, the proxy forwards to Azure AD's token endpoint with the proxy's callback URL as `redirect_uri` (because that is what Azure AD expects). This is the key architectural insight -- the proxy's callback URL is the registered redirect_uri with Azure AD, not the client's localhost URL.
+
+**Transaction state:** Must be stored in memory between the authorize redirect and the callback. TTL of 10 minutes (authorization codes expire in 10 minutes at Azure AD). A `Map<string, Transaction>` with periodic cleanup is sufficient. No persistence needed -- if the server restarts during an auth flow, the user simply re-authenticates (rare and acceptable).
+
+**Confidence:** HIGH for the general pattern; MEDIUM for exact Azure AD `redirect_uri` matching behavior during code exchange
+
+### 5. Token Endpoint
+
+**Authorization code exchange:**
+```
+POST /token
+grant_type=authorization_code
+&code=<azure-ad-auth-code>
+&redirect_uri=<proxy-callback-url>
+&client_id=<azure-ad-client-id>
+&code_verifier=<pkce-verifier>
+```
+
+The proxy forwards this to `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token` and returns the response directly. The key detail: `redirect_uri` must match what was sent to the authorize endpoint -- which is the proxy's callback URL, not the client's localhost URL.
+
+**Refresh token exchange:**
+```
+POST /token
+grant_type=refresh_token
+&refresh_token=<refresh-token>
+&client_id=<azure-ad-client-id>
+&scope=<requested-scopes>
+```
+
+Forward to Azure AD, return response. Scope mapping applies (bare to fully-qualified).
+
+**Confidence:** HIGH
 
 ---
 
-## Caddy Network Integration Notes
+## MVP Recommendation
 
-The key behavior when joining `caddy_net`:
+**Priority order for implementation:**
 
-1. **No ports section in docker-compose.yml.** Caddy reaches the service at `http://wikijs-mcp-server:3200` (service name is the Docker DNS hostname). The container's port is internal to the Docker network only.
-2. **Caddy Caddyfile entry** (documentation only — managed externally): `reverse_proxy wikijs-mcp-server:3200` under the relevant virtual host. Service name must match the `container_name` or Compose service name.
-3. **External network declaration** in docker-compose.yml:
-   ```yaml
-   networks:
-     caddy_net:
-       external: true
-   ```
-   If `caddy_net` does not exist, `docker compose up` fails immediately with `network caddy_net declared as external, but could not be found`. This is the correct fail-fast behavior.
-4. **TLS termination is Caddy's responsibility.** The container speaks plain HTTP to Caddy on the internal network. MCP_RESOURCE_URL should be the public HTTPS URL that Caddy exposes, not the internal Docker URL.
+1. **OAuth Authorization Server Metadata** (`/.well-known/oauth-authorization-server`) -- enables discovery, LOW complexity, unblocks everything else
+2. **Updated Protected Resource Metadata** -- point `authorization_servers` to self, LOW complexity, required for clients to find the proxy
+3. **Dynamic Client Registration** (`POST /register`) -- returns static Azure AD client_id, MED complexity, unblocks the auth flow
+4. **Authorization + Callback Endpoints** -- the core proxy flow, HIGH complexity, this is the main work
+5. **Token Endpoint** (`POST /token`) -- proxies code exchange and refresh, MED complexity, completes the flow
+6. **Scope Mapping** -- implemented within authorize and token endpoints, not a separate feature
+
+**Defer to post-MVP:**
+- **User Consent Screen**: Important for security but not required for the basic flow to work. The attack it prevents (authorization code theft via crafted URLs) requires an attacker to know the MCP server URL AND the Azure AD app to have pre-authorized the client. In a corporate Azure AD tenant, apps are not pre-authorized by default. Add this as a hardening phase after the basic flow is verified end-to-end with Claude Desktop.
+- **Structured Proxy Logging**: Valuable but can be added after the basic flow works.
+- **Health-Check Integration for Azure AD**: Nice-to-have, not blocking.
+
+---
+
+## Client Compatibility Matrix
+
+| Client | Transport | OAuth Discovery | DCR | Pre-configured Creds | Spec Version |
+|--------|-----------|----------------|-----|---------------------|--------------|
+| Claude Code CLI | HTTP | `/.well-known/oauth-authorization-server` | Yes (default) | Yes (`--client-id`, `--callback-port`) | 2025-03-26 + 2025-06-18 |
+| Claude Desktop (web) | HTTP | `/.well-known/oauth-authorization-server` | Inconsistent (may skip DCR) | Limited | 2025-03-26 mostly |
+| Claude.ai (web connectors) | HTTP | Uses `https://claude.ai/api/mcp/auth_callback` | Backend-driven | N/A | Varies |
+| VS Code + Copilot | HTTP | RFC 9728 PRM directly | No (uses PRM) | Pre-configured | 2025-06-18 |
+| Cursor IDE | HTTP | Similar to Claude Code | Yes | Yes | 2025-03-26 |
+
+**Primary target:** Claude Code CLI with DCR (most common path for this project's users)
+**Secondary target:** Claude Code CLI with `--client-id` + `--callback-port` (simpler, no DCR needed)
+
+**Confidence:** MEDIUM -- client behavior varies between versions and is actively evolving
+
+---
+
+## Azure AD Prerequisites (External Configuration)
+
+These are NOT features to build but external configuration required before the proxy can work:
+
+| Prerequisite | Details | Who Configures |
+|---|---|---|
+| **Azure AD App Registration** | Single-tenant, public client, with `api://{client_id}` identifier URI | Azure AD admin |
+| **API Scopes Defined** | `api://{client_id}/wikijs:read`, `wikijs:write`, `wikijs:admin` under "Expose an API" | Azure AD admin |
+| **Localhost Redirect URI** | `http://localhost/callback` registered under "Mobile and desktop applications" platform | Azure AD admin |
+| **Access Token v2** | `requestedAccessTokenVersion: 2` in app manifest | Azure AD admin |
+| **Public Client Flow Enabled** | "Allow public client flows" = Yes in app registration | Azure AD admin |
+
+**New env var needed:** None additional. The existing `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` are sufficient to construct all Azure AD URLs. The proxy callback URL is derived from `MCP_RESOURCE_URL`.
+
+**Confidence:** HIGH -- standard Azure AD configuration, verified from Microsoft docs
 
 ---
 
 ## Sources
 
-### HIGH Confidence (Official Documentation)
+### Authoritative (HIGH confidence)
+- [MCP Spec 2025-03-26 Authorization](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) -- defines all MUST/SHOULD/MAY requirements for proxy pattern
+- [MCP Spec 2025-06-18 Authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) -- newer spec separating resource server from auth server
+- [RFC 7591 - Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591) -- DCR protocol
+- [Azure AD Redirect URI Rules](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) -- localhost port-agnostic matching, HTTPS requirements
+- [Claude Code MCP Docs](https://code.claude.com/docs/en/mcp) -- `--callback-port`, `--client-id`, `authServerMetadataUrl`
 
-- [Docker official guide: Containerize a Node.js application](https://docs.docker.com/guides/nodejs/containerize/) — Official multi-stage patterns
-- [nodejs/docker-node Best Practices](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md) — Official Node.js Docker best practices (non-root user, signal handling, PID 1)
-- [Docker Docs: Start containers automatically (restart policies)](https://docs.docker.com/engine/containers/start-containers-automatically/)
-- [Docker Docs: Compose Networks — external networks](https://docs.docker.com/compose/compose-file/06-networks/)
+### Verified (MEDIUM confidence)
+- [Logto MCP Auth Spec Review](https://blog.logto.io/mcp-auth-spec-review-2025-03-26) -- analysis of dual-role architecture and proxy patterns
+- [FastMCP OAuth Proxy Architecture](https://deepwiki.com/punkpeye/fastmcp/8.3-oauth-proxy) -- reference implementation of DCR + token swap proxy
+- [FastMCP Azure Integration](https://gofastmcp.com/integrations/azure) -- scope mapping, AzureProvider pattern
+- [Aaron Parecki - OAuth for MCP](https://aaronparecki.com/2025/04/03/15/oauth-for-model-context-protocol) -- architectural critique and RFC 9728 proposal
+- [GitHub Issue #205 - MCP as Resource Server](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/205) -- community discussion that led to 2025-06-18 changes
+- [Microsoft ISE - MCP Server with Azure AD](https://devblogs.microsoft.com/ise/aca-secure-mcp-server-oauth21-azure-ad/) -- enterprise deployment patterns
 
-### MEDIUM Confidence (Verified Community/Commercial Sources)
-
-- [How to Containerize a Fastify Application with Docker (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-02-08-how-to-containerize-a-fastify-application-with-docker/view) — Fastify-specific HEALTHCHECK, graceful shutdown, and non-root patterns
-- [Docker Multi-Stage Builds Guide 2026 (DevToolbox)](https://devtoolbox.dedyn.io/blog/docker-multi-stage-builds-guide) — Size reduction patterns
-- [Docker HEALTHCHECK Best Practices (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-30-docker-health-check-best-practices/view) — Interval/timeout guidance, Alpine wget note
-- [Caddy as a Docker-Compose Reverse Proxy (WirelessMoves, 2025)](https://blog.wirelessmoves.com/2025/06/caddy-as-a-docker-compose-reverse-proxy.html) — External network Caddy pattern
-- [Docker Restart Policies (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-16-docker-restart-policies/view) — unless-stopped vs always comparison
-- [Node.js Docker Security: Non-Root User (Goldbergyoni Node Best Practices)](https://github.com/goldbergyoni/nodebestpractices/blob/master/sections/security/non-root-user.md) — Production security rationale
-- [Docker Graceful Shutdown and Signal Handling (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-16-docker-graceful-shutdown-signals/view) — SIGTERM/PID 1 problem explained
-- [Docker Health Checks (Dash0 Guide)](https://www.dash0.com/guides/docker-health-check-a-practical-guide) — Practical healthcheck configuration
-
-### LOW Confidence (Single Source / Community)
-
-- Node.js Alpine wget availability: verified in multiple sources (Alpine ships wget, not curl), but the specific `node:20-alpine` image was not directly verified via `docker run` — **verify with `docker run node:20-alpine which wget`** before relying on it.
-
----
-
-*Feature research for: Docker deployment of wikijs-mcp-server behind Caddy reverse proxy*
-*Researched: 2026-03-25*
+### Community (LOW confidence, needs validation)
+- [Claude Code Issue #2527 - Azure AD DCR](https://github.com/anthropics/claude-code/issues/2527) -- ephemeral port behavior, redirect_uri issues
+- [MCP Auth Consent Discussion #265](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/265) -- consent screen attack scenarios
+- [Obsidian Security - MCP OAuth Pitfalls](https://www.obsidiansecurity.com/blog/when-mcp-meets-oauth-common-pitfalls-leading-to-one-click-account-takeover) -- confused deputy attacks in MCP
