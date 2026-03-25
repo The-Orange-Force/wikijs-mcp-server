@@ -38,3 +38,20 @@ export function stripResourceParam(
   const { resource: _, ...rest } = params;
   return rest;
 }
+
+/**
+ * Reverse-map Azure AD scopes back to bare MCP format.
+ *
+ * Strips the `api://{clientId}/` prefix from scopes in Azure AD's token
+ * response so MCP clients see bare scope names (wikijs:read, not
+ * api://clientId/wikijs:read). OIDC scopes (openid, offline_access) and
+ * scopes with a different prefix pass through unchanged.
+ */
+export function unmapScopes(scopeString: string, clientId: string): string {
+  if (!scopeString) return scopeString;
+  const prefix = `api://${clientId}/`;
+  return scopeString
+    .split(" ")
+    .map((scope) => scope.startsWith(prefix) ? scope.slice(prefix.length) : scope)
+    .join(" ");
+}

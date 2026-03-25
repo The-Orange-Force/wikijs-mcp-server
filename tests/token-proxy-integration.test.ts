@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
-import formbody from "@fastify/formbody";
 import { oauthProxyRoutes } from "../src/routes/oauth-proxy.js";
 import { makeTestConfig } from "./helpers/build-test-app.js";
 
@@ -15,7 +14,6 @@ describe("POST /token integration", () => {
 
   beforeAll(async () => {
     app = Fastify({ logger: false });
-    await app.register(formbody);
     await app.register(oauthProxyRoutes, { appConfig, fetch: mockFetch });
     await app.ready();
   });

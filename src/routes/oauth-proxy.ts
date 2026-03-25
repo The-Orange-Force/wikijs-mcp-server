@@ -11,10 +11,12 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import formbody from "@fastify/formbody";
 import type { AppConfig } from "../config.js";
 import { SUPPORTED_SCOPES } from "../scopes.js";
 import { mapScopes } from "../oauth-proxy/scope-mapper.js";
 import { buildAzureEndpoints } from "../oauth-proxy/azure-endpoints.js";
+import { handleTokenRequest } from "../oauth-proxy/token-proxy.js";
 
 /**
  * Options for the OAuth proxy routes plugin.
@@ -22,6 +24,8 @@ import { buildAzureEndpoints } from "../oauth-proxy/azure-endpoints.js";
 export interface OAuthProxyOptions {
   /** Application configuration */
   appConfig: AppConfig;
+  /** Optional fetch function for testability (defaults to globalThis.fetch) */
+  fetch?: typeof globalThis.fetch;
 }
 
 /**
@@ -32,6 +36,10 @@ export async function oauthProxyRoutes(
   opts: OAuthProxyOptions,
 ): Promise<void> {
   const { appConfig } = opts;
+  const fetchFn = opts.fetch ?? globalThis.fetch;
+
+  // Register form body parser scoped to this plugin only
+  await fastify.register(formbody);
 
   // Build metadata once at registration time (not per-request)
   const metadata = {
@@ -179,5 +187,34 @@ export async function oauthProxyRoutes(
     // -- 7. Log and redirect --
     request.log.info("authorization redirect");
     return reply.redirect(azureUrl);
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /token -- OAuth token exchange proxy (Phase 13)
+  // ---------------------------------------------------------------------------
+
+  fastify.post("/token", async (request, reply) => {
+    const body = request.body as Record<string, string>;
+    const startTime = Date.now();
+
+    const result = await handleTokenRequest(body, {
+      clientId: appConfig.azure.clientId,
+      tokenEndpoint: buildAzureEndpoints(appConfig.azure.tenantId).token,
+      fetch: fetchFn,
+      log: request.log,
+    });
+
+    const duration = Date.now() - startTime;
+    reply.header("X-Upstream-Duration-Ms", String(duration));
+    reply.header("Cache-Control", "no-store");
+    reply.header("Pragma", "no-cache");
+    reply.header("Content-Type", "application/json");
+
+    request.log.info(
+      { grantType: body?.grant_type, upstreamStatus: result.status, durationMs: duration },
+      "token proxy request",
+    );
+
+    return reply.status(result.status).send(result.body);
   });
 }
