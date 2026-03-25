@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: OAuth Authorization Proxy
 status: completed
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-25T21:26:49.967Z"
-last_activity: "2026-03-25 — Executed 12-01: GET /authorize redirect proxy with scope mapping"
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-03-25T21:35:33.000Z"
+last_activity: "2026-03-25 — Executed 13-01: POST /token proxy with AADSTS normalization"
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.2 OAuth Authorization Proxy — Phase 12 complete, ready for Phase 13
+**Current focus:** v2.2 OAuth Authorization Proxy — Phase 13 complete, ready for Phase 14
 
 ## Current Position
 
-Phase: 12 of 14 (Authorization Redirect Endpoint)
+Phase: 13 of 14 (Token Proxy Endpoint)
 Plan: 1 of 1 (complete)
-Status: Phase 12 complete
-Last activity: 2026-03-25 — Executed 12-01: GET /authorize redirect proxy with scope mapping
+Status: Phase 13 complete
+Last activity: 2026-03-25 — Executed 13-01: POST /token proxy with AADSTS normalization
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2min
-- Total execution time: 7min
+- Total plans completed: 4
+- Average duration: 3min
+- Total execution time: 12min
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [██████████] 100%
 | 10 | 1 | 2min | 2min |
 | 11 | 1 | 2min | 2min |
 | 12 | 1 | 3min | 3min |
+| 13 | 1 | 5min | 5min |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - [Phase 11]: All metadata endpoint URLs point to self (MCP_RESOURCE_URL), not Azure AD
 - [Phase 12]: Two-phase OAuth error handling — JSON 400 pre-redirect_uri, redirect errors post-redirect_uri
 - [Phase 12]: Phase 11 oauth-proxy plugin prerequisite created inline (Rule 3 deviation)
+- [Phase 13]: AADSTS-specific descriptions override generic ones for ambiguous codes
+- [Phase 13]: @fastify/formbody registered inside oauth-proxy plugin scope (not global)
+- [Phase 13]: fetch is optional in OAuthProxyOptions, defaults to globalThis.fetch
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:22:00.000Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-25T21:35:33.000Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None

@@ -27,9 +27,9 @@
 
 ### Token
 
-- [ ] **TOKN-01**: `POST /token` proxies `authorization_code` grant to Azure AD token endpoint and returns the response
-- [ ] **TOKN-02**: `POST /token` proxies `refresh_token` grant to Azure AD token endpoint and returns the response
-- [ ] **TOKN-03**: Token endpoint normalizes Azure AD `AADSTS*` error responses to standard OAuth 2.0 error format
+- [x] **TOKN-01**: `POST /token` proxies `authorization_code` grant to Azure AD token endpoint and returns the response
+- [x] **TOKN-02**: `POST /token` proxies `refresh_token` grant to Azure AD token endpoint and returns the response
+- [x] **TOKN-03**: Token endpoint normalizes Azure AD `AADSTS*` error responses to standard OAuth 2.0 error format
 
 ### Integration
 
@@ -68,9 +68,9 @@
 | REGN-01 | Phase 11 | Complete |
 | AUTHZ-01 | Phase 12 | Complete |
 | AUTHZ-02 | Phase 12 | Complete |
-| TOKN-01 | Phase 13 | Pending |
-| TOKN-02 | Phase 13 | Pending |
-| TOKN-03 | Phase 13 | Pending |
+| TOKN-01 | Phase 13 | Complete |
+| TOKN-02 | Phase 13 | Complete |
+| TOKN-03 | Phase 13 | Complete |
 | INTG-01 | Phase 14 | Pending |
 | INTG-02 | Phase 14 | Pending |
 

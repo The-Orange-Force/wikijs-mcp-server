@@ -42,7 +42,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 - [x] **Phase 10: Scope Mapper and Azure Endpoint Utils** - Pure-function utilities for scope transformation and Azure AD URL construction (completed 2026-03-25)
 - [x] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses (completed 2026-03-25)
 - [x] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes (completed 2026-03-25)
-- [ ] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD
+- [x] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD (completed 2026-03-25)
 - [ ] **Phase 14: Wire Up and Protected Resource Metadata Switch** - Register proxy plugin in server, update metadata to reference self as authorization server
 
 ## Phase Details
@@ -96,7 +96,7 @@ Plans:
   3. Azure AD `AADSTS*` error responses are normalized to standard OAuth 2.0 error format (`error`, `error_description`) before returning to the client
   4. The `resource` parameter is stripped and scopes are mapped to Azure AD format before proxying
   5. The proxy uses injected `fetch` function for test isolation without real Azure AD calls
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 13-01-PLAN.md — TDD: POST /token proxy with AADSTS normalization, scope mapping, and injected fetch
 
@@ -122,7 +122,7 @@ Plans:
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 1/1 | Complete    | 2026-03-25 |
 | 12. Authorization Redirect Endpoint | 1/1 | Complete    | 2026-03-25 |
-| 13. Token Proxy Endpoint | 0/1 | Not started | - |
+| 13. Token Proxy Endpoint | 1/1 | Complete   | 2026-03-25 |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
 
 ---
