@@ -96,7 +96,9 @@ Plans:
   3. Azure AD `AADSTS*` error responses are normalized to standard OAuth 2.0 error format (`error`, `error_description`) before returning to the client
   4. The `resource` parameter is stripped and scopes are mapped to Azure AD format before proxying
   5. The proxy uses injected `fetch` function for test isolation without real Azure AD calls
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 13-01-PLAN.md — TDD: POST /token proxy with AADSTS normalization, scope mapping, and injected fetch
 
 ### Phase 14: Wire Up and Protected Resource Metadata Switch
 **Goal**: Claude Desktop completes the full OAuth flow end-to-end against the running server
@@ -118,7 +120,7 @@ Plans:
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 0/1 | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/1 | Not started | - |
-| 13. Token Proxy Endpoint | 0/? | Not started | - |
+| 13. Token Proxy Endpoint | 0/1 | Not started | - |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/? | Not started | - |
 
 ---
