@@ -1,0 +1,30 @@
+# Dependencies — install fresh inside Docker, never copy from host (cross-platform binary risk)
+node_modules/
+
+# Secrets — must never enter the image layers
+.env
+.env.*
+
+# Build output — generated inside builder stage, not needed from host
+dist/
+
+# Source control
+.git/
+.gitignore
+
+# Planning and documentation — not needed at runtime
+.planning/
+*.md
+!README.md
+
+# Dev tools, tests, and scripts
+tests/
+scripts/
+
+# OS and editor artifacts
+.DS_Store
+*.log
+*.swp
+*.swo
+.idea/
+.vscode/
