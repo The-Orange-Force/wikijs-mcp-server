@@ -1,547 +1,466 @@
-# Architecture Patterns
+# Architecture Research
 
-**Domain:** OAuth 2.1 resource server layer for an existing MCP server (Fastify + Node.js)
-**Researched:** 2026-03-24
+**Domain:** Docker deployment of a TypeScript/Fastify MCP server behind Caddy reverse proxy
+**Researched:** 2026-03-25
+**Confidence:** HIGH
 
-## Recommended Architecture
+## Standard Architecture
 
-The OAuth 2.1 resource server layer is a **middleware insertion** into the existing Fastify request lifecycle, not a separate service. It sits between incoming HTTP requests and the existing MCP JSON-RPC handler, validating Bearer tokens before any tool execution occurs.
-
-### High-Level Component Diagram
-
-```
-                                    Fastify Server (unified)
-                                    ========================
-
-  MCP Client ──── HTTP ────>  [ Route Registration ]
-  (Claude Desktop)                    |
-                                      |
-                          +-----------+-----------+
-                          |                       |
-                    Public Routes           Protected Routes
-                    (no auth)               (auth required)
-                          |                       |
-                    /.well-known/         onRequest hook:
-                    oauth-protected-      [ Bearer Token
-                     resource              Extraction ]
-                          |                       |
-                    /health               [ JWT Validation ]
-                                          (jose: jwtVerify +
-                                           createRemoteJWKSet)
-                                                  |
-                                          [ Audience Check ]
-                                          (aud == AZURE_CLIENT_ID)
-                                                  |
-                                          [ MCP JSON-RPC Handler ]
-                                          (tools/list, tools/call,
-                                           initialize, etc.)
-                                                  |
-                                          [ WikiJS GraphQL API ]
-                                          (server-side WIKIJS_TOKEN)
-```
-
-### Component Boundaries
-
-| Component | Responsibility | Communicates With | Location |
-|-----------|---------------|-------------------|----------|
-| **Fastify Server** | HTTP listener, route registration, lifecycle hooks | All components | `src/server.ts` (unified, replaces both current servers) |
-| **OAuth Config** | Loads and validates Azure AD tenant/client/resource env vars | Server startup | `src/auth/config.ts` |
-| **JWKS Provider** | Creates and caches remote JWKS key set from Azure AD | JWT Validator | `src/auth/jwks.ts` |
-| **JWT Validator** | Extracts Bearer token, verifies signature + claims | JWKS Provider, Fastify hook system | `src/auth/validate.ts` |
-| **Auth Hook** | Fastify `onRequest` hook that runs JWT Validator on protected routes | JWT Validator, Fastify route system | `src/auth/hook.ts` |
-| **Protected Resource Metadata** | Serves RFC 9728 JSON document at well-known URI | MCP Clients (discovery) | `src/auth/metadata.ts` |
-| **MCP Transport Handler** | JSON-RPC 2.0 request/response over HTTP POST, SSE events | WikiJS API, Tool implementations | `src/mcp/transport.ts` (ported from `lib/fixed_mcp_http_server.js`) |
-| **WikiJS API** | GraphQL client to WikiJS instance | WikiJS server | `src/api.ts` (existing) |
-| **Tool Registry** | Tool definitions, parameter validation, execution | WikiJS API | `src/tools.ts` + `src/schemas.ts` (existing) |
-
-### Request Flow: Authenticated MCP Call
+### System Overview
 
 ```
-1. Client sends:  POST /mcp
-                  Authorization: Bearer eyJhbG...
-                  Content-Type: application/json
-                  {"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_pages",...},"id":1}
-
-2. Fastify onRequest hook fires (before body parsing):
-   a. Extract "Bearer <token>" from Authorization header
-   b. If missing/malformed -> 401 with WWW-Authenticate header
-   c. Call jose.jwtVerify(token, JWKS, {
-        issuer: expectedIssuer,    // Azure AD tenant issuer URL
-        audience: AZURE_CLIENT_ID, // app registration client ID
-        algorithms: ['RS256']
-      })
-   d. If invalid/expired -> 401 with WWW-Authenticate header
-   e. Attach decoded payload to request (request.user or request.jwtPayload)
-
-3. Fastify route handler receives verified request:
-   a. Parse JSON-RPC body
-   b. Route to appropriate tool
-   c. Execute tool against WikiJS API (using server-side WIKIJS_TOKEN)
-   d. Return JSON-RPC response
-
-4. Client receives:  200 OK
-                     {"jsonrpc":"2.0","id":1,"result":{...}}
+┌──────────────────────────────────────────────────────────────────┐
+│                    Docker Host                                   │
+│                                                                  │
+│  ┌─────────────────────────┐        ┌────────────────────────┐   │
+│  │  Caddy container        │        │  wikijs-mcp container  │   │
+│  │  (ports 80/443 mapped   │        │  (internal port 3200)  │   │
+│  │   to host)              │──────► │  no published ports    │   │
+│  │  TLS termination        │caddy_  │  stateless Fastify app │   │
+│  │  reverse_proxy          │net     │                        │   │
+│  │  wikijs-mcp:3200        │        │                        │   │
+│  └─────────────────────────┘        └────────────┬───────────┘   │
+│                                                  │               │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                    caddy_net (external Docker network)       │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+        ▲                                          │ outbound HTTPS
+        │ HTTPS (port 443)                         ▼
+  MCP Clients                           ┌──────────────────────┐
+  (Claude Desktop,                      │  Azure AD JWKS       │
+   Claude Code)                         │  (login.microsoft-   │
+                                        │  online.com)         │
+                                        └──────────────────────┘
+                                                   │
+                                                   │ outbound HTTPS
+                                                   ▼
+                                        ┌──────────────────────┐
+                                        │  Wiki.js (remote)    │
+                                        │  GraphQL API         │
+                                        │  WIKIJS_BASE_URL     │
+                                        └──────────────────────┘
 ```
 
-### Request Flow: Unauthenticated Discovery
-
+**Full request path:**
 ```
-1. Client sends:  POST /mcp  (no Authorization header)
-
-2. Fastify onRequest hook fires:
-   a. No Bearer token found
-   b. Return 401 Unauthorized
-      WWW-Authenticate: Bearer resource_metadata="https://<MCP_RESOURCE_URL>/.well-known/oauth-protected-resource"
-
-3. Client sends:  GET /.well-known/oauth-protected-resource
-
-4. Fastify route handler (public, no auth):
-   Return 200 OK with:
-   {
-     "resource": "https://<MCP_RESOURCE_URL>",
-     "authorization_servers": [
-       "https://login.microsoftonline.com/<AZURE_TENANT_ID>/v2.0"
-     ],
-     "scopes_supported": [],
-     "bearer_methods_supported": ["header"]
-   }
-
-5. Client discovers Azure AD authorization server.
-   Client fetches: GET https://login.microsoftonline.com/<AZURE_TENANT_ID>/v2.0/.well-known/openid-configuration
-   (Azure AD's own endpoint, not ours)
-
-6. Client performs OAuth 2.1 authorization_code + PKCE flow with Azure AD.
-   Client obtains access token.
-
-7. Client retries:  POST /mcp  WITH Authorization: Bearer <token>
-   (Flow continues as "Authenticated MCP Call" above)
+MCP Client (Claude Desktop / Claude Code)
+    │ HTTPS POST https://mcp.example.com/mcp
+    │ Authorization: Bearer <Azure AD token>
+    ▼
+Caddy (TLS terminated, routes to wikijs-mcp:3200 via caddy_net)
+    │ HTTP (plain) on internal caddy_net
+    ▼
+wikijs-mcp Fastify (0.0.0.0:3200 inside container)
+    │ Auth middleware: jwtVerify against Azure JWKS
+    │ Scope enforcement (wikijs:read/write/admin)
+    │ MCP tool dispatch
+    ▼
+Wiki.js GraphQL API (WIKIJS_BASE_URL — outbound from container)
+    │ Result returned
+    ▼
+MCP JSON-RPC 200 response → Caddy → client
 ```
 
-### Request Flow: SSE Event Stream
+### Component Responsibilities
+
+| Component | Responsibility | Notes |
+|-----------|----------------|-------|
+| Dockerfile (build stage) | Install all deps (including devDeps), run `tsc`, produce `dist/` | `node:20-slim AS builder`; TypeScript compiler lives only here |
+| Dockerfile (runtime stage) | Copy `dist/` + run `npm ci --omit=dev` for production deps | `node:20-slim AS runtime`; no compiler, no test runner, no source files |
+| docker-compose.yml | Declare service, env_file, healthcheck, network membership | Joins external `caddy_net`; no `ports:` block; `expose: ["3200"]` for documentation |
+| .dockerignore | Exclude `node_modules/`, `dist/`, `src/`, `.git`, test files | Prevents stale or dev-only content entering build context; critical for performance |
+| Caddyfile (external, existing) | TLS termination + `reverse_proxy wikijs-mcp:3200` | Owned by the operator's Caddy deployment; references service by Docker DNS name |
+
+## Recommended Project Structure
 
 ```
-1. Client sends:  GET /mcp/events
-                  Authorization: Bearer eyJhbG...
-
-2. Fastify onRequest hook fires:
-   a. Validate Bearer token (same as POST /mcp)
-   b. If invalid -> 401
-
-3. Fastify route handler:
-   a. Set response headers: Content-Type: text/event-stream, etc.
-   b. Hold connection open
-   c. Push SSE events as tool executions occur
-
-Note: SSE connections are long-lived. Token expiry during an active SSE
-connection is a design decision -- options:
-  (a) Let it ride until disconnect (simpler, acceptable for internal use)
-  (b) Periodic re-validation (complex, unnecessary for this use case)
-  Recommendation: Option (a). Validate once at connection open.
+wikijs-mcp-server/
+├── src/                   # TypeScript source (existing, unchanged)
+├── dist/                  # tsc output (excluded from build context via .dockerignore)
+├── node_modules/          # All deps (excluded from build context via .dockerignore)
+├── tests/                 # Test files (excluded from build context)
+├── .planning/             # GSD planning files (excluded from build context)
+├── Dockerfile             # NEW: multi-stage build (builder + runtime stages)
+├── docker-compose.yml     # NEW: single-service deployment, external caddy_net
+├── .dockerignore          # NEW: build context exclusions
+├── example.env            # Existing: env var template (operator creates .env from this)
+├── package.json           # Existing: engines.node >=20; build/start scripts unchanged
+└── tsconfig.json          # Existing: outDir "dist", NodeNext — no changes needed
 ```
 
-## Patterns to Follow
+### Structure Rationale
 
-### Pattern 1: Fastify `onRequest` Hook for Auth (Not `preHandler`)
+- **Dockerfile at root:** Docker convention. `docker build .` works from repo root without extra flags.
+- **docker-compose.yml at root:** Pairs with Dockerfile. `docker compose up -d` from root.
+- **.dockerignore at root:** Must sit beside the Dockerfile. Docker reads it automatically on every `docker build`.
+- **No `volumes:` in compose:** Server is fully stateless (all config via env vars). Wiki.js lives on a separate host; no shared filesystem needed.
+- **No `ports:` in compose:** Caddy reaches the container via the shared Docker network. Publishing a host port would expose the MCP endpoint over plain HTTP, bypassing TLS.
 
-**What:** Use `onRequest` lifecycle hook for JWT validation, not `preHandler` or `preValidation`.
+## Architectural Patterns
 
-**Why:** `onRequest` fires before body parsing. Since the Bearer token is in the HTTP header, there is no reason to parse the request body before rejecting unauthorized requests. This saves CPU and memory on invalid requests.
+### Pattern 1: Multi-Stage TypeScript Build
 
-**Implementation:**
+**What:** Split the Dockerfile into a `builder` stage (full Node.js + TypeScript toolchain) and a `runtime` stage (minimal Node.js, only compiled output and production deps). The builder stage runs `tsc`; the runtime stage copies `dist/` and runs `npm ci --omit=dev`.
 
-```typescript
-// src/auth/hook.ts
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { validateToken } from './validate.js';
+**When to use:** Every TypeScript project packaged for production. The TypeScript compiler, vitest, tsx, nodemon are devDependencies — they must never appear in the final image.
 
-export async function authHook(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  const authHeader = request.headers.authorization;
+**Trade-offs:** Build is slightly slower (two `npm ci` runs), but final image is ~150–200 MB instead of ~900 MB. The cache layer for `node_modules` in the builder is independent from the runtime — this is intentional and correct.
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    reply.code(401).header(
-      'WWW-Authenticate',
-      `Bearer resource_metadata="${getResourceMetadataUrl()}"`
-    ).send({ error: 'Authorization required' });
-    return;
-  }
+**Key detail for NodeNext/ESM:** `tsc` with `"module": "NodeNext"` and `"outDir": "dist"` emits `.js` files with `import` statements (ESM). The runtime image runs `node dist/server.js` directly — no transpilation at runtime. The existing `package.json` `"type": "module"` field is respected by Node.js, so ESM imports in `dist/` resolve correctly without any extra runtime flags.
 
-  const token = authHeader.slice(7);
+**Dockerfile (concrete for this project):**
 
-  try {
-    const payload = await validateToken(token);
-    // Attach to request for downstream use (logging, audit)
-    request.jwtPayload = payload;
-  } catch (err) {
-    reply.code(401).header(
-      'WWW-Authenticate',
-      `Bearer resource_metadata="${getResourceMetadataUrl()}", error="invalid_token"`
-    ).send({ error: 'Invalid or expired token' });
-    return;
-  }
+```dockerfile
+# ── Stage 1: builder ────────────────────────────────────────────
+FROM node:20-slim AS builder
+WORKDIR /app
+
+# Layer cache: reinstall only when manifests change
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and compile TypeScript
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
+# Result: dist/ contains compiled .js + .d.ts + .js.map files
+
+# ── Stage 2: runtime ────────────────────────────────────────────
+FROM node:20-slim AS runtime
+WORKDIR /app
+
+# Production deps only (no typescript, vitest, tsx, nodemon)
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Compiled application from builder
+COPY --from=builder /app/dist ./dist
+
+# Non-root user (security baseline)
+RUN groupadd -r nodegroup && useradd -r -g nodegroup -u 1001 nodeuser
+USER nodeuser
+
+# Internal container port (documentation only; not published to host)
+EXPOSE 3200
+
+# Health check via Node built-in fetch (Node 18+; no curl install needed)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
+  CMD node -e \
+    "fetch('http://localhost:3200/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+
+CMD ["node", "dist/server.js"]
+```
+
+**Why `node:20-slim` over `node:20-alpine`:**
+Alpine uses musl libc, which is not an officially supported Node.js build target. Node.js has no official Alpine builds — the available Alpine images are community-maintained and carry experimental status. `node:20-slim` is a Debian-based image that is ~25% larger than Alpine but is the de facto production recommendation. It avoids an entire class of musl/glibc incompatibility issues that can appear in transitive npm dependencies. For this project (`jose`, `fastify`, `graphql-request`, `zod` — all pure JS with no native addons), both would likely work, but `slim` is the defensible choice.
+
+### Pattern 2: External Caddy Network in docker-compose.yml
+
+**What:** Declare `caddy_net` as `external: true` in the `networks:` block. The service joins this pre-existing network. Caddy (which already owns `caddy_net`) resolves the container by its service name via Docker's internal DNS, routing requests to `wikijs-mcp:3200` without any host port mapping.
+
+**When to use:** Any service that lives behind a Caddy reverse proxy on the same Docker host where Caddy already has an established external network.
+
+**Trade-offs:** The external network must exist before `docker compose up`. This is a one-time host setup step (`docker network create caddy_net`). The benefit is that this compose file does not interfere with Caddy's compose file — they are independently managed.
+
+**docker-compose.yml (concrete for this project):**
+
+```yaml
+services:
+  wikijs-mcp:
+    build: .
+    image: wikijs-mcp:latest
+    container_name: wikijs-mcp
+    restart: unless-stopped
+    networks:
+      - caddy_net
+    # No `ports:` block — Caddy reaches container via caddy_net
+    # `expose` is metadata only; does not publish to host
+    expose:
+      - "3200"
+    env_file:
+      - .env
+    environment:
+      PORT: "3200"
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:3200/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  caddy_net:
+    external: true
+```
+
+**`expose` vs `ports`:**
+- `expose: ["3200"]` — documents the port in container metadata; allows inter-container communication on the shared network; does NOT open a host port. Correct for a Caddy-backed service.
+- `ports: ["3200:3200"]` — maps host port 3200 → container port 3200; makes the service reachable from outside Docker on plain HTTP. This is a security anti-pattern for a JWT-protected endpoint that expects TLS.
+
+**Caddy Caddyfile entry (operator configures this separately):**
+```caddyfile
+mcp.example.com {
+    reverse_proxy wikijs-mcp:3200
 }
 ```
+Docker DNS resolves `wikijs-mcp` to the container's IP address on `caddy_net`. Caddy handles TLS automatically (Let's Encrypt / ZeroSSL).
 
-**Route registration (selective application):**
+### Pattern 3: HEALTHCHECK via Node Built-in Fetch
 
-```typescript
-// Only protected routes get the auth hook
-server.post('/mcp', { onRequest: authHook }, mcpHandler);
-server.get('/mcp/events', { onRequest: authHook }, sseHandler);
+**What:** Use Node.js 18+ `fetch` in the `HEALTHCHECK CMD` instead of `curl` or `wget`. Avoids installing additional packages in the runtime image.
 
-// Public routes -- no hook
-server.get('/health', healthHandler);
-server.get('/.well-known/oauth-protected-resource', metadataHandler);
-```
+**When to use:** `node:20-slim` does not include `curl` by default. Installing it via `apt-get` adds ~2 MB and a package to update. `wget` is also not present in slim. Node 18+ `fetch` is stable and available in the runtime image with no install step.
 
-### Pattern 2: Singleton JWKS with Lazy Initialization
+**Trade-offs:** The `node -e "..."` inline script is slightly harder to read, but it is self-contained and requires no extra image layer.
 
-**What:** Create the remote JWKS key set once at module level, reuse across all requests.
+**Important note on the /health endpoint:** The existing `/health` route in `src/routes/public-routes.ts` returns HTTP 200 with `{ "status": "ok" }` when healthy and HTTP 200 with `{ "status": "error" }` when Wiki.js is unreachable. The healthcheck uses `r.ok` (true for HTTP 200–299), so it will always pass as long as Fastify is responding — even if Wiki.js is down. This is intentional for the container healthcheck (Fastify liveliness matters most; Wiki.js connectivity is an application concern). If a stricter check is wanted later, the `/health` route should return 503 when upstream is unavailable.
 
-**Why:** `jose.createRemoteJWKSet` handles caching, cooldown, and key rotation internally. Creating it per-request would defeat caching and potentially trigger rate limits against Azure AD's JWKS endpoint.
+**`--start-period=10s`:** Fastify starts in under 1 second for this server. A 10-second start period is conservative and sufficient. No migrations, no cache warming.
 
-**Implementation:**
+### Pattern 4: .dockerignore Build Context Exclusions
 
-```typescript
-// src/auth/jwks.ts
-import { createRemoteJWKSet } from 'jose';
-import { authConfig } from './config.js';
+**What:** A `.dockerignore` file at the repo root that prevents large and irrelevant directories from being sent to the Docker daemon as build context.
 
-// Singleton -- jose handles caching and key rotation internally.
-// Azure AD rotates keys roughly every 24 hours; jose's built-in
-// cooldown prevents excessive fetches.
-let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+**When to use:** Always. Without `.dockerignore`, `node_modules/` (hundreds of MB) and `dist/` (stale compiled output) are included in the build context, dramatically slowing `docker build`.
 
-export function getJWKS() {
-  if (!_jwks) {
-    const jwksUrl = new URL(
-      `https://login.microsoftonline.com/${authConfig.tenantId}/discovery/v2.0/keys`
-    );
-    _jwks = createRemoteJWKSet(jwksUrl);
-  }
-  return _jwks;
-}
-```
-
-### Pattern 3: Strict JWT Validation with Explicit Claims
-
-**What:** Validate issuer, audience, and algorithm explicitly. Do not rely on defaults.
-
-**Why:** The MCP spec (June 2025 update) MUST-level requires audience validation. Azure AD tokens have known issuer formats that vary by v1/v2 -- being explicit prevents accepting tokens from wrong tenants or wrong app registrations.
-
-**Implementation:**
-
-```typescript
-// src/auth/validate.ts
-import { jwtVerify, JWTPayload } from 'jose';
-import { getJWKS } from './jwks.js';
-import { authConfig } from './config.js';
-
-export async function validateToken(token: string): Promise<JWTPayload> {
-  const jwks = getJWKS();
-
-  // Azure AD v2 tokens use this issuer format.
-  // If the app registration has accessTokenAcceptedVersion: 2 in its manifest,
-  // tokens will have iss = https://login.microsoftonline.com/{tenant}/v2.0
-  // If accessTokenAcceptedVersion: null or 1, iss = https://sts.windows.net/{tenant}/
-  const { payload } = await jwtVerify(token, jwks, {
-    issuer: authConfig.expectedIssuer,
-    audience: authConfig.clientId,
-    algorithms: ['RS256'],
-  });
-
-  return payload;
-}
-```
-
-### Pattern 4: Configuration Module with Validation at Startup
-
-**What:** Load all auth-related environment variables in a single config module, validate them at import time, and fail fast if misconfigured.
-
-**Why:** Better to crash at startup with a clear error than to silently accept requests with missing config and fail at runtime.
-
-**Implementation:**
-
-```typescript
-// src/auth/config.ts
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-// Eagerly load -- crashes at startup if missing
-export const authConfig = {
-  tenantId: requireEnv('AZURE_TENANT_ID'),
-  clientId: requireEnv('AZURE_CLIENT_ID'),
-  resourceUrl: requireEnv('MCP_RESOURCE_URL'),
-
-  // Derived values
-  get expectedIssuer(): string {
-    // v2 token format. Adjust if your app registration
-    // uses accessTokenAcceptedVersion: 1 (then use sts.windows.net)
-    return `https://login.microsoftonline.com/${this.tenantId}/v2.0`;
-  },
-
-  get jwksUrl(): string {
-    return `https://login.microsoftonline.com/${this.tenantId}/discovery/v2.0/keys`;
-  },
-
-  get metadataUrl(): string {
-    return `${this.resourceUrl}/.well-known/oauth-protected-resource`;
-  },
-} as const;
-```
-
-### Pattern 5: Static Protected Resource Metadata Response
-
-**What:** Serve the RFC 9728 metadata as a plain JSON object from a Fastify route handler. No dynamic computation needed.
-
-**Why:** The metadata values are all derived from environment configuration and do not change at runtime. Building the response object once and returning it is the simplest approach. No database, no external calls.
-
-**Implementation:**
-
-```typescript
-// src/auth/metadata.ts
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { authConfig } from './config.js';
-
-export async function protectedResourceMetadataHandler(
-  _request: FastifyRequest,
-  _reply: FastifyReply
-) {
-  return {
-    resource: authConfig.resourceUrl,
-    authorization_servers: [
-      `https://login.microsoftonline.com/${authConfig.tenantId}/v2.0`
-    ],
-    bearer_methods_supported: ['header'],
-    scopes_supported: [],
-    resource_documentation: undefined,
-  };
-}
-```
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Using `@fastify/jwt` or `fastify-jwt-jwks` Plugins
-
-**What:** Installing a Fastify plugin that wraps JWT verification.
-
-**Why bad:** These plugins add their own decoration patterns (`request.jwtVerify()`, `fastify.jwt.verify()`), secret/key management, and cookie support that we do not need. The `jose` library alone provides exactly what is required: `createRemoteJWKSet` + `jwtVerify`. Adding a plugin layer on top creates indirection, makes debugging harder, and increases the dependency surface. The plugins also tend to assume the server issued the tokens (full JWT lifecycle), whereas we are purely a resource server consuming externally-issued tokens.
-
-**Instead:** Use `jose` directly in a custom `onRequest` hook. Total code: approximately 60 lines across config + jwks + validate + hook modules.
-
-### Anti-Pattern 2: Token Validation Inside the JSON-RPC Handler
-
-**What:** Checking the Authorization header inside the `POST /mcp` route handler body, after the JSON-RPC payload has already been parsed.
-
-**Why bad:** Wastes resources parsing request bodies for unauthorized requests. Also mixes concerns: authentication should be resolved before the application layer sees the request. The Fastify lifecycle is designed precisely for this separation.
-
-**Instead:** Use `onRequest` hook. The JSON-RPC handler only runs if auth has already passed.
-
-### Anti-Pattern 3: Per-Request JWKS Fetching
-
-**What:** Calling `createRemoteJWKSet(url)` inside each request handler or creating a new instance for each verification.
-
-**Why bad:** `createRemoteJWKSet` is designed to be instantiated once and reused. It manages an internal cache with cooldown periods. Creating it per-request would fetch keys from Azure AD on every single request, introducing latency and risking rate-limiting.
-
-**Instead:** Create a singleton instance (see Pattern 2 above).
-
-### Anti-Pattern 4: Accepting Both v1 and v2 Token Formats
-
-**What:** Accepting issuer claims from both `https://sts.windows.net/{tenant}/` and `https://login.microsoftonline.com/{tenant}/v2.0` to be "flexible."
-
-**Why bad:** This doubles the attack surface. The app registration in Azure AD should be configured to issue one token version. Accepting both means the server cannot distinguish between a legitimately-issued token and one that was issued under different configuration. The `jose` `jwtVerify` `issuer` option performs exact string match intentionally.
-
-**Instead:** Configure the Azure AD app registration to use `accessTokenAcceptedVersion: 2` and validate only the v2 issuer. Document the required Azure AD configuration.
-
-### Anti-Pattern 5: Token Passthrough to WikiJS
-
-**What:** Forwarding the client's Bearer token to the WikiJS GraphQL API instead of using the server-side `WIKIJS_TOKEN`.
-
-**Why bad:** The MCP spec explicitly forbids token passthrough (see MCP Authorization spec, Security Best Practices). The client's token is issued by Azure AD for the MCP server audience. WikiJS uses its own API key authentication scheme. These are completely separate trust domains.
-
-**Instead:** The WikiJS API client uses `WIKIJS_TOKEN` from the environment (already the case). The client's Azure AD token is validated and discarded after the auth hook -- it is never forwarded.
-
-## Build Order (Dependencies Between Components)
-
-Components must be built in this order due to hard dependencies:
+**Concrete .dockerignore for this project:**
 
 ```
-Phase 1: Foundation (no auth dependencies)
-  ├── 1a. Port MCP transport into Fastify TypeScript
-  │        (lib/fixed_mcp_http_server.js -> src/mcp/transport.ts)
-  │        Dependency: none. Must be done first because auth hooks
-  │        attach to Fastify routes. No Fastify routes = no hooks.
-  │
-  └── 1b. Define auth config types and env var loading
-           (src/auth/config.ts)
-           Dependency: none. Pure config, no network calls.
+# Node.js
+node_modules/
+npm-debug.log*
 
-Phase 2: Auth Core (depends on Phase 1)
-  ├── 2a. JWKS Provider singleton
-  │        (src/auth/jwks.ts)
-  │        Dependency: config.ts (needs tenant ID for JWKS URL)
-  │
-  ├── 2b. JWT Validator function
-  │        (src/auth/validate.ts)
-  │        Dependency: jwks.ts + config.ts
-  │
-  └── 2c. Protected Resource Metadata handler
-           (src/auth/metadata.ts)
-           Dependency: config.ts (needs resource URL, tenant ID)
+# TypeScript build output (builder stage re-compiles from source)
+dist/
 
-Phase 3: Integration (depends on Phase 2)
-  ├── 3a. Auth hook (Fastify onRequest)
-  │        (src/auth/hook.ts)
-  │        Dependency: validate.ts + config.ts
-  │
-  ├── 3b. Wire auth hook to POST /mcp and GET /mcp/events routes
-  │        Dependency: transport.ts (Phase 1a) + hook.ts (Phase 3a)
-  │
-  ├── 3c. Wire metadata handler to GET /.well-known/oauth-protected-resource
-  │        Dependency: metadata.ts (Phase 2c)
-  │
-  └── 3d. Wire 401 WWW-Authenticate headers
-           Dependency: config.ts (needs metadata URL)
+# Test files and configuration
+tests/
+vitest.config.ts
+*.test.ts
+*.spec.ts
 
-Phase 4: Cleanup & Hardening
-  ├── 4a. Remove raw Node.js HTTP server (lib/fixed_mcp_http_server.js)
-  ├── 4b. Remove unused express dependency from package.json
-  ├── 4c. Update example.env with AZURE_TENANT_ID, AZURE_CLIENT_ID, MCP_RESOURCE_URL
-  └── 4d. Integration testing (manual or scripted)
+# Development tooling
+.env
+.env.*
+!example.env
+
+# Git
+.git/
+.gitignore
+
+# Editor / OS
+.vscode/
+.DS_Store
+*.swp
+
+# Planning and docs (not needed in image)
+.planning/
+*.md
+!package.json
 ```
 
-## Data Flow Diagram
+**Key rules:**
+- `node_modules/` MUST be excluded. The builder stage runs `npm ci` fresh.
+- `dist/` MUST be excluded. The builder stage runs `tsc` fresh. A stale local `dist/` must not leak into the context.
+- `.env` MUST be excluded. Secrets must not enter the build context (they would be visible in the image layer history).
+
+## Data Flow
+
+### Build-Time Flow (CI or local `docker build`)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    EXTERNAL SYSTEMS                          │
-│                                                              │
-│  ┌─────────────┐            ┌─────────────────────────┐      │
-│  │ Azure AD    │            │ WikiJS Instance          │      │
-│  │ (Entra ID)  │            │ (GraphQL API)            │      │
-│  │             │            │                           │      │
-│  │ Issues JWT  │            │ Accepts WIKIJS_TOKEN      │      │
-│  │ tokens      │            │ (server-side secret)      │      │
-│  │             │            │                           │      │
-│  │ JWKS keys:  │            │                           │      │
-│  │ /discovery/ │            │                           │      │
-│  │ v2.0/keys   │            │                           │      │
-│  └──────┬──────┘            └────────────┬──────────────┘      │
-│         │                                │                     │
-│         │ (public keys                   │ (GraphQL            │
-│         │  fetched by jose)              │  queries/mutations) │
-└─────────┼────────────────────────────────┼─────────────────────┘
-          │                                │
-          ▼                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    MCP SERVER (Fastify)                          │
-│                                                                 │
-│  ┌──────────────────┐     ┌──────────────────┐                  │
-│  │ JWKS Provider    │◄────│ Auth Config       │                  │
-│  │ (createRemoteJWK │     │ (AZURE_TENANT_ID, │                  │
-│  │  Set, singleton) │     │  AZURE_CLIENT_ID, │                  │
-│  └────────┬─────────┘     │  MCP_RESOURCE_URL)│                  │
-│           │               └───────┬──────────┘                  │
-│           │                       │                              │
-│           ▼                       ▼                              │
-│  ┌──────────────────┐     ┌──────────────────┐                  │
-│  │ JWT Validator    │     │ PRM Metadata     │                  │
-│  │ (jwtVerify with  │     │ Handler          │                  │
-│  │  issuer+audience)│     │ (/.well-known/   │                  │
-│  └────────┬─────────┘     │  oauth-protected │                  │
-│           │               │  -resource)      │                  │
-│           │               └──────────────────┘                  │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │ Auth Hook        │  <── Fastify onRequest lifecycle          │
-│  │ (Bearer extract, │                                           │
-│  │  validate, 401)  │                                           │
-│  └────────┬─────────┘                                           │
-│           │ (only if valid)                                     │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │ MCP Transport    │  <── POST /mcp (JSON-RPC)                 │
-│  │ Handler          │  <── GET  /mcp/events (SSE)               │
-│  │ (JSON-RPC 2.0    │                                           │
-│  │  dispatch)       │                                           │
-│  └────────┬─────────┘                                           │
-│           │                                                     │
-│           ▼                                                     │
-│  ┌──────────────────┐     ┌──────────────────┐                  │
-│  │ Tool Registry    │────►│ WikiJS API Client │──► WikiJS       │
-│  │ (Zod validation) │     │ (WIKIJS_TOKEN)   │    GraphQL       │
-│  └──────────────────┘     └──────────────────┘                  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+docker build . -t wikijs-mcp:latest
+    │
+    ▼
+Build context (filtered by .dockerignore)
+  package.json, package-lock.json, tsconfig.json, src/
+  [node_modules/, dist/, .env excluded]
+    │
+    ▼
+Stage 1: builder (node:20-slim)
+  COPY package*.json  ──► npm ci  (installs all deps, including typescript/vitest)
+  COPY tsconfig.json, src/  ──► npm run build  (tsc → dist/)
+    │
+    │ dist/ layer available as builder artifact
+    ▼
+Stage 2: runtime (node:20-slim)
+  COPY package*.json  ──► npm ci --omit=dev  (production deps only)
+  COPY --from=builder /app/dist ./dist
+  RUN useradd ...  ──► USER nodeuser
+    │
+    ▼
+Final image:
+  node:20-slim base
+  + production node_modules (~120 MB)
+  + dist/ (~1 MB)
+  + non-root user
+  [no typescript, vitest, tsx, nodemon, source files, devDeps]
 ```
 
-**Data flow direction is strictly one-way for credentials:**
-- Azure AD tokens flow IN from clients, are validated, and are discarded.
-- WIKIJS_TOKEN flows OUT to WikiJS. It never touches the client.
-- JWKS public keys flow IN from Azure AD to the server for signature verification.
-- No token is ever forwarded between trust domains.
-
-## Scalability Considerations
-
-| Concern | Current (5-20 users) | At 100 users | At 1000 users |
-|---------|---------------------|--------------|---------------|
-| JWT validation latency | ~1ms (JWKS cached) | ~1ms (same) | ~1ms (same) |
-| JWKS fetching | Once at first request, then cached | Same (singleton) | Same (singleton) |
-| SSE connections | In-memory Set, fine | In-memory Set, still fine | May need connection limits |
-| Token expiry checking | Per-request via jose | Per-request | Per-request |
-| WikiJS API load | Proportional to tool calls | May need connection pooling | Connection pooling + rate limiting |
-
-At the scale described in PROJECT.md (company internal, colleagues), scalability is a non-concern. The architecture remains sound up to thousands of concurrent users because JWT validation is a purely local CPU operation (RSA signature check) with no network call after initial JWKS fetch.
-
-## File Structure After Implementation
+### Runtime Request Flow
 
 ```
-src/
-├── auth/
-│   ├── config.ts          # Environment variables, derived URLs
-│   ├── jwks.ts            # Singleton createRemoteJWKSet
-│   ├── validate.ts        # jwtVerify wrapper
-│   ├── hook.ts            # Fastify onRequest hook
-│   └── metadata.ts        # RFC 9728 PRM endpoint handler
-├── mcp/
-│   └── transport.ts       # Ported MCP JSON-RPC handler (from lib/fixed_mcp_http_server.js)
-├── api.ts                 # Existing WikiJS GraphQL client
-├── schemas.ts             # Existing Zod schemas
-├── tools.ts               # Existing tool definitions
-├── types.ts               # Existing + new auth types
-└── server.ts              # Unified Fastify entry point
+Claude Desktop (MCP client)
+    │ HTTPS POST https://mcp.example.com/mcp
+    │ Authorization: Bearer <Azure AD JWT>
+    ▼
+Caddy container (caddy_net, host ports 80/443)
+    │ TLS terminated
+    │ HTTP forward to wikijs-mcp:3200 (Docker DNS on caddy_net)
+    ▼
+wikijs-mcp container (caddy_net, internal :3200)
+    │ Fastify onRequest hook
+    │   → Extract Bearer token
+    │   → jwtVerify (jose, against Azure JWKS)
+    │   → Scope enforcement (wikijs:read/write/admin)
+    │ MCP tool dispatch (tools/call)
+    ▼
+Wiki.js GraphQL API (WIKIJS_BASE_URL, outbound HTTPS)
+    │ GraphQL query/mutation using WIKIJS_TOKEN
+    ▼
+JSON-RPC response
+    │
+    ▼
+Caddy → client (HTTPS)
 ```
 
-## Key Technology Decisions
+### Environment Variable Resolution
 
-| Decision | Choice | Rationale | Confidence |
-|----------|--------|-----------|------------|
-| JWT library | `jose` (no additional packages) | Zero native deps, built-in `createRemoteJWKSet` with caching, `jwtVerify` with claims validation. No wrapper plugin needed. | HIGH -- official docs, widely adopted |
-| Auth hook placement | Fastify `onRequest` | Fires before body parsing, rejects unauthorized requests early, idiomatic Fastify | HIGH -- Fastify docs |
-| JWKS caching | `jose` internal (singleton pattern) | `createRemoteJWKSet` manages fetch cooldown and key rotation. Azure AD rotates keys ~24h. | HIGH -- jose docs |
-| Token version | Azure AD v2 only | v2 issuer format (`login.microsoftonline.com/{tenant}/v2.0`), requires app manifest `accessTokenAcceptedVersion: 2` | HIGH -- Microsoft docs |
-| Metadata endpoint | Static JSON from env vars | All metadata values are deployment-time constants, no runtime computation | HIGH -- RFC 9728 |
-| No Fastify JWT plugins | Direct `jose` usage | Fewer dependencies, no decoration magic, transparent code, ~60 lines total | MEDIUM -- architectural preference |
+```
+Operator creates .env on host (from example.env template)
+    │
+    ▼
+docker-compose.yml: env_file: .env
+    │ Docker injects each var into container environment at startup
+    ▼
+Container process.env (all vars available before server.ts runs)
+    │
+    ▼
+src/config.ts: dotenv.config()  ← no-op (vars already set by Docker)
+             ↓
+            Zod envSchema.safeParse(process.env)
+             ↓ fails fast with clear error if any var missing/invalid
+             ↓
+            AppConfig object → server.ts / api.ts / auth middleware
+```
+
+**Note on dotenv in Docker:** `dotenv` calls `dotenv.config()` at module load in `config.ts`. When vars are already set in the process environment (Docker's injection), `dotenv` does not overwrite them. This means the same compiled binary works correctly both as a bare Node.js process (reads `.env` file) and inside Docker (reads injected env vars). No code change is needed.
+
+## Scaling Considerations
+
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| Single-host (current target) | docker-compose.yml, one container, Caddy on same host |
+| Multiple hosts (future) | Build image once, push to registry, deploy with `docker service` or Kubernetes; Caddy upstream load-balances |
+| High-availability (future) | Server is already stateless (no in-process session state, no shared filesystem); horizontal scaling requires no architectural changes |
+
+### Scaling Priorities
+
+1. **First bottleneck:** Wiki.js GraphQL API latency and throughput. The MCP server is stateless and thin. The bottleneck will be the upstream Wiki.js instance, not this container.
+2. **Second bottleneck:** Azure JWKS cache. `jose` caches JWKS per process. Multiple container instances each maintain independent caches — this is fine and correct. Azure AD rotates keys ~every 24 hours; `jose` handles auto-refresh.
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Publishing the Container Port to the Host
+
+**What people do:** Add `ports: - "3200:3200"` in docker-compose.yml to confirm the service works.
+**Why it's wrong:** Exposes the JWT-protected MCP endpoint on the host's network interface over plain HTTP without TLS. Any host-reachable client can send requests directly to port 3200, bypassing Caddy's TLS layer entirely.
+**Do this instead:** Use `expose: ["3200"]` (metadata only). Caddy reaches the container via `caddy_net` using Docker DNS (`wikijs-mcp:3200`). The port never needs to be published.
+
+### Anti-Pattern 2: Installing TypeScript in the Runtime Stage
+
+**What people do:** Single-stage Dockerfile — `npm ci` installs everything including typescript, vitest, tsx, nodemon.
+**Why it's wrong:** Adds ~200 MB of devDependencies to the final image. TypeScript compiler, test runner, and dev server are never executed at runtime. They become dead weight with a CVE exposure surface.
+**Do this instead:** Two-stage build. Builder installs all deps and compiles. Runtime stage runs `npm ci --omit=dev` independently.
+
+### Anti-Pattern 3: Copying node_modules Between Stages
+
+**What people do:** `COPY --from=builder /app/node_modules ./node_modules` in the runtime stage to avoid a second `npm ci`.
+**Why it's wrong:** The builder's `node_modules` contains devDependencies mixed with production dependencies. Selectively filtering them is complex and fragile. Any native addon binaries (`.node` files) compiled in the builder stage may target different library paths than the runtime stage if base images ever diverge.
+**Do this instead:** Run `npm ci --omit=dev` in the runtime stage. It installs only what is in `dependencies` (not `devDependencies`), is deterministic, and takes under 10 seconds for this project's deps.
+
+### Anti-Pattern 4: Omitting .dockerignore
+
+**What people do:** Skip `.dockerignore`, so Docker sends the entire working directory — including `node_modules/` (hundreds of MB) — to the daemon as build context.
+**Why it's wrong:** Context transfer time dominates build time. On a large `node_modules`, this can add 60+ seconds per build. The builder stage runs `npm ci` anyway, so the host's `node_modules` is irrelevant and should not be sent.
+**Do this instead:** Always create `.dockerignore` alongside `Dockerfile`. At minimum exclude `node_modules/`, `dist/`, `.env`, and `.git/`.
+
+### Anti-Pattern 5: Using node:20-alpine When Native Addons May Appear
+
+**What people do:** Choose Alpine for maximum image size reduction.
+**Why it's wrong:** Alpine uses musl libc, not glibc. Node.js has no official Alpine builds. Native addons compiled against glibc will silently fail at runtime on musl. This project currently has no native addons, but `@azure/msal-node` (listed in dependencies) has shown musl incompatibilities in some version combinations.
+**Do this instead:** Use `node:20-slim` (Debian-based). Slightly larger but avoids an entire class of compatibility surprises. Revisit Alpine only if image size becomes a hard constraint and musl compatibility is confirmed for all dependencies.
+
+### Anti-Pattern 6: Running the Container as Root
+
+**What people do:** No `USER` instruction — Node process runs as `root` inside the container.
+**Why it's wrong:** If the process is compromised, the attacker operates as root inside the container, which simplifies container escape exploits and privilege escalation.
+**Do this instead:** Create a dedicated non-root user (`useradd -r`) in the runtime stage and switch to it before `CMD`.
+
+## Integration Points
+
+### New Files to Create
+
+| File | Purpose | Key Decisions |
+|------|---------|---------------|
+| `Dockerfile` | Multi-stage build (builder + runtime) | `node:20-slim`; `npm ci --omit=dev` in runtime; Node fetch for healthcheck; non-root user |
+| `docker-compose.yml` | Service declaration, network join, env injection | `external: caddy_net`; `expose` not `ports`; `env_file: .env`; healthcheck mirrors Dockerfile |
+| `.dockerignore` | Build context exclusions | Must exclude `node_modules/`, `dist/`, `.env`, `.git/` |
+
+### Existing Files — No Changes Required
+
+| File | Why Unchanged |
+|------|---------------|
+| `src/server.ts` | Already binds `0.0.0.0:PORT` — correct for container networking (listens on all interfaces) |
+| `src/config.ts` | `dotenv` is a no-op when vars are already set; Zod validation still runs and provides fail-fast behavior |
+| `package.json` | `npm run build` invokes `tsc` — correct build command for Dockerfile; `"type": "module"` enables ESM in `dist/` at runtime |
+| `tsconfig.json` | `"outDir": "dist"` matches `COPY --from=builder /app/dist ./dist` exactly |
+| `example.env` | Documents all required env vars; operators create `.env` from this on the host |
+
+### External Services
+
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| Caddy reverse proxy | Shares `caddy_net` Docker network; Caddyfile entry `reverse_proxy wikijs-mcp:3200` | `wikijs-mcp` resolves via Docker DNS to the container IP on `caddy_net` |
+| Azure AD JWKS | Outbound HTTPS from container to `login.microsoftonline.com` | No Docker configuration needed; standard outbound internet access from container |
+| Wiki.js | Outbound HTTPS from container to `WIKIJS_BASE_URL` | `WIKIJS_BASE_URL` must be a URL reachable from inside the container (not `localhost` relative to host) |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| Caddy → wikijs-mcp | HTTP on `caddy_net` (`wikijs-mcp:3200`) | Plain HTTP internally; TLS is terminated at Caddy. This is the standard Caddy + Docker pattern. |
+| wikijs-mcp → Azure AD | HTTPS outbound (JWKS fetch via `jose`) | `jose` handles connection pooling and key caching; no Docker config needed |
+| wikijs-mcp → Wiki.js | HTTPS/HTTP outbound (GraphQL via `graphql-request`) | `WIKIJS_BASE_URL` must be an externally reachable URL from the container's perspective |
+
+### Build Order for the Milestone
+
+1. **Create `.dockerignore` first** — prevents accidental context bloat during all subsequent `docker build` iterations
+2. **Create `Dockerfile`** — validate with `docker build . -t wikijs-mcp:test` locally; confirm image starts and healthcheck passes
+3. **Create `docker-compose.yml`** — validate with `docker compose config` (syntax check, dry run); confirm external network is declared correctly
+4. **Host setup (one-time)** — create external network if not already present: `docker network create caddy_net` (idempotent)
+5. **Integration** — operator adds `reverse_proxy wikijs-mcp:3200` to Caddyfile; reloads Caddy
+6. **Deploy** — `docker compose up -d`; verify with `docker inspect wikijs-mcp --format '{{json .State.Health}}'`
 
 ## Sources
 
-- [MCP Authorization Specification (Draft)](https://modelcontextprotocol.io/specification/draft/basic/authorization)
-- [RFC 9728 - OAuth 2.0 Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728)
-- [jose - npm](https://www.npmjs.com/package/jose)
-- [jose GitHub - createRemoteJWKSet](https://github.com/panva/jose/blob/main/docs/jwks/remote/functions/createRemoteJWKSet.md)
-- [jose GitHub - jwtVerify](https://github.com/panva/jose/blob/main/docs/jwt/verify/functions/jwtVerify.md)
-- [Fastify Hooks Reference](https://fastify.dev/docs/latest/Reference/Hooks/)
-- [Fastify Routes Reference](https://fastify.dev/docs/latest/Reference/Routes/)
-- [How to Validate Microsoft Entra ID OAuth Tokens in Node.js](https://www.voitanos.io/blog/validating-entra-id-generated-oauth-tokens/)
-- [Microsoft Entra ID Access Tokens](https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens)
-- [MCP Spec Updates June 2025 - Auth0](https://auth0.com/blog/mcp-specs-update-all-about-auth/)
-- [WorkOS: Introducing RFC 9728](https://workos.com/blog/introducing-rfc-9728-say-hello-to-standardized-oauth-2-0-resource-metadata)
-- [Azure AD v1 vs v2 Token Issuer](https://learn.microsoft.com/en-us/answers/questions/2156642/token-issuer-for-api-is-sts-windows-net-instead-of)
-- [nearform/fastify-jwt-jwks](https://github.com/nearform/fastify-jwt-jwks)
+- [Docker Official Node.js Containerize Guide](https://docs.docker.com/guides/nodejs/containerize/)
+- [Docker Publishing and Exposing Ports](https://docs.docker.com/get-started/docker-concepts/running-containers/publishing-ports/)
+- [Docker Compose Networking Reference](https://docs.docker.com/compose/how-tos/networking/)
+- [Caddy Reverse Proxy Docker Compose (Wirelessmoves 2025)](https://blog.wirelessmoves.com/2025/06/caddy-as-a-docker-compose-reverse-proxy.html)
+- [Building a Caddy Container Stack — TechRoads](https://techroads.org/building-a-caddy-container-stack-for-easy-https-with-docker-and-ghost/)
+- [Choosing the Best Node.js Docker Image — Snyk](https://snyk.io/blog/choosing-the-best-node-js-docker-image/)
+- [Docker Node.js Alpine vs Slim vs Debian Comparison](https://openillumi.com/en/en-docker-nodejs-image-alpine-slim-debian-choice/)
+- [How to Containerize Node.js Apps with Multi-Stage Dockerfiles — OneUptime 2026](https://oneuptime.com/blog/post/2026-01-06-nodejs-multi-stage-dockerfile/view)
+- [Docker HEALTHCHECK Best Practices — OneUptime 2026](https://oneuptime.com/blog/post/2026-01-30-docker-health-check-best-practices/view)
+- [Docker Tip: Expose vs Publish — Nick Janetakis](https://nickjanetakis.com/blog/docker-tip-59-difference-between-exposing-and-publishing-ports)
+- [Expose vs Ports in Docker Compose — Baeldung](https://www.baeldung.com/ops/docker-compose-expose-vs-ports)
+
+---
+*Architecture research for: Docker deployment of wikijs-mcp-server behind Caddy*
+*Researched: 2026-03-25*

@@ -1,189 +1,209 @@
-# Feature Research: OAuth 2.1 Resource Server for MCP
+# Feature Research: Docker Deployment of a Node.js/TypeScript MCP Server
 
-**Domain:** OAuth 2.1 resource server authentication for a corporate MCP server with Azure AD
-**Researched:** 2026-03-24
+**Domain:** Docker container packaging for a production Node.js/TypeScript HTTP service behind Caddy reverse proxy
+**Researched:** 2026-03-25
 **Confidence:** HIGH
+
+## Context
+
+The wikijs-mcp-server is an existing, fully functional Fastify/TypeScript MCP server with:
+- Configurable PORT (default 3200), `/health` (unauthenticated), `/.well-known/oauth-protected-resource` (unauthenticated), `POST /mcp` (JWT-authenticated)
+- All config via env vars, validated at startup by Zod
+- The host already has Caddy running in Docker on an external network called `caddy_net`
+- No existing Docker setup — this is a greenfield containerization
+
+---
 
 ## Feature Landscape
 
-### Table Stakes (Must Have or Auth Is Broken)
+### Table Stakes (Expected, Missing = Deployment is Broken)
 
-These are non-negotiable. Missing any of these means the authentication layer is insecure, non-functional, or non-compliant with the MCP authorization specification.
+These features are assumed by anyone operating Node.js services in Docker. Missing them means the container won't run correctly, will be insecure, or will be operationally unusable.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Protected Resource Metadata endpoint (RFC 9728)** | MCP spec MUST requirement. Clients discover auth server location from `GET /.well-known/oauth-protected-resource`. Without this, MCP clients cannot initiate the OAuth flow at all. | LOW | Returns JSON with `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported`. Static JSON response, trivially implemented as a Fastify GET route. |
-| **Bearer token extraction from Authorization header** | OAuth 2.1 Section 5.1.1 mandates `Authorization: Bearer <token>` on every request. MCP spec explicitly forbids tokens in URI query strings. | LOW | Parse `Authorization` header, extract bearer token. Fastify `onRequest` hook is the right place -- runs before body parsing to avoid wasting resources on unauthorized requests. |
-| **JWT signature verification via JWKS** | Without cryptographic verification, any forged token is accepted. Azure AD publishes RSA public keys at `https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys`. The `jose` library's `createRemoteJWKSet` + `jwtVerify` handles this natively. | MEDIUM | `jose` has built-in JWKS caching with `cooldownDuration` to prevent excessive fetches. Keys are re-fetched only when no matching `kid` is found. Set `cacheMaxAge` to ~1 hour (3600000ms) to balance performance against Azure AD key rotation frequency. |
-| **Audience claim (`aud`) validation** | MCP spec: servers MUST validate tokens were issued specifically for them. Without audience validation, tokens issued for other Azure AD apps could access this server -- the "confused deputy" problem. RFC 8707 and MCP spec are explicit: this is mandatory. | LOW | Azure AD v2.0 tokens set `aud` to the Application (client) ID of the registered app. Validate `aud === AZURE_CLIENT_ID`. |
-| **Issuer claim (`iss`) validation** | Prevents tokens from other tenants or identity providers from being accepted. Azure AD v2.0 issuer format: `https://login.microsoftonline.com/{tenant-id}/v2.0`. | LOW | Pass `issuer` option to `jose` `jwtVerify`. Construct expected issuer from `AZURE_TENANT_ID` env var. |
-| **Token expiry validation (`exp`, `nbf`)** | Accepting expired tokens defeats the purpose of short-lived access tokens. Also validates `nbf` (not-before) to reject tokens used before their validity window. | LOW | `jose` `jwtVerify` validates `exp` and `nbf` automatically when the `currentDate` option is used (defaults to `Date.now()`). No custom code needed. |
-| **401 Unauthorized with WWW-Authenticate header** | MCP spec MUST requirement. When token is missing or invalid, the response MUST include `WWW-Authenticate: Bearer resource_metadata="<URL>"` so MCP clients can discover how to authenticate. Without this, clients have no way to initiate the OAuth flow. | LOW | Static header template. Include `resource_metadata` pointing to the Protected Resource Metadata URL. Optionally include `scope` to guide clients on what scopes to request. |
-| **403 Forbidden for insufficient scopes** | MCP spec SHOULD. Differentiates "no/bad token" (401) from "valid token, wrong permissions" (403). Return `WWW-Authenticate: Bearer error="insufficient_scope", scope="<required>"` per RFC 6750. | LOW | Check `scp` claim from Azure AD token against required scopes. Return 403 with proper header if scopes are insufficient. |
-| **Selective route protection** | Health check, metadata endpoints, and root info MUST remain unauthenticated. Only MCP transport routes (`POST /mcp`, `GET /mcp/events`) require tokens. A blanket auth-everything approach breaks discovery and health monitoring. | LOW | Fastify supports per-route hooks. Apply auth middleware via `onRequest` hook only on MCP routes. Health/metadata routes are registered without the hook. |
-| **Environment-based configuration** | Deployment-specific values (tenant ID, client ID, resource URL) vary per environment. Hardcoding breaks deployment flexibility. | LOW | Three new env vars: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `MCP_RESOURCE_URL`. Validate at startup, fail fast if missing. |
+| **Multi-stage Dockerfile** | Single-stage builds include TypeScript compiler, devDependencies, and source files in the runtime image — massively bloated (1GB+ vs <200MB). Operators and CI pipelines expect slim runtime images. | LOW | Two meaningful stages: (1) `builder` — installs all deps, runs `tsc`; (2) `runtime` — copies `dist/` + production node_modules only. Use `node:20-alpine` as base. `npm ci --omit=dev` in runtime stage. |
+| **Non-root user in container** | Running as root inside a container means a process escape gives host root access. The official `node:20-alpine` image ships a built-in `node` user (UID 1000). Every Node.js Docker guide treats non-root as table stakes, not a differentiator. | LOW | Add `USER node` in runtime stage. Use `--chown=node:node` on COPY instructions. The app already listens on port 3200 (non-privileged), so no `CAP_NET_BIND_SERVICE` needed. |
+| **HEALTHCHECK wired to /health** | Docker Compose and container orchestrators use HEALTHCHECK to determine if a container is ready/alive. Without it, a crashed or stuck process is indistinguishable from a healthy one. The `/health` endpoint already exists and is unauthenticated. | LOW | `HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD wget -qO- http://localhost:3200/health \|\| exit 1`. Use `wget` (available in Alpine by default) not `curl` (not included in Alpine). Start period of 15s covers Fastify startup + JWKS fetch + Azure AD connectivity. |
+| **.dockerignore** | Without it, the build context includes `node_modules/` (hundreds of MB), `.git/`, `dist/` (stale), `.env` (secrets), and test artifacts. This leaks secrets into the image and dramatically slows builds. | LOW | Exclude: `node_modules/`, `dist/`, `.git/`, `.env`, `.env.*`, `coverage/`, `*.tsbuildinfo`, `.planning/`, `tests/`, `**/__tests__/`, `.vscode/`, `*.md` (except necessary ones), `docker-compose*`, `Dockerfile*`. Keep: `src/`, `package*.json`, `tsconfig.json`. |
+| **docker-compose.yml with external caddy_net** | The host already has a Caddy instance managing TLS and routing on `caddy_net`. Services must join this network to receive proxied traffic. Caddy resolves service names via Docker DNS (service name = hostname). | LOW | Declare `networks: caddy_net: external: true` at the top level. Attach the service to `caddy_net`. Do NOT expose port 3200 to the host (Caddy proxies on the internal network — port exposure to the host creates an auth bypass risk). |
+| **restart policy** | A crashed server that stays down is an operational incident. `unless-stopped` is the standard policy for persistent services: auto-restarts on crash, but respects manual `docker stop` (unlike `always`, which restarts even after manual stops). | LOW | `restart: unless-stopped`. Note: there is a known Docker issue where Node.js processes that exit via uncaught errors may not trigger the restart policy correctly — the existing server's startup Zod validation already ensures proper exit codes. |
+| **Environment variable pass-through** | All server config comes from env vars. The container must receive the same env vars the server already uses (`WIKIJS_BASE_URL`, `WIKIJS_TOKEN`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `MCP_RESOURCE_URL`, `PORT`). | LOW | Use `env_file: .env` in docker-compose.yml. Do NOT bake env vars into the image. The `.env` file is already in `.gitignore` and should be added to `.dockerignore`. |
 
-### Differentiators (Competitive Advantage / Nice-to-Have)
+### Differentiators (Not Required, But Meaningful for Production Operations)
 
-Features that elevate the implementation above a minimal resource server. Valuable for production corporate deployments but not strictly required for functional auth.
+Features that improve security, observability, or operational posture beyond a working baseline. Worth doing in this milestone if complexity is low.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Per-tool scope enforcement** | Instead of a single "can access MCP" gate, validate scopes per tool category (e.g., `wikijs:read`, `wikijs:write`, `wikijs:admin`). Enables least-privilege access: read-only users cannot create/delete pages. Aligns with MCP best practice: "split access per tool or capability." | MEDIUM | Extract `scp` claim from Azure AD v2.0 token (space-delimited string). Map each MCP tool to a required scope. Return 403 with `insufficient_scope` error when the token lacks the needed scope. Requires Azure AD app registration to define custom scopes (e.g., `api://{client-id}/wikijs.read`). |
-| **Authenticated user identity in logs** | Extract `oid` (object ID), `preferred_username`, or `sub` from validated JWT. Log which user invoked which tool. Essential for corporate audit requirements and incident investigation. | LOW | After `jwtVerify` succeeds, extract claims and attach to Fastify request context. Include in structured log entries. Never log the token itself. |
-| **Request correlation IDs** | Generate or propagate a unique correlation ID per request. Thread through logs, error responses, and SSE events. Enables tracing a single MCP invocation across the request lifecycle. | LOW | Use `crypto.randomUUID()` or accept `X-Request-ID` header. Attach to Fastify request decorator. Include in all log entries and error responses. |
-| **JWKS pre-warming at startup** | Fetch Azure AD JWKS endpoint during server startup rather than on first request. Eliminates cold-start latency for the first authenticated request (~200-500ms network call). | LOW | Call `createRemoteJWKSet` at startup and trigger an initial fetch by verifying a dummy header. Or simply call the JWKS URL with `fetch` and log success/failure. |
-| **Graceful token expiry handling** | When a token is close to expiry (within 5-minute window), log a warning but still accept it. Helps diagnose "token expired during long SSE session" issues common with MCP's streaming transport. | LOW | After `jwtVerify`, check `exp - now < 300` and log a warning. The token is still valid, so process normally. Helps operators understand token lifecycle. |
-| **Structured error responses** | Return RFC 6750-compliant error bodies with `error`, `error_description`, and correlation IDs. Generic messages to clients, detailed reasons in server logs. Prevents information leakage while aiding debugging. | LOW | Define a consistent error response shape. Map `jose` errors (JWTExpired, JWTClaimValidationFailed, JWKSNoMatchingKey) to appropriate HTTP status codes and RFC 6750 error codes. |
-| **Scope challenge / step-up authorization** | When a user's token lacks scopes for a specific tool, return 403 with the required scopes in `WWW-Authenticate`. MCP clients that support step-up auth can then re-authorize with broader scopes. Enables progressive permission escalation. | MEDIUM | Requires mapping tools to scopes and including `scope` parameter in 403 responses. Only useful if per-tool scope enforcement is implemented. Depends on MCP client support for step-up flows. |
-| **Token validation metrics** | Track and expose metrics: tokens validated, tokens rejected (expired, bad audience, bad signature), validation latency. Useful for operational dashboards. | MEDIUM | Increment counters in the auth middleware. Expose via `/health` endpoint or a dedicated `/metrics` endpoint. Could integrate with Prometheus format if monitoring infrastructure exists. |
+| **`no-new-privileges` security option** | Prevents container processes from gaining new privileges via setuid/setgid binaries. Standard Docker security hardening, adds zero friction. OWASP Docker Security Cheat Sheet recommends it. | LOW | Add `security_opt: [no-new-privileges:true]` to the service in docker-compose.yml. Zero code changes. |
+| **`stop_grace_period`** | Docker's default SIGTERM-to-SIGKILL window is 10s. Fastify needs time to drain active connections, especially for any long-running MCP calls. Explicit grace period documents intent and prevents in-flight requests being killed. | LOW | `stop_grace_period: 30s` in docker-compose.yml. Fastify already has SIGTERM/SIGINT handlers via the SDK. Pairs with the server's existing graceful shutdown. |
+| **Explicit CMD vs npm start** | `npm start` adds a layer of process indirection. Signals (SIGTERM for `docker stop`) hit npm, not Node.js directly, causing a ~10s hard-kill delay instead of graceful shutdown. Specifying the Node binary directly in CMD ensures signals reach the app. | LOW | `CMD ["node", "dist/server.js"]` in Dockerfile instead of `CMD ["npm", "start"]`. Verify the compiled entry point path from `tsconfig.json`. |
+| **Layer caching optimization** | `COPY package*.json ./` then `RUN npm ci` before `COPY src/` exploits Docker layer cache. When only source changes (no dependency changes), the `npm ci` layer is reused — build time drops from ~60s to ~5s on iterative builds. | LOW | Standard pattern. COPY `package.json` and `package-lock.json` first, run `npm ci`, then COPY source. Already implied by multi-stage build but worth explicit attention. |
+| **`NODE_ENV=production` in runtime stage** | Fastify and several npm packages branch on `NODE_ENV`. Production mode disables development-only features (Pino pretty-print, stack traces in errors). Setting it in the Dockerfile ENV bakes it into the image rather than relying on the operator to set it. | LOW | `ENV NODE_ENV=production` in the final Dockerfile stage. Can still be overridden via `docker-compose.yml` `environment` if needed. |
+| **Named image tag in docker-compose.yml** | `image: wikijs-mcp-server:latest` on the service allows `docker images` to show a meaningful name, `docker pull` to work, and future CI/CD to push tagged versions. Without it, Compose auto-generates an opaque name like `wikijs-mcp-server_app`. | LOW | Add `image: wikijs-mcp-server:latest` (or versioned tag) to the service definition. Zero operational complexity. |
 
-### Anti-Features (Deliberately NOT Build)
+### Anti-Features (Commonly Done, Creates Problems)
 
-Features that seem useful but create problems, conflict with project constraints, or fall outside the resource server role.
+Features that appear helpful but introduce meaningful problems for this specific deployment.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| **Token issuance / Authorization Server** | "We need the server to issue tokens." | The MCP server is a resource server only. Azure AD issues tokens. Building token issuance duplicates Azure AD, creates a massive security surface, and violates the OAuth 2.1 role separation. The MCP spec explicitly separates these roles. | Azure AD handles all token issuance. Configure app registration there. |
-| **Dynamic Client Registration (DCR) endpoint** | Claude Code historically required DCR. Some MCP clients may expect a `/register` endpoint. | Azure AD does not support DCR. Implementing a fake DCR proxy is a fragile hack (see anthropics/claude-code#2527, closed as "not planned"). The MCP spec lists DCR as MAY, not MUST. Claude Code is moving toward supporting pre-registered clients and Client ID Metadata Documents. | Pre-register the client in Azure AD. Configure Claude Desktop with the client ID. Use Client ID Metadata Documents if supported. |
-| **Per-user WikiJS permissions mapping** | "Different users should see different WikiJS pages based on their Azure AD groups." | The existing architecture uses a single shared WikiJS API token. Mapping Azure AD identities to WikiJS permissions requires a permission model that doesn't exist yet, and adds enormous complexity. Explicitly listed as out-of-scope in PROJECT.md. | All authenticated users get equal access via the shared token. If needed in the future, this is a separate milestone. |
-| **Token introspection endpoint** | "We should provide an introspection endpoint for other services." | This is an authorization server responsibility, not a resource server responsibility. The MCP server should consume tokens, not expose introspection of them. Building this conflates roles. | Azure AD provides its own introspection capabilities. |
-| **CORS configuration for browser clients** | "What if someone builds a web UI?" | MCP clients are native apps (Claude Desktop, Claude Code, VS Code), not browser apps. CORS adds complexity and attack surface for no current use case. Explicitly out-of-scope per PROJECT.md. | If browser clients are needed in the future, add CORS as a separate concern. The existing `Access-Control-Allow-Origin: *` in the old JS server should be REMOVED, not extended. |
-| **Rate limiting in the auth layer** | "We should rate-limit per user." | Rate limiting is an orthogonal concern to authentication. Mixing it into the auth middleware creates coupling. PROJECT.md explicitly defers this. Can be added as a separate Fastify plugin later without touching auth code. | Add `@fastify/rate-limit` as a separate middleware in a future milestone. |
-| **Token caching / session management** | "Cache validated tokens to avoid re-verifying on every request." | JWT validation with cached JWKS keys is already sub-millisecond. Adding a token cache introduces state, cache invalidation problems, and a window where revoked tokens are still accepted. The MCP spec says auth MUST be included in every HTTP request. | Rely on `jose`'s built-in JWKS caching. Validate every token on every request. It's fast enough. |
-| **mTLS / DPoP proof-of-possession** | "Add extra token binding for security." | Massive complexity increase. Requires certificate management infrastructure. MCP clients (Claude Desktop, Claude Code) don't support mTLS or DPoP. No benefit for the current deployment scenario (corporate network, native clients). | Bearer tokens with audience validation are sufficient for corporate internal use. |
-| **OpenID Connect userinfo endpoint** | "Expose user profile info from the MCP server." | Not a resource server responsibility. The MCP server should not be an identity provider. MCP clients don't need userinfo from the resource server -- they get it from Azure AD directly. | Azure AD provides userinfo. Extract what you need from the JWT claims directly. |
+| **Exposing container port to host (`ports: - "3200:3200"`)** | "I want to test the service directly without going through Caddy." | Exposes the auth-required MCP endpoint directly to the host network, bypassing Caddy's TLS termination and any firewall rules. A misconfigured or compromised host could reach the server without HTTPS. Defeats the purpose of the reverse proxy. | Leave `ports` out entirely. Caddy reaches the service via the `caddy_net` Docker network using the service's internal DNS name and port. For local testing, use `docker exec` or temporarily add `ports` to a dev override file (`docker-compose.override.yml`) that is gitignored. |
+| **`read_only: true` root filesystem** | Security hardening checklists include it. | Fastify's Pino logger writes to stdout (fine), but Node.js itself writes temporary files during module resolution and the `jose` JWKS cache may use fs. Breaks are non-obvious and hard to debug. The non-root user + `no-new-privileges` already provides strong isolation without this complexity. | Use `no-new-privileges` and non-root user instead. Add `read_only: true` only if a security audit specifically requires it, and pair with `tmpfs` mounts for `/tmp` and any runtime write paths. |
+| **Bundling Caddy config into this repo** | "Let's manage the Caddyfile alongside the service." | Caddy is an external dependency already managed separately on the host. Putting Caddy config here couples the lifecycle of the MCP server to Caddy config management. Caddy serves multiple services — its config is not owned by this repo. | Document the Caddy configuration required (virtual host, upstream, TLS) in a `DEPLOYMENT.md` or equivalent. Keep the Caddyfile in the Caddy service's own repo/directory. |
+| **Docker secrets instead of env_file** | "We should use Docker Swarm secrets for credentials." | This project does not use Docker Swarm or Kubernetes. Docker secrets in standalone Compose require Swarm mode. The overhead is not justified for a single-host deployment. | Use `env_file: .env` with a `.env` file that is gitignored, has restricted file permissions (`chmod 600 .env`), and is documented in `example.env`. |
+| **Multi-service docker-compose.yml (including Wiki.js)** | "Package everything together for easy deployment." | Wiki.js is explicitly on a separate host per PROJECT.md. Including it in this Compose file creates the illusion that they are co-deployed, leads to drift, and makes each service's lifecycle harder to manage independently. | Single-service Compose file. Wiki.js is external, referenced only by `WIKIJS_BASE_URL`. |
+| **Alpine custom user creation (adduser/addgroup)** | "Create a dedicated `mcpserver` user with a custom UID." | The official `node:20-alpine` image already ships a `node` user (UID 1000). Creating a custom user adds 2-3 Dockerfile lines and no meaningful security improvement for a single-purpose service. Custom UIDs only matter when you need to match host volume ownership. | Use the built-in `node` user: `USER node`. Simpler, well-understood, and sufficient. |
+
+---
 
 ## Feature Dependencies
 
 ```
-Protected Resource Metadata (RFC 9728)
-    (standalone, no dependencies, implement first)
-
-Bearer Token Extraction
+Multi-stage Dockerfile
+    (required foundation — enables all other Dockerfile features)
     |
-    +--requires--> JWT Signature Verification (JWKS)
-    |                  |
-    |                  +--requires--> Audience Validation (aud claim)
-    |                  |
-    |                  +--requires--> Issuer Validation (iss claim)
-    |                  |
-    |                  +--requires--> Expiry Validation (exp/nbf)
-    |                  |
-    |                  +--enhances--> JWKS Pre-warming at Startup
+    +--enables--> Non-root user (USER node)
     |
-    +--requires--> 401 Response with WWW-Authenticate
+    +--enables--> NODE_ENV=production
     |
-    +--enhances--> Authenticated User Identity in Logs
+    +--enables--> Explicit CMD (node dist/server.js)
+    |
+    +--enables--> HEALTHCHECK (health endpoint already exists)
+    |
+    +--requires--> Layer caching optimization (package.json COPY ordering)
 
-Selective Route Protection
-    +--requires--> Bearer Token Extraction
-    +--requires--> JWT Signature Verification
+.dockerignore
+    (independent, improves build context for multi-stage build)
 
-Per-tool Scope Enforcement
-    +--requires--> JWT Signature Verification (to extract scp claim)
-    +--requires--> 403 Response with insufficient_scope
-    +--enhances--> Scope Challenge / Step-up Authorization
+docker-compose.yml
+    +--requires--> Multi-stage Dockerfile (or image already built)
+    +--requires--> External caddy_net network (already exists on host)
+    +--requires--> .env file (credentials, not in image)
+    |
+    +--adds--> restart policy (unless-stopped)
+    +--adds--> stop_grace_period (30s)
+    +--adds--> no-new-privileges security option
+    +--adds--> env_file reference
 
-Environment-based Configuration
-    (standalone, affects all auth features)
-
-Request Correlation IDs
-    (standalone, enhances all logging)
+External caddy_net network
+    (pre-existing host dependency — Caddy owns this network)
+    +--enables--> No ports exposed to host (security benefit)
+    +--enables--> Service name DNS resolution by Caddy
 ```
 
 ### Dependency Notes
 
-- **Protected Resource Metadata has no dependencies:** It is a static JSON endpoint that can be implemented and tested independently of all token validation logic. Implement it first.
-- **JWT Signature Verification is the critical path:** All claim validations (audience, issuer, expiry) are performed as part of `jose` `jwtVerify`. They are configured as options to a single function call, not separate steps. Implement them together.
-- **Per-tool Scope Enforcement requires base auth:** Cannot check scopes without first having a validated token with extracted claims. Implement after base auth works.
-- **Scope Challenge / Step-up requires per-tool scopes:** Only meaningful if tools have different scope requirements. Without per-tool enforcement, there is nothing to "step up" to.
-- **Logging features are independent but benefit from auth:** Correlation IDs and user identity in logs are valuable regardless of auth but become most useful when auth provides user context.
+- **Multi-stage Dockerfile is the foundation:** All Dockerfile features (non-root user, HEALTHCHECK, CMD, layer caching) are configured inside the Dockerfile. The docker-compose.yml has no meaning without it.
+- **caddy_net is a host precondition, not something we create:** `external: true` tells Compose to use the existing network. If it doesn't exist, `docker compose up` fails fast with a clear error. This is the correct behavior — it forces operators to set up Caddy first.
+- **HEALTHCHECK depends on the `/health` endpoint:** The endpoint already exists and is unauthenticated. No application code changes needed.
+- **No-port-exposure depends on external network:** Caddy can only reach the container by service name if they share the `caddy_net` network. If the network is not set up, exposing a port is a fallback — but the correct fix is to set up the network, not expose ports.
+
+---
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v2.1)
 
-Minimum viable auth layer -- what's needed for the OAuth flow to work end-to-end with Claude Desktop and Azure AD.
+Minimum viable Docker deployment — what's needed for the server to run reliably in production behind Caddy.
 
-- [ ] **Protected Resource Metadata endpoint** -- Without this, no MCP client can discover auth requirements
-- [ ] **Bearer token extraction** -- Parse `Authorization: Bearer <token>` from requests
-- [ ] **JWT validation (signature + aud + iss + exp)** -- Single `jwtVerify` call with `jose` handles all of these
-- [ ] **401 with WWW-Authenticate header** -- Enables MCP client discovery flow
-- [ ] **Selective route protection** -- Auth on MCP routes only, health/metadata stay open
-- [ ] **Environment configuration** -- `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `MCP_RESOURCE_URL`
+- [ ] **Multi-stage Dockerfile** — without this, the image is 1GB+ and unsuitable for deployment
+- [ ] **Non-root user (USER node)** — table stakes security; no justification to ship as root
+- [ ] **HEALTHCHECK on /health** — container lifecycle management requires it; endpoint already exists
+- [ ] **.dockerignore** — without it, `.env` leaks into build context and builds are slow
+- [ ] **docker-compose.yml with caddy_net external network** — the actual deployment descriptor
+- [ ] **restart: unless-stopped** — operational requirement; service must recover from crashes
+- [ ] **env_file: .env** — credentials pass-through from host to container
+- [ ] **stop_grace_period: 30s** — Fastify graceful shutdown requires a window beyond Docker's 10s default
+- [ ] **Explicit CMD: node dist/server.js** — correct signal handling with no npm process indirection
 
-### Add After Validation (v1.x)
+### Add After Validation (v2.1.x)
 
-Features to add once base auth is working and tested with real Azure AD tokens.
+After confirming the service starts, stays healthy, and Caddy successfully proxies to it:
 
-- [ ] **Authenticated user identity in logs** -- Add after first successful end-to-end auth flow; immediate value for operations
-- [ ] **Request correlation IDs** -- Add alongside user identity logging; low effort, high debugging value
-- [ ] **Structured error responses** -- Refine error messages after encountering real-world failure modes
-- [ ] **JWKS pre-warming at startup** -- Add if cold-start latency is noticeable in practice
-- [ ] **403 with insufficient_scope** -- Add when scope model is defined
+- [ ] **`no-new-privileges` security option** — trivial to add, zero testing friction; add in same PR or immediately after
+- [ ] **Named image tag** — add when setting up any CI/CD pipeline for image builds
 
-### Future Consideration (v2+)
+### Future Consideration (v2.2+)
 
-Features to defer until the base auth is proven and there is a clear need.
+- [ ] **Multi-arch image builds (amd64/arm64)** — only relevant if deploying on ARM hosts (Raspberry Pi, AWS Graviton). Not needed for x86 server.
+- [ ] **Distroless base image** — further attack surface reduction. Requires switching the HEALTHCHECK to a Node.js script (no `wget` in distroless). Add only if a security review requires it.
+- [ ] **OCI image labels** — `LABEL org.opencontainers.image.*` metadata. Useful for container registries but not operational functionality.
+- [ ] **`read_only: true` filesystem** — high-security hardening. Requires identifying all write paths and adding `tmpfs` mounts. Only if a security audit requires it.
 
-- [ ] **Per-tool scope enforcement** -- Defer until there is a concrete need for differentiated access levels among users. Requires Azure AD app registration changes (custom scopes) and a scope-to-tool mapping. Only worth the complexity if different user roles need different tool access.
-- [ ] **Scope challenge / step-up authorization** -- Depends on per-tool scopes and MCP client support. Defer until both are in place.
-- [ ] **Token validation metrics** -- Defer until monitoring infrastructure exists to consume metrics
+---
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Protected Resource Metadata | HIGH | LOW | P1 |
-| Bearer token extraction | HIGH | LOW | P1 |
-| JWT validation (signature + claims) | HIGH | MEDIUM | P1 |
-| 401 with WWW-Authenticate | HIGH | LOW | P1 |
-| Selective route protection | HIGH | LOW | P1 |
-| Environment configuration | HIGH | LOW | P1 |
-| 403 with insufficient_scope | MEDIUM | LOW | P1 |
-| Authenticated user identity in logs | MEDIUM | LOW | P2 |
-| Request correlation IDs | MEDIUM | LOW | P2 |
-| Structured error responses | MEDIUM | LOW | P2 |
-| JWKS pre-warming | LOW | LOW | P2 |
-| Per-tool scope enforcement | MEDIUM | MEDIUM | P3 |
-| Scope challenge / step-up | LOW | MEDIUM | P3 |
-| Token validation metrics | LOW | MEDIUM | P3 |
+| Feature | Operational Value | Implementation Cost | Priority |
+|---------|------------------|---------------------|----------|
+| Multi-stage Dockerfile | HIGH | LOW | P1 |
+| Non-root user | HIGH | LOW | P1 |
+| HEALTHCHECK | HIGH | LOW | P1 |
+| .dockerignore | HIGH | LOW | P1 |
+| docker-compose.yml (caddy_net) | HIGH | LOW | P1 |
+| restart: unless-stopped | HIGH | LOW | P1 |
+| env_file pass-through | HIGH | LOW | P1 |
+| Explicit CMD (node binary) | MEDIUM | LOW | P1 |
+| stop_grace_period: 30s | MEDIUM | LOW | P1 |
+| NODE_ENV=production in image | MEDIUM | LOW | P1 |
+| Layer caching optimization | MEDIUM | LOW | P1 |
+| no-new-privileges security_opt | MEDIUM | LOW | P2 |
+| Named image tag | LOW | LOW | P2 |
+| Multi-arch builds | LOW | MEDIUM | P3 |
+| Distroless base image | LOW | MEDIUM | P3 |
+| read_only filesystem | LOW | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for launch -- auth is broken without these
-- P2: Should have, add in first iteration after base auth works
-- P3: Nice to have, future consideration when there is concrete demand
+- P1: Must have for a working, secure, production-ready deployment
+- P2: Should have; low effort, add in same milestone or immediately after
+- P3: Nice to have; defer until there is a concrete driver (CI/CD, security audit, new host platform)
 
-## Competitor / Reference Implementation Analysis
+---
 
-| Feature | MCP Spec Reference (Keycloak) | Microsoft ISE Blog (Azure AD) | MCP SDK (TypeScript) | Our Approach |
-|---------|-------------------------------|-------------------------------|----------------------|--------------|
-| PRM endpoint | Full RFC 9728 implementation | Full RFC 9728 implementation | Built into `mcpAuthMetadataRouter` | Implement manually in Fastify -- simpler than pulling in SDK router |
-| Token validation | Token introspection via Keycloak | JWT validation via JWKS with `jose` | `requireBearerAuth` middleware with pluggable verifier | Direct `jose` `jwtVerify` with `createRemoteJWKSet` -- no introspection needed, Azure AD tokens are self-contained JWTs |
-| Audience validation | Custom audience mapper in Keycloak | `aud` claim check against client ID | `checkResourceAllowed` utility | `jose` `jwtVerify` `audience` option set to `AZURE_CLIENT_ID` |
-| Scope enforcement | Single `mcp:tools` scope | `api://{client-id}/access_as_user` scope | `requiredScopes` in middleware config | Start with single scope, evolve to per-tool if needed |
-| JWKS caching | N/A (uses introspection) | 1-hour cache with `jose` | Delegated to verifier | `jose` built-in caching via `createRemoteJWKSet` with `cacheMaxAge: 3600000` |
-| Error handling | Standard OAuth errors | 5-minute expiry buffer, detailed logging | SDK handles error responses | Map `jose` errors to RFC 6750 responses, correlation IDs in logs |
-| DCR support | Built into Keycloak | Not addressed | Full DCR support | Not implemented -- pre-registered client only. DCR is a MAY in MCP spec and Azure AD does not support it. |
+## Caddy Network Integration Notes
+
+The key behavior when joining `caddy_net`:
+
+1. **No ports section in docker-compose.yml.** Caddy reaches the service at `http://wikijs-mcp-server:3200` (service name is the Docker DNS hostname). The container's port is internal to the Docker network only.
+2. **Caddy Caddyfile entry** (documentation only — managed externally): `reverse_proxy wikijs-mcp-server:3200` under the relevant virtual host. Service name must match the `container_name` or Compose service name.
+3. **External network declaration** in docker-compose.yml:
+   ```yaml
+   networks:
+     caddy_net:
+       external: true
+   ```
+   If `caddy_net` does not exist, `docker compose up` fails immediately with `network caddy_net declared as external, but could not be found`. This is the correct fail-fast behavior.
+4. **TLS termination is Caddy's responsibility.** The container speaks plain HTTP to Caddy on the internal network. MCP_RESOURCE_URL should be the public HTTPS URL that Caddy exposes, not the internal Docker URL.
+
+---
 
 ## Sources
 
-### HIGH Confidence (Official Specifications)
-- [MCP Authorization Specification (draft)](https://modelcontextprotocol.io/specification/draft/basic/authorization) -- Authoritative MCP auth requirements
-- [RFC 9728: OAuth 2.0 Protected Resource Metadata](https://datatracker.ietf.org/doc/rfc9728/) -- Protected Resource Metadata standard
-- [OAuth 2.1 Draft](https://datatracker.ietf.org/doc/draft-ietf-oauth-v2-1/) -- OAuth 2.1 framework
-- [Microsoft Entra ID Access Token Claims Reference](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference) -- Azure AD token claim structure
-- [jose library: createRemoteJWKSet](https://github.com/panva/jose/blob/main/docs/jwks/remote/functions/createRemoteJWKSet.md) -- JWKS fetch/cache API
+### HIGH Confidence (Official Documentation)
 
-### MEDIUM Confidence (Verified Reference Implementations)
-- [MCP Authorization Tutorial](https://modelcontextprotocol.io/docs/tutorials/security/authorization) -- Official MCP implementation guide with Keycloak example
-- [Building a Secure MCP Server with OAuth 2.1 and Azure AD (Microsoft ISE Blog)](https://devblogs.microsoft.com/ise/aca-secure-mcp-server-oauth21-azure-ad/) -- Microsoft reference architecture for Azure AD + MCP
-- [Building Claude-Ready Entra ID-Protected MCP Servers with Azure APIM](https://developer.microsoft.com/blog/claude-ready-secure-mcp-apim) -- Microsoft's APIM-based approach
+- [Docker official guide: Containerize a Node.js application](https://docs.docker.com/guides/nodejs/containerize/) — Official multi-stage patterns
+- [nodejs/docker-node Best Practices](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md) — Official Node.js Docker best practices (non-root user, signal handling, PID 1)
+- [Docker Docs: Start containers automatically (restart policies)](https://docs.docker.com/engine/containers/start-containers-automatically/)
+- [Docker Docs: Compose Networks — external networks](https://docs.docker.com/compose/compose-file/06-networks/)
 
-### LOW Confidence (Community / Needs Validation)
-- [Claude Code Azure AD DCR issue #2527](https://github.com/anthropics/claude-code/issues/2527) -- Closed as "not planned", but documents the DCR compatibility gap with Azure AD. Status may have changed since February 2026.
+### MEDIUM Confidence (Verified Community/Commercial Sources)
+
+- [How to Containerize a Fastify Application with Docker (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-02-08-how-to-containerize-a-fastify-application-with-docker/view) — Fastify-specific HEALTHCHECK, graceful shutdown, and non-root patterns
+- [Docker Multi-Stage Builds Guide 2026 (DevToolbox)](https://devtoolbox.dedyn.io/blog/docker-multi-stage-builds-guide) — Size reduction patterns
+- [Docker HEALTHCHECK Best Practices (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-30-docker-health-check-best-practices/view) — Interval/timeout guidance, Alpine wget note
+- [Caddy as a Docker-Compose Reverse Proxy (WirelessMoves, 2025)](https://blog.wirelessmoves.com/2025/06/caddy-as-a-docker-compose-reverse-proxy.html) — External network Caddy pattern
+- [Docker Restart Policies (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-16-docker-restart-policies/view) — unless-stopped vs always comparison
+- [Node.js Docker Security: Non-Root User (Goldbergyoni Node Best Practices)](https://github.com/goldbergyoni/nodebestpractices/blob/master/sections/security/non-root-user.md) — Production security rationale
+- [Docker Graceful Shutdown and Signal Handling (OneUptime, 2026)](https://oneuptime.com/blog/post/2026-01-16-docker-graceful-shutdown-signals/view) — SIGTERM/PID 1 problem explained
+- [Docker Health Checks (Dash0 Guide)](https://www.dash0.com/guides/docker-health-check-a-practical-guide) — Practical healthcheck configuration
+
+### LOW Confidence (Single Source / Community)
+
+- Node.js Alpine wget availability: verified in multiple sources (Alpine ships wget, not curl), but the specific `node:20-alpine` image was not directly verified via `docker run` — **verify with `docker run node:20-alpine which wget`** before relying on it.
 
 ---
-*Feature research for: OAuth 2.1 resource server for WikiJS MCP Server with Azure AD*
-*Researched: 2026-03-24*
+
+*Feature research for: Docker deployment of wikijs-mcp-server behind Caddy reverse proxy*
+*Researched: 2026-03-25*
