@@ -22,8 +22,8 @@
 
 ### Authorization
 
-- [ ] **AUTHZ-01**: `GET /authorize` redirects (302) to Azure AD authorization endpoint with mapped scopes, stripped `resource` parameter, and appended `offline_access` + `openid`
-- [ ] **AUTHZ-02**: Authorization redirect preserves client's `redirect_uri`, `state`, `code_challenge`, and `code_challenge_method` parameters unchanged
+- [x] **AUTHZ-01**: `GET /authorize` redirects (302) to Azure AD authorization endpoint with mapped scopes, stripped `resource` parameter, and appended `offline_access` + `openid`
+- [x] **AUTHZ-02**: Authorization redirect preserves client's `redirect_uri`, `state`, `code_challenge`, and `code_challenge_method` parameters unchanged
 
 ### Token
 
@@ -66,8 +66,8 @@
 | META-02 | Phase 11 | Complete |
 | META-03 | Phase 14 | Pending |
 | REGN-01 | Phase 11 | Complete |
-| AUTHZ-01 | Phase 12 | Pending |
-| AUTHZ-02 | Phase 12 | Pending |
+| AUTHZ-01 | Phase 12 | Complete |
+| AUTHZ-02 | Phase 12 | Complete |
 | TOKN-01 | Phase 13 | Pending |
 | TOKN-02 | Phase 13 | Pending |
 | TOKN-03 | Phase 13 | Pending |

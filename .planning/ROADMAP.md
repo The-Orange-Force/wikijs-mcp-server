@@ -41,7 +41,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 
 - [x] **Phase 10: Scope Mapper and Azure Endpoint Utils** - Pure-function utilities for scope transformation and Azure AD URL construction (completed 2026-03-25)
 - [x] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses (completed 2026-03-25)
-- [ ] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes
+- [x] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes (completed 2026-03-25)
 - [ ] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD
 - [ ] **Phase 14: Wire Up and Protected Resource Metadata Switch** - Register proxy plugin in server, update metadata to reference self as authorization server
 
@@ -84,7 +84,7 @@ Plans:
   4. Requests missing required parameters (`client_id`, `redirect_uri`, `response_type`) receive an appropriate error response
 **Plans:** 1 plan
 Plans:
-- [ ] 12-01-PLAN.md — TDD: GET /authorize redirect proxy with scope mapping and validation
+- [x] 12-01-PLAN.md — TDD: GET /authorize redirect proxy with scope mapping and validation
 
 ### Phase 13: Token Proxy Endpoint
 **Goal**: MCP clients can exchange authorization codes and refresh tokens through the proxy
@@ -121,7 +121,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 1/1 | Complete   | 2026-03-25 |
-| 12. Authorization Redirect Endpoint | 0/1 | Not started | - |
+| 12. Authorization Redirect Endpoint | 1/1 | Complete    | 2026-03-25 |
 | 13. Token Proxy Endpoint | 0/1 | Not started | - |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
 
