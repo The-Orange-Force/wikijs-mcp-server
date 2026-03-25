@@ -12,13 +12,13 @@
 
 ### Metadata
 
-- [ ] **META-01**: Server serves OAuth authorization server metadata at both `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration` with identical content
-- [ ] **META-02**: Discovery document includes `code_challenge_methods_supported: ["S256"]` and all MCP-required fields (`authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `response_types_supported`, `grant_types_supported`)
+- [x] **META-01**: Server serves OAuth authorization server metadata at both `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration` with identical content
+- [x] **META-02**: Discovery document includes `code_challenge_methods_supported: ["S256"]` and all MCP-required fields (`authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `response_types_supported`, `grant_types_supported`)
 - [ ] **META-03**: Protected Resource Metadata (`/.well-known/oauth-protected-resource`) references self (`MCP_RESOURCE_URL`) as authorization server
 
 ### Registration
 
-- [ ] **REGN-01**: `POST /register` accepts RFC 7591 DCR request and returns pre-configured Azure AD `client_id` with no `client_secret` (public client)
+- [x] **REGN-01**: `POST /register` accepts RFC 7591 DCR request and returns pre-configured Azure AD `client_id` with no `client_secret` (public client)
 
 ### Authorization
 
@@ -62,10 +62,10 @@
 |-------------|-------|--------|
 | SCOPE-01 | Phase 10 | Complete |
 | SCOPE-02 | Phase 10 | Complete |
-| META-01 | Phase 11 | Pending |
-| META-02 | Phase 11 | Pending |
+| META-01 | Phase 11 | Complete |
+| META-02 | Phase 11 | Complete |
 | META-03 | Phase 14 | Pending |
-| REGN-01 | Phase 11 | Pending |
+| REGN-01 | Phase 11 | Complete |
 | AUTHZ-01 | Phase 12 | Pending |
 | AUTHZ-02 | Phase 12 | Pending |
 | TOKN-01 | Phase 13 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: OAuth Authorization Proxy
 status: completed
-stopped_at: Phase 14 context gathered
-last_updated: "2026-03-25T21:08:24.198Z"
-last_activity: "2026-03-25 — Executed 10-01: scope mapper, resource stripper, Azure endpoint constructor"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-25T21:21:59.543Z"
+last_activity: "2026-03-25 — Executed 11-01: OAuth discovery and registration endpoints"
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 100
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 2
+  percent: 84
 ---
 
 # Project State
@@ -21,29 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.2 OAuth Authorization Proxy — Phase 10 complete, ready for Phase 11
+**Current focus:** v2.2 OAuth Authorization Proxy — Phase 11 complete, ready for Phase 12
 
 ## Current Position
 
-Phase: 10 of 14 (Scope Mapper and Azure Endpoint Utils)
+Phase: 11 of 14 (Discovery and Registration Endpoints)
 Plan: 1 of 1 (complete)
-Status: Phase 10 complete
-Last activity: 2026-03-25 — Executed 10-01: scope mapper, resource stripper, Azure endpoint constructor
+Status: Phase 11 complete
+Last activity: 2026-03-25 — Executed 11-01: OAuth discovery and registration endpoints
 
-Progress: [██████████] 100%
+Progress: [████████░░] 84%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 2min
-- Total execution time: 2min
+- Total execution time: 4min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 10 | 1 | 2min | 2min |
+| 11 | 1 | 2min | 2min |
 
 ## Accumulated Context
 
@@ -60,6 +61,7 @@ Recent decisions affecting current work:
 - Import SUPPORTED_SCOPES from existing scopes.ts for single source of truth
 - OIDC_PASSTHROUGH as Set for O(1) lookup on openid/offline_access
 - Unknown scopes pass through unchanged for transparent proxy behavior
+- [Phase 11]: All metadata endpoint URLs point to self (MCP_RESOURCE_URL), not Azure AD
 
 ### Pending Todos
 
@@ -72,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:08:24.196Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-wire-up-and-protected-resource-metadata-switch/14-CONTEXT.md
+Last session: 2026-03-25T21:21:59.540Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None

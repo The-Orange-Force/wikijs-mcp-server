@@ -40,7 +40,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 ### Phases
 
 - [x] **Phase 10: Scope Mapper and Azure Endpoint Utils** - Pure-function utilities for scope transformation and Azure AD URL construction (completed 2026-03-25)
-- [ ] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses
+- [x] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses (completed 2026-03-25)
 - [ ] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes
 - [ ] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD
 - [ ] **Phase 14: Wire Up and Protected Resource Metadata Switch** - Register proxy plugin in server, update metadata to reference self as authorization server
@@ -69,7 +69,7 @@ Plans:
   2. GET `/.well-known/openid-configuration` returns identical content to the above endpoint
   3. POST `/register` accepts an RFC 7591 DCR request body and returns a JSON response containing the pre-configured Azure AD `client_id` with no `client_secret` (public client)
   4. All three endpoints are publicly accessible without JWT authentication
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 11-01-PLAN.md — OAuth proxy plugin with discovery metadata and DCR endpoints
 
@@ -120,7 +120,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
-| 11. Discovery and Registration Endpoints | 0/1 | Not started | - |
+| 11. Discovery and Registration Endpoints | 1/1 | Complete   | 2026-03-25 |
 | 12. Authorization Redirect Endpoint | 0/1 | Not started | - |
 | 13. Token Proxy Endpoint | 0/1 | Not started | - |
 | 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
