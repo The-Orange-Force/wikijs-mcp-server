@@ -1,50 +1,84 @@
-# Requirements: WikiJS MCP Server — v2.1 Docker Deployment
+# Requirements: WikiJS MCP Server — v2.2 OAuth Authorization Proxy
 
 **Defined:** 2026-03-25
 **Core Value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
 
-## v2.1 Requirements
+## v2.2 Requirements
 
-### Docker
+### Scope Mapping
 
-- [x] **DOCK-01**: Operator can build a production Docker image with `docker compose build`
-- [x] **DOCK-02**: Built image contains only compiled output (`dist/`) and production dependencies — no TypeScript source, dev deps, or `.env` secrets
-- [x] **DOCK-03**: Container starts the HTTP server on startup, binding to `0.0.0.0` on the configured `PORT`
-- [x] **DOCK-04**: Docker reports the container healthy via HEALTHCHECK against `/health`
-- [x] **DOCK-05**: Container is reachable by Caddy on the `caddy_net` network by service name `wikijs-mcp-server` — no port published to the host
-- [x] **DOCK-06**: Container restarts automatically on failure (`restart: unless-stopped`)
-- [x] **DOCK-07**: Operator provides all environment variables via a `.env` file referenced in `docker-compose.yml`
+- [ ] **SCOPE-01**: Proxy maps bare MCP scopes (`wikijs:read`) to Azure AD format (`api://{client_id}/wikijs:read`) in all outbound requests, preserving OIDC scopes (`openid`, `offline_access`) unprefixed
+- [ ] **SCOPE-02**: Proxy strips RFC 8707 `resource` parameter before forwarding to Azure AD
+
+### Metadata
+
+- [ ] **META-01**: Server serves OAuth authorization server metadata at both `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration` with identical content
+- [ ] **META-02**: Discovery document includes `code_challenge_methods_supported: ["S256"]` and all MCP-required fields (`authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `response_types_supported`, `grant_types_supported`)
+- [ ] **META-03**: Protected Resource Metadata (`/.well-known/oauth-protected-resource`) references self (`MCP_RESOURCE_URL`) as authorization server
+
+### Registration
+
+- [ ] **REGN-01**: `POST /register` accepts RFC 7591 DCR request and returns pre-configured Azure AD `client_id` with no `client_secret` (public client)
+
+### Authorization
+
+- [ ] **AUTHZ-01**: `GET /authorize` redirects (302) to Azure AD authorization endpoint with mapped scopes, stripped `resource` parameter, and appended `offline_access` + `openid`
+- [ ] **AUTHZ-02**: Authorization redirect preserves client's `redirect_uri`, `state`, `code_challenge`, and `code_challenge_method` parameters unchanged
+
+### Token
+
+- [ ] **TOKN-01**: `POST /token` proxies `authorization_code` grant to Azure AD token endpoint and returns the response
+- [ ] **TOKN-02**: `POST /token` proxies `refresh_token` grant to Azure AD token endpoint and returns the response
+- [ ] **TOKN-03**: Token endpoint normalizes Azure AD `AADSTS*` error responses to standard OAuth 2.0 error format
+
+### Integration
+
+- [ ] **INTG-01**: All proxy endpoints are public (unauthenticated) — existing JWT validation on `POST /mcp` is unchanged
+- [ ] **INTG-02**: Claude Desktop completes full OAuth flow and successfully invokes MCP tools
 
 ## Future Requirements
 
-None identified for v2.2+ at this time.
+### Security Hardening
+
+- **CONSENT-01**: User consent interstitial page before redirecting to Azure AD (prevents shared-client-ID token theft)
+- **HEALTH-01**: Azure AD connectivity check in `/health` endpoint
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Host port exposure | Caddy handles ingress via caddy_net — publishing a port bypasses TLS termination |
-| Docker secrets / secret management | .env file sufficient for self-hosted single-server deployment |
-| Multi-container compose (Wiki.js) | Wiki.js runs on a separate host |
-| Kubernetes / Helm | Single-server deployment; compose is sufficient |
+| Token issuance by proxy | Proxy passes through Azure AD tokens; issuing own tokens doubles attack surface |
+| `/oauth/*` subpath routes | Claude.ai constructs paths from base URL, ignoring metadata; root-level paths required |
+| Callback endpoint (`/oauth/callback`) | Azure AD redirects directly to client's `redirect_uri`; no server-side callback needed |
+| Dual-PKCE (proxy-side + Azure AD-side) | Only needed when proxy issues own tokens; not applicable |
+| Rate limiting on proxy endpoints | Caddy reverse proxy handles rate limiting if needed |
+| CORS headers on OAuth endpoints | MCP clients are native apps, not browser-based |
+| `client_id_metadata_document_supported` | Newer MCP spec feature; defer until Claude clients ship support |
+| MSAL library usage | Wrong abstraction — MSAL manages client-side flows, not server-side proxying |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOCK-01 | Phase 9 | Complete |
-| DOCK-02 | Phase 9 | Complete |
-| DOCK-03 | Phase 9 | Complete |
-| DOCK-04 | Phase 9 | Complete |
-| DOCK-05 | Phase 9 | Complete |
-| DOCK-06 | Phase 9 | Complete |
-| DOCK-07 | Phase 9 | Complete |
+| SCOPE-01 | — | Pending |
+| SCOPE-02 | — | Pending |
+| META-01 | — | Pending |
+| META-02 | — | Pending |
+| META-03 | — | Pending |
+| REGN-01 | — | Pending |
+| AUTHZ-01 | — | Pending |
+| AUTHZ-02 | — | Pending |
+| TOKN-01 | — | Pending |
+| TOKN-02 | — | Pending |
+| TOKN-03 | — | Pending |
+| INTG-01 | — | Pending |
+| INTG-02 | — | Pending |
 
 **Coverage:**
-- v2.1 requirements: 7 total
-- Mapped to phases: 7
-- Unmapped: 0
+- v2.2 requirements: 13 total
+- Mapped to phases: 0
+- Unmapped: 13 ⚠️
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 — traceability confirmed during roadmap creation*
+*Last updated: 2026-03-25 after initial definition*
