@@ -111,7 +111,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete   | 2026-03-25 |
+| 10. Scope Mapper and Azure Endpoint Utils | 1/1 | Complete    | 2026-03-25 |
 | 11. Discovery and Registration Endpoints | 0/? | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/? | Not started | - |
 | 13. Token Proxy Endpoint | 0/? | Not started | - |
