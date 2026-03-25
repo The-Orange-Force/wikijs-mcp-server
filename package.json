@@ -20,7 +20,7 @@
     "test": "vitest run",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:watch": "vitest",
-    "dev": "nodemon --exec ts-node src/server.ts",
+    "dev": "nodemon --exec tsx src/server.ts",
     "build": "tsc",
     "server:stdio": "node lib/mcp_wikijs_stdin.js"
   },
@@ -50,6 +50,7 @@
     "tsconfig.json"
   ],
   "dependencies": {
+    "@azure/msal-node": "^5.1.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^16.5.0",
     "fastify": "^4.27.2",
@@ -65,6 +66,7 @@
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.3",
     "vitest": "^4.1.1"
   },

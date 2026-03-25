@@ -4,155 +4,237 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node.js](https://img.shields.io/badge/node.js-%3E%3D18.0.0-brightgreen)
 
-Model Context Protocol (MCP) server for Wiki.js integration via GraphQL API.
+A Model Context Protocol (MCP) server that enables AI assistants like **Claude Desktop**, **Cursor**, and other MCP-compatible clients to interact with your Wiki.js instance through GraphQL API.
 
-## 📖 Description
+## Table of Contents
 
-This project provides an MCP server for interacting with Wiki.js through GraphQL API. MCP (Model Context Protocol) is an open protocol developed by Anthropic that enables AI models to safely interact with external services and tools.
+- [Overview](#overview)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Claude Desktop Setup](#claude-desktop-setup)
+- [Other MCP Clients](#other-mcp-clients)
+- [Available Tools](#available-tools)
+- [API Endpoints](#api-endpoints)
+- [Authentication](#authentication)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
 
-The server provides a unified interface for working with Wiki.js that can be used by various AI agents and tools supporting MCP.
+---
 
-## ✨ Features
+## Overview
 
-### 📄 Page Management
+This server acts as a bridge between MCP-compatible AI assistants and Wiki.js, allowing you to:
 
-- Get Wiki.js pages by ID
-- Get page content by ID
-- List pages with sorting options
-- Search pages by query
-- Create new pages
-- Update existing pages
-- Delete pages
-- **🆕 List all pages including unpublished**
-- **🆕 Search unpublished pages**
-- **🆕 Force delete pages (including unpublished)**
-- **🆕 Get page publication status**
-- **🆕 Publish unpublished pages**
+- Search, read, create, update, and delete wiki pages
+- Manage users and groups
+- Work with both published and unpublished pages
+- Access wiki content directly from your AI assistant
 
-### 👥 User Management
+MCP (Model Context Protocol) is an open protocol developed by Anthropic that enables AI models to safely interact with external services and tools.
 
-- List users
-- Search users by query
+---
+
+## Features
+
+### Page Management
+- Get page information and content by ID
+- List pages with sorting options (by title, creation date, update date)
+- Multi-stage search with fallback mechanisms
+- Create, update, and delete pages
+- Work with unpublished pages (list, search, publish, force delete)
+- Check page publication status
+
+### User Management
+- List and search users
 - Create new users
 - Update user information
 
-### 🔧 Group Management
-
+### Group Management
 - List user groups
 
-### 🌐 Transports
+### Transports
+- **HTTP**: For Claude Desktop, web integrations, and API access
+- **STDIO**: For editor integration (Cursor, VS Code)
 
-- **STDIO**: for editor integration (Cursor, VS Code)
-- **HTTP**: for web integrations and API access
+### Security
+- Azure AD OAuth 2.0 / JWT authentication
+- Scope-based access control
+- Request correlation tracking
 
-## 🚀 Quick Start
+---
 
-> **⚡ Want to start right now?** See [5-Minute Guide](./QUICK_START.md)
+## Prerequisites
 
-### Installation
+- **Node.js** >= 18.0.0
+- **Wiki.js** instance with API access
+- **Azure AD** tenant (for HTTP mode authentication)
 
-1. **Clone the repository:**
+### Obtaining Wiki.js API Token
+
+1. Log into your Wiki.js instance as an administrator
+2. Navigate to **Settings → Users → Personal Access Tokens**
+3. Create a new token with appropriate permissions
+4. Copy the token (shown only once)
+
+### Obtaining Azure AD Credentials
+
+For HTTP mode (required for Claude Desktop):
+
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Navigate to **Microsoft Entra ID** (formerly Azure AD)
+3. Note your **Tenant ID** from the Overview page
+4. Go to **App registrations** and create a new registration
+5. Note the **Application (client) ID**
+6. Configure authentication for your MCP client (single-page app, web app, etc.)
+
+---
+
+## Quick Start
+
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/heAdz0r/wikijs-mcp-server.git
 cd wikijs-mcp-server
+npm install
 ```
 
-2. **Run automatic setup:**
+### 2. Configure Environment
 
 ```bash
-npm run setup
+cp example.env .env
 ```
 
-This script will automatically:
-
-- Install dependencies
-- Create `.env` file based on `example.env`
-- Build TypeScript code
-
-### Configuration
-
-3. **Edit the `.env` file** and specify your Wiki.js settings:
+Edit `.env` with your settings:
 
 ```env
-# Port for HTTP MCP server
+# Server Configuration
 PORT=3200
 
-# Base URL for Wiki.js (without /graphql)
+# Wiki.js Configuration
 WIKIJS_BASE_URL=http://localhost:3000
-
-# Wiki.js API token
 WIKIJS_TOKEN=your_wikijs_api_token_here
+
+# Azure AD Configuration (for HTTP mode)
+AZURE_TENANT_ID=your_azure_tenant_id_here
+AZURE_CLIENT_ID=your_azure_client_id_here
+MCP_RESOURCE_URL=http://localhost:3200
 ```
 
-4. **Edit the `.cursor/mcp.json` file** and replace `your_wikijs_api_token_here` with your real token
-
-> **How to get Wiki.js API token:**
->
-> 1. Log into Wiki.js admin panel
-> 2. Go to "API" section
-> 3. Create a new API key with necessary permissions
-> 4. Copy the token to `.env` AND to `.cursor/mcp.json`
-
-## 📦 Running
-
-### HTTP server (recommended)
+### 3. Build and Run
 
 ```bash
-# Start main HTTP server with Cursor MCP support
+npm run build
 npm start
-# or
-npm run start:http
-
-# Stop server
-npm run stop
 ```
 
-### TypeScript version
+The server will start on port 3200 (or your configured PORT).
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `PORT` | No | Server port (default: 8000) | `3200` |
+| `WIKIJS_BASE_URL` | Yes | Wiki.js base URL (without `/graphql`) | `http://localhost:3000` |
+| `WIKIJS_TOKEN` | Yes | Wiki.js API token | `your_token_here` |
+| `AZURE_TENANT_ID` | Yes* | Azure AD tenant ID (UUID) | `550e8400-e29b-41d4-a716-446655440000` |
+| `AZURE_CLIENT_ID` | Yes* | Azure AD application ID (UUID) | `6ba7b810-9dad-11d1-80b4-00c04fd430c8` |
+| `MCP_RESOURCE_URL` | Yes* | Public URL of this MCP server | `http://localhost:3200` |
+| `MCP_RESOURCE_DOCS_URL` | No | Documentation URL | `https://docs.example.com` |
+
+*Required for HTTP mode with authentication
+
+### Configuration Validation
+
+The server validates all configuration on startup and will provide detailed error messages if:
+- Required environment variables are missing
+- URLs are malformed
+- UUIDs are invalid
+- API token is empty
+
+---
+
+## Claude Desktop Setup
+
+Claude Desktop uses the MCP protocol to connect to external tools. Here's how to configure it:
+
+### Step 1: Start the MCP Server
 
 ```bash
-npm run start:typescript
+npm start
 ```
 
-### STDIO mode (for direct editor integration)
+Verify the server is running:
 
 ```bash
-npm run server:stdio
+curl http://localhost:3200/health
 ```
 
-### Development mode
+### Step 2: Configure Claude Desktop
 
-```bash
-npm run dev
+1. Open Claude Desktop
+2. Go to **Settings → Developer → Edit Config**
+3. Add the following to your `claude_desktop_config.json`:
+
+#### For Local Development (STDIO mode - simpler setup)
+
+```json
+{
+  "mcpServers": {
+    "wikijs": {
+      "command": "node",
+      "args": ["/absolute/path/to/wikijs-mcp-server/lib/mcp_wikijs_stdin.js"],
+      "env": {
+        "WIKIJS_BASE_URL": "http://localhost:3000",
+        "WIKIJS_TOKEN": "your_wikijs_api_token_here"
+      }
+    }
+  }
+}
 ```
 
-### Testing
+#### For HTTP Mode (with authentication)
 
-```bash
-npm test
+```json
+{
+  "mcpServers": {
+    "wikijs": {
+      "url": "http://localhost:3200/mcp",
+      "transport": "http"
+    }
+  }
+}
 ```
 
-## 🔌 Editor Integration
+> **Note:** HTTP mode requires Azure AD authentication. The client must provide a valid JWT bearer token.
+
+### Step 3: Restart Claude Desktop
+
+After saving the configuration, restart Claude Desktop completely.
+
+### Step 4: Verify Connection
+
+In Claude Desktop, you should now have access to Wiki.js tools. Try asking:
+
+> "List all the pages in my wiki"
+
+or
+
+> "Search my wiki for pages about [topic]"
+
+---
+
+## Other MCP Clients
 
 ### Cursor IDE
 
-> **⚠️ IMPORTANT:** Without `.cursor/mcp.json` file, Cursor integration will NOT work!
-
-#### Quick Setup
-
-1. **Start HTTP server:**
-
-```bash
-npm start
-```
-
-2. **Automatic configuration setup:**
-
-```bash
-npm run setup:cursor
-```
-
-3. **Edit `.cursor/mcp.json`** and specify your real token:
+1. Create `.cursor/mcp.json` in your project:
 
 ```json
 {
@@ -160,229 +242,312 @@ npm run setup:cursor
     "wikijs": {
       "transport": "http",
       "url": "http://localhost:3200/mcp",
-      "events": "http://localhost:3200/mcp",
       "cwd": ".",
       "env": {
         "WIKIJS_BASE_URL": "http://localhost:3000",
-        "WIKIJS_TOKEN": "your_real_wiki_js_token_here"
+        "WIKIJS_TOKEN": "your_real_token_here"
       }
     }
   }
 }
 ```
 
-#### Critical Parameters
-
-- **`transport: "http"`** - mandatory HTTP transport
-- **`url: "http://localhost:3200/mcp"`** - exact URL for JSON-RPC
-- **`events: "http://localhost:3200/mcp"`** - URL for Server-Sent Events (returns 405 in stateless mode)
-- **`WIKIJS_TOKEN`** - real Wiki.js API token (not placeholder!)
-
-#### Verification
-
-After setup, tools with `mcp_wikijs_*` prefix should appear in Cursor:
-
-- `mcp_wikijs_list_pages()`
-- `mcp_wikijs_search_pages()`
-- `mcp_wikijs_get_page()`
-- And others...
+2. Restart Cursor
+3. Look for tools prefixed with `mcp_wikijs_`
 
 ### VS Code (with MCP extension)
 
-Add to VS Code settings:
+Add to your VS Code settings:
 
 ```json
 {
   "mcp.servers": {
     "wikijs": {
       "command": "node",
-      "args": ["lib/mcp_wikijs_stdin.js"],
-      "cwd": "/path/to/wikijs-mcp"
+      "args": ["/path/to/wikijs-mcp-server/lib/mcp_wikijs_stdin.js"],
+      "cwd": "/path/to/wikijs-mcp-server"
     }
   }
 }
 ```
 
-## 🛠 Development
+---
+
+## Available Tools
+
+### Page Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `get_page` | Get page information by ID | `id` (number, required) |
+| `get_page_content` | Get page content by ID | `id` (number, required) |
+| `list_pages` | List published pages | `limit` (number), `orderBy` ("TITLE" \| "CREATED" \| "UPDATED") |
+| `search_pages` | Search published pages | `query` (string, required), `limit` (number) |
+| `create_page` | Create a new page | `title`, `content`, `path` (all required), `description` (optional) |
+| `update_page` | Update page content | `id` (number, required), `content` (string, required) |
+| `delete_page` | Delete a page | `id` (number, required) |
+| `list_all_pages` | List all pages including unpublished | `limit`, `orderBy`, `includeUnpublished` |
+| `search_unpublished_pages` | Search unpublished pages | `query` (string, required), `limit` (number) |
+| `force_delete_page` | Delete page including unpublished | `id` (number, required) |
+| `get_page_status` | Get page publication status | `id` (number, required) |
+| `publish_page` | Publish an unpublished page | `id` (number, required) |
+
+### User Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_users` | List all users | None |
+| `search_users` | Search users by query | `query` (string, required) |
+| `create_user` | Create a new user | `email`, `name`, `passwordRaw` (required), `providerKey`, `groups`, `mustChangePassword`, `sendWelcomeEmail` (optional) |
+| `update_user` | Update user name | `id` (number, required), `name` (string, required) |
+
+### Group Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_groups` | List user groups | None |
+
+---
+
+## API Endpoints
+
+### HTTP Endpoints
+
+| Endpoint | Method | Description | Auth |
+|----------|--------|-------------|------|
+| `/health` | GET | Health check | None |
+| `/` | GET | Server info and endpoint discovery | None |
+| `/mcp` | POST | MCP JSON-RPC endpoint | JWT |
+| `/.well-known/oauth-protected-resource` | GET | OAuth Protected Resource Metadata | None |
+
+### Example MCP Requests
+
+#### Get Page
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "get_page",
+    "arguments": { "id": 123 }
+  }
+}
+```
+
+#### Search Pages
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "search_pages",
+    "arguments": { "query": "documentation", "limit": 10 }
+  }
+}
+```
+
+#### Create Page
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "create_page",
+    "arguments": {
+      "title": "New Page",
+      "content": "# Welcome\n\nThis is **markdown** content.",
+      "path": "docs/new-page",
+      "description": "A new documentation page"
+    }
+  }
+}
+```
+
+---
+
+## Authentication
+
+### OAuth 2.0 / JWT (HTTP Mode)
+
+The HTTP server uses Azure AD OAuth 2.0 for authentication:
+
+1. Client obtains JWT token from Azure AD
+2. Token includes required scopes
+3. Token is sent as Bearer token in Authorization header
+
+### Supported Scopes
+
+| Scope | Description | Access Level |
+|-------|-------------|--------------|
+| `wikijs:read` | Read pages and users | Read-only operations |
+| `wikijs:write` | Create/update/delete pages | Write operations |
+| `wikijs:admin` | Full access including user management | Admin operations |
+
+### Protected Resource Metadata
+
+The server implements [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) OAuth Protected Resource Metadata:
+
+```bash
+curl http://localhost:3200/.well-known/oauth-protected-resource
+```
+
+Response:
+
+```json
+{
+  "resource": "http://localhost:3200",
+  "authorization_servers": ["https://login.microsoftonline.com/{tenant-id}/v2.0"],
+  "scopes_supported": ["wikijs:read", "wikijs:write", "wikijs:admin"],
+  "bearer_methods_supported": ["header"]
+}
+```
+
+---
+
+## Development
 
 ### Project Structure
 
 ```
 wikijs-mcp-server/
 ├── src/                    # TypeScript source code
-│   ├── server.ts          # HTTP server
-│   ├── tools.ts           # Tool definitions
-│   ├── api.ts             # Wiki.js API client
-│   ├── types.ts           # Data types
-│   ├── schemas.ts         # Zod validation schemas
-│   └── README.md          # Source code documentation
-├── lib/                   # JavaScript library files
-│   ├── fixed_mcp_http_server.js    # Main HTTP server (compiled)
-│   ├── mcp_wikijs_stdin.js         # STDIN server for editors
-│   ├── mcp_client.js               # Demo MCP client
-│   ├── mcp_wrapper.js              # MCP protocol utilities
-│   └── README.md                   # Library documentation
-├── scripts/               # Management scripts
-│   ├── setup.sh          # Initial setup
-│   ├── start_http.sh     # Start HTTP server
-│   ├── stop_server.sh    # Stop HTTP server
-│   ├── start_typescript.sh # Start TypeScript version
-│   ├── setup_cursor_mcp.sh # Cursor setup
-│   ├── test.sh           # Run tests
-│   ├── test_mcp.js       # Test HTTP server
-│   ├── test_mcp_stdin.js # Test STDIN server
-│   └── README.md         # Scripts documentation
-├── .cursor/               # Cursor MCP configuration
-│   └── mcp.json          # MCP configuration file (CRITICALLY IMPORTANT!)
-├── dist/                  # Compiled TypeScript code
-├── package.json           # Project metadata
-└── README.md             # Main documentation
+│   ├── server.ts          # Fastify HTTP server entry point
+│   ├── api.ts             # Wiki.js GraphQL API client
+│   ├── config.ts          # Configuration with Zod validation
+│   ├── types.ts           # TypeScript type definitions
+│   ├── mcp-tools.ts       # MCP tool definitions and handlers
+│   ├── auth/              # Authentication middleware
+│   │   ├── middleware.ts  # JWT validation middleware
+│   │   └── types.ts       # Auth-related types
+│   └── routes/            # HTTP route definitions
+│       ├── public-routes.ts   # Health check, server info
+│       └── mcp-routes.ts      # MCP JSON-RPC endpoint
+├── lib/                   # Compiled/legacy JavaScript
+│   └── mcp_wikijs_stdin.js    # STDIO transport server
+├── scripts/               # Utility scripts
+├── tests/                 # Test suite
+├── dist/                  # Compiled TypeScript output
+├── .env                   # Environment configuration
+├── example.env            # Environment template
+└── package.json           # Project metadata
 ```
-
-> **🚨 CRITICALLY IMPORTANT:** `.cursor/mcp.json` file is required for Cursor integration!
 
 ### Available Scripts
 
-#### Setup and Build
+```bash
+# Setup
+npm run setup          # Initial project setup
+npm run build          # Compile TypeScript
 
-- `npm run setup` - Initial project setup
-- `npm run build` - Build TypeScript project
-- `npm run setup:cursor` - Setup Cursor integration
+# Running
+npm start              # Start HTTP server
+npm run server:stdio   # Start STDIO server
+npm run dev            # Development mode with hot reload
 
-#### Running Servers
+# Testing
+npm test               # Run tests
+npm run test:watch     # Watch mode
 
-- `npm start` / `npm run start:http` - HTTP MCP server (port 3200)
-- `npm run stop` - Stop all MCP servers
-- `npm run start:typescript` - TypeScript version of server (port 8000)
-- `npm run server:stdio` - STDIO version for direct integration
-
-#### Development and Testing
-
-- `npm run dev` - Development mode with hot reload
-- `npm run demo` - Capability demonstration
-- `npm test` - Run tests
-- `npm run client` - Run demo client
-
-### API Endpoints (HTTP mode)
-
-- `GET /tools` - List of available tools
-- `GET /health` - Server health check
-- `POST /mcp` - MCP JSON-RPC endpoint
-
-### Usage Examples
-
-````javascript
-// Get list of pages
-{
-  "method": "list_pages",
-  "params": {
-    "limit": 10,
-    "orderBy": "TITLE"
-  }
-}
-
-// Create new page
-{
-  "method": "create_page",
-  "params": {
-    "title": "New Page",
-    "content": "# Title\n\nContent...",
-    "path": "folder/new-page"
-  }
-}
-
-### Search for pages:
-```python
-# Search in all content and metadata
-result = await mcp_client.call_tool("search_pages", {
-    "query": "magic system",
-    "limit": 5
-})
-````
-
-### Working with Unpublished Pages:
-
-```python
-# Get all pages including unpublished ones
-all_pages = await mcp_client.call_tool("list_all_pages", {
-    "limit": 100,
-    "includeUnpublished": True
-})
-
-# Search only unpublished pages
-unpublished = await mcp_client.call_tool("search_unpublished_pages", {
-    "query": "draft",
-    "limit": 10
-})
-
-# Check page publication status
-status = await mcp_client.call_tool("get_page_status", {
-    "id": 42
-})
-
-# Publish an unpublished page
-result = await mcp_client.call_tool("publish_page", {
-    "id": 42
-})
-
-# Force delete page (works with unpublished pages)
-result = await mcp_client.call_tool("force_delete_page", {
-    "id": 42
-})
+# Utilities
+npm run stop           # Stop running servers
 ```
 
-### User management:
+### Key Dependencies
 
-```python
-# List all users
-users = await mcp_client.call_tool("list_users")
+| Package | Purpose |
+|---------|---------|
+| `@modelcontextprotocol/sdk` | MCP protocol implementation |
+| `fastify` | HTTP server framework |
+| `graphql-request` | Wiki.js GraphQL API client |
+| `jose` | JWT processing and validation |
+| `zod` | Schema validation |
 
-# Search users by query
-search_result = await mcp_client.call_tool("search_users", {
-    "query": "John"
-})
+---
 
-# Create new user
-new_user = await mcp_client.call_tool("create_user", {
-    "email": "john@example.com",
-    "name": "John Doe",
-    "passwordRaw": "password123",
-    "providerKey": "local",
-    "groups": [1],
-    "mustChangePassword": false,
-    "sendWelcomeEmail": true
-})
+## Troubleshooting
 
-# Update user information
-updated_user = await mcp_client.call_tool("update_user", {
-    "id": 1,
-    "name": "John Doe Updated"
-})
+### Server won't start
+
+**Check configuration:**
+```bash
+# Verify environment variables are set
+cat .env
+
+# Check for validation errors in logs
+npm start
 ```
 
-## 🐛 Troubleshooting
+**Common issues:**
+- Missing required environment variables
+- Invalid UUID format for Azure IDs
+- Malformed URLs
 
-### Connection Issues
+### Can't connect to Wiki.js
 
-1. Ensure Wiki.js is running and accessible
-2. Check WIKIJS_BASE_URL correctness
-3. Verify API token is valid
+1. Verify Wiki.js is running and accessible
+2. Check `WIKIJS_BASE_URL` doesn't include `/graphql`
+3. Verify API token has necessary permissions
+4. Test connection directly:
+```bash
+curl -H "Authorization: Bearer $WIKIJS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"query":"{ pages { list { id title } } }"}' \
+     http://localhost:3000/graphql
+```
 
-### MCP Issues
+### Claude Desktop not seeing tools
 
-1. Check Node.js version (requires >=18.0.0)
-2. Ensure all dependencies are installed
-3. Check server logs for errors
+1. Ensure MCP server is running
+2. Check configuration file syntax (valid JSON)
+3. Restart Claude Desktop completely
+4. Check Claude Desktop logs for errors
 
-## 📚 Documentation
+### Authentication failures (HTTP mode)
 
-- [Source Code Documentation](./src/README.md) - TypeScript source code structure
-- [Library Documentation](./lib/README.md) - JavaScript library files
-- [Scripts Documentation](./scripts/README.md) - description of all management scripts
-- [Changelog](./CHANGELOG.md) - release and update log
-- [License](./LICENSE) - project usage terms
+1. Verify Azure AD credentials are correct
+2. Check JWT token hasn't expired
+3. Ensure token includes required scopes
+4. Verify `MCP_RESOURCE_URL` matches your server URL
 
-## 🤝 Contributing
+---
+
+## Architecture
+
+### Request Flow
+
+```
+┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
+│  MCP Client │────▶│  MCP Server     │────▶│   Wiki.js    │
+│  (Claude)   │     │  (Fastify)      │     │  (GraphQL)   │
+└─────────────┘     └─────────────────┘     └──────────────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │   Azure AD   │
+                    │  (JWT Auth)  │
+                    └──────────────┘
+```
+
+### Multi-Stage Search
+
+The `search_pages` tool uses a fallback strategy:
+
+1. **GraphQL API search** - Fast indexed search
+2. **Metadata search** - Search titles, paths, descriptions
+3. **HTTP content search** - Deep content search via HTTP
+4. **Forced verification** - Fallback for known pages
+
+This ensures results even with limited API permissions.
+
+---
+
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -390,183 +555,24 @@ updated_user = await mcp_client.call_tool("update_user", {
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+---
+
+## License
 
 This project is distributed under the MIT License. See [LICENSE](LICENSE) file for details.
 
-## 🔗 Useful Links
+---
+
+## Links
 
 - [Wiki.js](https://js.wiki/) - Official Wiki.js website
 - [Model Context Protocol](https://spec.modelcontextprotocol.io/) - MCP specification
 - [Anthropic](https://www.anthropic.com/) - MCP protocol developer
-- [GraphQL](https://graphql.org/) - Query language for APIs
 
-## ⭐ Support
+---
+
+## Support
 
 If this project helped you, please give it a ⭐ on GitHub!
 
-Have questions? Create an [Issue](https://github.com/heAdz0r/wikijs-mcp-server/issues) or refer to the documentation.
-
-## 🆕 New Feature: Automatic URLs
-
-### Search Stages
-
-Search works in 4 stages:
-
-1. **GraphQL API search** - fast search through indexed content
-2. **Metadata search** - search in titles, paths, and page descriptions
-3. **HTTP content search** - deep search in page content via HTTP
-4. **Forced verification** - fallback search on known pages
-
-### Usage Examples
-
-#### Content Search
-
-```json
-{
-  "method": "search_pages",
-  "params": {
-    "query": "ZELEBOBA",
-    "limit": 5
-  }
-}
-```
-
-**Result:**
-
-```json
-[
-  {
-    "id": 103,
-    "path": "test/test-page",
-    "title": "Test Page",
-    "description": "Test page to demonstrate Wiki.js API capabilities",
-    "url": "http://localhost:8080/en/test/test-page"
-  }
-]
-```
-
-#### Title Search
-
-```json
-{
-  "method": "search_pages",
-  "params": {
-    "query": "find me",
-    "limit": 3
-  }
-}
-```
-
-**Result:**
-
-```json
-[
-  {
-    "id": 108,
-    "path": "test/test-gemini-mcp",
-    "title": "Test Gemini MCP Page (find me)",
-    "url": "http://localhost:8080/en/test/test-gemini-mcp"
-  }
-]
-```
-
-### New Search Benefits
-
-- ✅ **Finds pages even with limited API permissions** - uses HTTP fallback
-- ✅ **Multi-level search** - combines multiple strategies
-- ✅ **Content search** - finds text inside pages
-- ✅ **Metadata search** - titles, paths, descriptions
-- ✅ **Fallback methods** - guaranteed results for known pages
-- ✅ **Correct URLs** - all results contain ready-to-use links
-
-### Technical Details
-
-#### HTML Content Processing
-
-The system automatically extracts text from HTML using:
-
-- Search in `<template slot="contents">` block
-- HTML tags and entities cleanup
-- Fallback to full page content
-
-With limited GraphQL API permissions, the system:
-
-- Switches to HTTP method for content retrieval
-- Uses direct requests to HTML pages
-- Preserves all page metadata
-
-## 📝 Changelog
-
-### Version 1.3.0 - Unpublished Pages Management (Latest)
-
-#### 🆕 New Features:
-
-- **`list_all_pages`** - Get all pages including unpublished ones
-- **`search_unpublished_pages`** - Search specifically in unpublished pages
-- **`force_delete_page`** - Enhanced deletion that works with unpublished pages
-- **`get_page_status`** - Check publication status of any page
-- **`publish_page`** - Publish unpublished pages programmatically
-
-#### 🔧 Improvements:
-
-- Enhanced server API with new routes for unpublished page management
-- Better error handling for page deletion operations
-- Comprehensive GraphQL mutation support for advanced page operations
-- **Restructured project**: Moved JavaScript files to `lib/` directory for better organization
-
-#### 🐛 Bug Fixes:
-
-- Fixed issues with accessing unpublished pages through standard APIs
-- Improved authentication handling for admin-level operations
-
-### Version 1.2.0 - International Release
-
-#### 🌍 Internationalization:
-
-- Complete English translation of documentation
-- README.md and QUICK_START.md now available in English
-- Prepared for international market expansion
-
-### Version 1.1.0 - Enhanced Search & User Management
-
-#### ✨ Features:
-
-- Smart multi-method page search (GraphQL + content + metadata)
-- User management tools (create, update, search)
-- Group management capabilities
-- Improved content extraction from HTML pages
-
-## 🛠️ Available Tools
-
-### 📄 Page Tools
-
-| Tool Name                      | Description                                       | Parameters                                                                            |
-| ------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `get_page`                     | Get page information by ID                        | `id: number`                                                                          |
-| `get_page_content`             | Get page content by ID                            | `id: number`                                                                          |
-| `list_pages`                   | List pages with sorting                           | `limit?: number, orderBy?: string`                                                    |
-| `search_pages`                 | Search pages by query                             | `query: string, limit?: number`                                                       |
-| `create_page`                  | Create new page                                   | `title: string, content: string, path: string, description?: string, tags?: string[]` |
-| `update_page`                  | Update existing page                              | `id: number, content: string`                                                         |
-| `delete_page`                  | Delete page                                       | `id: number`                                                                          |
-| **`list_all_pages`**           | **🆕 List all pages including unpublished**       | `limit?: number, orderBy?: string, includeUnpublished?: boolean`                      |
-| **`search_unpublished_pages`** | **🆕 Search only unpublished pages**              | `query: string, limit?: number`                                                       |
-| **`force_delete_page`**        | **🆕 Force delete page (works with unpublished)** | `id: number`                                                                          |
-| **`get_page_status`**          | **🆕 Get page publication status**                | `id: number`                                                                          |
-| **`publish_page`**             | **🆕 Publish unpublished page**                   | `id: number`                                                                          |
-
-### 👥 User Tools
-
-| Tool Name      | Description             | Parameters                                                                                                                                            |
-| -------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_users`   | List all users          | None                                                                                                                                                  |
-| `search_users` | Search users by query   | `query: string`                                                                                                                                       |
-| `create_user`  | Create new user         | `email: string, name: string, passwordRaw: string, providerKey?: string, groups?: number[], mustChangePassword?: boolean, sendWelcomeEmail?: boolean` |
-| `update_user`  | Update user information | `id: number, name: string`                                                                                                                            |
-
-### 🔗 Group Tools
-
-| Tool Name     | Description      | Parameters |
-| ------------- | ---------------- | ---------- |
-| `list_groups` | List user groups | None       |
+Have questions? Create an [Issue](https://github.com/heAdz0r/wikijs-mcp-server/issues).
