@@ -56,7 +56,9 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
   2. The RFC 8707 `resource` parameter is identified and stripped from parameter sets before forwarding
   3. Azure AD authorization and token endpoint URLs are correctly constructed from tenant ID
   4. All scope mapping and URL construction functions have unit tests covering edge cases (empty scopes, mixed bare/OIDC, unknown scopes)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 10-01-PLAN.md — TDD: scope mapper, resource stripper, and Azure endpoint constructor
 
 ### Phase 11: Discovery and Registration Endpoints
 **Goal**: MCP clients can discover the server's OAuth capabilities and register as clients
@@ -109,7 +111,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 10. Scope Mapper and Azure Endpoint Utils | 0/? | Not started | - |
+| 10. Scope Mapper and Azure Endpoint Utils | 0/1 | Not started | - |
 | 11. Discovery and Registration Endpoints | 0/? | Not started | - |
 | 12. Authorization Redirect Endpoint | 0/? | Not started | - |
 | 13. Token Proxy Endpoint | 0/? | Not started | - |
