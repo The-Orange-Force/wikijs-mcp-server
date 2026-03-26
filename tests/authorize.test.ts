@@ -69,17 +69,16 @@ describe("GET /authorize", () => {
       expect(scopeParam).toContain(`api://${TEST_CONFIG.clientId}/wikijs:read`);
     });
 
-    it("maps multiple scopes with api:// prefix", async () => {
+    it("maps MCP scope with api:// prefix and passes unknown scopes through", async () => {
       const res = await app.inject({
         method: "GET",
         url: "/authorize",
-        query: validQuery({ scope: "wikijs:read wikijs:write" }),
+        query: validQuery({ scope: "wikijs:read" }),
       });
 
       const location = new URL(res.headers.location as string);
       const scopeParam = location.searchParams.get("scope")!;
       expect(scopeParam).toContain(`api://${TEST_CONFIG.clientId}/wikijs:read`);
-      expect(scopeParam).toContain(`api://${TEST_CONFIG.clientId}/wikijs:write`);
     });
 
     it("appends openid and offline_access to scope", async () => {

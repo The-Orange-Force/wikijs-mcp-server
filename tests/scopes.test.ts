@@ -7,19 +7,31 @@ import {
   type Scope,
 } from "../src/scopes.js";
 
-describe("Scope-to-tool mapping", () => {
-  it("SUPPORTED_SCOPES contains exactly the three expected scopes", () => {
-    expect(SUPPORTED_SCOPES).toEqual(
-      expect.arrayContaining(["wikijs:read", "wikijs:write", "wikijs:admin"]),
-    );
-    expect(SUPPORTED_SCOPES).toHaveLength(3);
+describe("Scope-to-tool mapping (single-scope model)", () => {
+  it("SUPPORTED_SCOPES contains exactly one scope: wikijs:read", () => {
+    expect(SUPPORTED_SCOPES).toEqual(["wikijs:read"]);
+    expect(SUPPORTED_SCOPES).toHaveLength(1);
   });
 
-  it("read scope has tools mapped", () => {
-    expect(SCOPE_TOOL_MAP[SCOPES.READ].length).toBeGreaterThanOrEqual(1);
+  it("SCOPES object has only the READ key", () => {
+    expect(SCOPES).toEqual({ READ: "wikijs:read" });
+    expect(Object.keys(SCOPES)).toHaveLength(1);
   });
 
-  it("maps exactly 3 tools total (consolidated read-only tools)", () => {
+  it("SCOPE_TOOL_MAP[wikijs:read] has exactly 3 tools: get_page, list_pages, search_pages", () => {
+    const readTools = SCOPE_TOOL_MAP[SCOPES.READ];
+    expect(readTools).toEqual(["get_page", "list_pages", "search_pages"]);
+    expect(readTools).toHaveLength(3);
+  });
+
+  it("every scope has at least one tool", () => {
+    for (const scope of SUPPORTED_SCOPES) {
+      const tools = SCOPE_TOOL_MAP[scope as Scope];
+      expect(tools.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("maps exactly 3 tools total across all scopes", () => {
     const allTools = Object.values(SCOPE_TOOL_MAP).flat();
     expect(allTools).toHaveLength(3);
   });
@@ -30,36 +42,11 @@ describe("Scope-to-tool mapping", () => {
     expect(unique.size).toBe(allTools.length);
   });
 
-  it("TOOL_SCOPE_MAP reverse lookup covers every tool in SCOPE_TOOL_MAP", () => {
+  it("TOOL_SCOPE_MAP reverse lookup covers every tool and all map to wikijs:read", () => {
     const allTools = Object.values(SCOPE_TOOL_MAP).flat();
     for (const tool of allTools) {
-      expect(TOOL_SCOPE_MAP[tool]).toBeDefined();
+      expect(TOOL_SCOPE_MAP[tool]).toBe("wikijs:read");
     }
     expect(Object.keys(TOOL_SCOPE_MAP)).toHaveLength(allTools.length);
-  });
-
-  it("assigns read tools to wikijs:read", () => {
-    const readTools = SCOPE_TOOL_MAP[SCOPES.READ];
-    expect(readTools).toContain("get_page");
-    expect(readTools).toContain("list_pages");
-    expect(readTools).toContain("search_pages");
-    expect(readTools).toHaveLength(3);
-  });
-
-  it("write and admin scopes are empty (write/admin tools removed in consolidation)", () => {
-    expect(SCOPE_TOOL_MAP[SCOPES.WRITE]).toHaveLength(0);
-    expect(SCOPE_TOOL_MAP[SCOPES.ADMIN]).toHaveLength(0);
-  });
-
-  it("TOOL_SCOPE_MAP returns correct scope for read tools", () => {
-    expect(TOOL_SCOPE_MAP["get_page"]).toBe("wikijs:read");
-    expect(TOOL_SCOPE_MAP["list_pages"]).toBe("wikijs:read");
-    expect(TOOL_SCOPE_MAP["search_pages"]).toBe("wikijs:read");
-  });
-
-  it("SCOPES object has correct constant values", () => {
-    expect(SCOPES.READ).toBe("wikijs:read");
-    expect(SCOPES.WRITE).toBe("wikijs:write");
-    expect(SCOPES.ADMIN).toBe("wikijs:admin");
   });
 });

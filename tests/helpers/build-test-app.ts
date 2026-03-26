@@ -37,7 +37,7 @@ async function mockFetch(url: string | URL | Request, init?: RequestInit): Promi
   );
 }
 
-/** Mock WikiJsApi for tests that don't need real WikiJS */
+/** Mock WikiJsApi for tests -- only the 3 read-only tool API methods + checkConnection */
 export const mockWikiJsApi = {
   checkConnection: async () => true,
   getPageById: async (id: number) => ({
@@ -45,40 +45,31 @@ export const mockWikiJsApi = {
     path: "test/page",
     title: "Test Page",
     description: "A test page",
-    content: "# Test Content",
+    content: "# Test Content\n\nThis is test content.",
     isPublished: true,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
   }),
   listPages: async () => [
-    { id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" },
+    {
+      id: 1,
+      path: "test",
+      title: "Test",
+      description: "Test page",
+      isPublished: true,
+      createdAt: "2024-01-01T00:00:00Z",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
   ],
-  searchPages: async () => [{ id: 1, path: "test", title: "Test" }],
-  createPage: async () => ({ succeeded: true, message: "OK" }),
-  updatePage: async () => ({ succeeded: true, message: "OK" }),
-  deletePage: async () => ({ succeeded: true, message: "OK" }),
-  getUsersList: async () => [
-    { id: 1, name: "Admin", email: "admin@test.com" },
+  searchPages: async () => [
+    {
+      id: 1,
+      path: "test",
+      title: "Test",
+      description: "Test page",
+      locale: "en",
+    },
   ],
-  searchUsers: async () => [
-    { id: 1, name: "Admin", email: "admin@test.com" },
-  ],
-  getGroupsList: async () => [{ id: 1, name: "Admins", isSystem: true }],
-  createUser: async () => ({ succeeded: true, message: "OK" }),
-  updateUser: async () => ({ succeeded: true, message: "OK" }),
-  searchUnpublishedPages: async () => [],
-  forceDeletePage: async () => ({ succeeded: true, message: "OK" }),
-  getPageStatus: async (id: number) => ({
-    id,
-    path: "test",
-    title: "Test",
-    description: "Test page",
-    content: "# Test Content",
-    isPublished: true,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
-  }),
-  publishPage: async () => ({ succeeded: true, message: "OK" }),
 } as unknown as WikiJsApi;
 
 /**

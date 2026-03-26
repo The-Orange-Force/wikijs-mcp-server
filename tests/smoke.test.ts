@@ -11,7 +11,7 @@ import {
 } from "../src/auth/__tests__/helpers.js";
 
 // ---------------------------------------------------------------------------
-// Mock WikiJsApi -- avoids needing a real WikiJS instance
+// Mock WikiJsApi -- only surviving read-only methods + checkConnection
 // ---------------------------------------------------------------------------
 const mockWikiJsApi = {
   checkConnection: async () => true,
@@ -29,31 +29,6 @@ const mockWikiJsApi = {
     { id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" },
   ],
   searchPages: async () => [{ id: 1, path: "test", title: "Test" }],
-  createPage: async () => ({ succeeded: true, message: "OK" }),
-  updatePage: async () => ({ succeeded: true, message: "OK" }),
-  deletePage: async () => ({ succeeded: true, message: "OK" }),
-  getUsersList: async () => [
-    { id: 1, name: "Admin", email: "admin@test.com" },
-  ],
-  searchUsers: async () => [
-    { id: 1, name: "Admin", email: "admin@test.com" },
-  ],
-  getGroupsList: async () => [{ id: 1, name: "Admins", isSystem: true }],
-  createUser: async () => ({ succeeded: true, message: "OK" }),
-  updateUser: async () => ({ succeeded: true, message: "OK" }),
-  searchUnpublishedPages: async () => [],
-  forceDeletePage: async () => ({ succeeded: true, message: "OK" }),
-  getPageStatus: async (id: number) => ({
-    id,
-    path: "test",
-    title: "Test",
-    description: "Test page",
-    content: "# Test Content",
-    isPublished: true,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
-  }),
-  publishPage: async () => ({ succeeded: true, message: "OK" }),
 } as unknown as WikiJsApi;
 
 // ---------------------------------------------------------------------------
@@ -221,33 +196,84 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
     }
   });
 
-  it("POST /mcp with tools/call invokes list_pages tool with mock", async () => {
-    const res = await mcpPost({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: {
-        name: "list_pages",
-        arguments: {},
-      },
-    });
-
-    expect(res.status).toBe(200);
-
+  it("removed tools are absent from tools/list", async () => {
+    const res = await mcpPost({ jsonrpc: "2.0", id: 10, method: "tools/list", params: {} });
     const data = await res.json();
-    expect(data.jsonrpc).toBe("2.0");
-    expect(data.id).toBe(3);
-    expect(data.result).toBeDefined();
-    expect(data.result.content).toBeDefined();
-    expect(Array.isArray(data.result.content)).toBe(true);
-    expect(data.result.content.length).toBeGreaterThan(0);
-    expect(data.result.content[0].type).toBe("text");
+    const toolNames = data.result.tools.map((t: { name: string }) => t.name);
+    const removedTools = [
+      "get_page_content", "create_page", "update_page", "delete_page",
+      "list_all_pages", "search_unpublished_pages", "force_delete_page",
+      "get_page_status", "publish_page", "list_users", "search_users",
+      "create_user", "list_groups", "update_user",
+    ];
+    for (const removed of removedTools) {
+      expect(toolNames).not.toContain(removed);
+    }
+  });
 
-    // Parse the text content and verify it contains our mock data
+  it("each tool has a multi-sentence LLM-optimized description", async () => {
+    const res = await mcpPost({ jsonrpc: "2.0", id: 11, method: "tools/list", params: {} });
+    const data = await res.json();
+    for (const tool of data.result.tools) {
+      // Multi-sentence: at least 2 sentences (contains at least one period followed by a space and capital letter)
+      expect(tool.description.length).toBeGreaterThan(50);
+      expect(tool.description).toMatch(/\.\s+[A-Z]/);
+    }
+    // get_page description mentions return fields
+    const getPage = data.result.tools.find((t: { name: string }) => t.name === "get_page");
+    expect(getPage.description).toContain("content");
+    expect(getPage.description).toContain("isPublished");
+    // search_pages mentions limitation
+    const searchPages = data.result.tools.find((t: { name: string }) => t.name === "search_pages");
+    expect(searchPages.description).toContain("published");
+    // list_pages cross-references get_page
+    const listPages = data.result.tools.find((t: { name: string }) => t.name === "list_pages");
+    expect(listPages.description).toContain("get_page");
+  });
+
+  it("tools/call get_page returns full page object with content", async () => {
+    const res = await mcpPost({
+      jsonrpc: "2.0", id: 20, method: "tools/call",
+      params: { name: "get_page", arguments: { id: 42 } },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.result.content).toBeDefined();
+    expect(data.result.content[0].type).toBe("text");
+    const parsed = JSON.parse(data.result.content[0].text);
+    expect(parsed.id).toBe(42);
+    expect(parsed.title).toBe("Test Page");
+    expect(parsed.content).toContain("Test Content");
+    expect(parsed.isPublished).toBe(true);
+  });
+
+  it("tools/call list_pages returns page metadata array", async () => {
+    const res = await mcpPost({
+      jsonrpc: "2.0", id: 21, method: "tools/call",
+      params: { name: "list_pages", arguments: {} },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.result.content[0].type).toBe("text");
     const parsed = JSON.parse(data.result.content[0].text);
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed[0].id).toBe(1);
-    expect(parsed[0].path).toBe("test");
+    expect(parsed[0].title).toBe("Test");
+    expect(parsed[0].isPublished).toBe(true);
+  });
+
+  it("tools/call search_pages returns results array", async () => {
+    const res = await mcpPost({
+      jsonrpc: "2.0", id: 22, method: "tools/call",
+      params: { name: "search_pages", arguments: { query: "test" } },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.result.content[0].type).toBe("text");
+    const parsed = JSON.parse(data.result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0].id).toBe(1);
+    expect(parsed[0].title).toBe("Test");
   });
 });
 

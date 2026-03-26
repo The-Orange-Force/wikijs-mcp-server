@@ -97,16 +97,14 @@ describe("GET /.well-known/oauth-authorization-server", () => {
     expect(body.token_endpoint_auth_methods_supported).toEqual(["none"]);
   });
 
-  it("contains scopes_supported with all three scopes", async () => {
+  it("contains scopes_supported with wikijs:read scope", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/.well-known/oauth-authorization-server",
     });
     const body = res.json();
-    expect(body.scopes_supported).toEqual(
-      expect.arrayContaining(["wikijs:read", "wikijs:write", "wikijs:admin"]),
-    );
-    expect(body.scopes_supported).toHaveLength(3);
+    expect(body.scopes_supported).toEqual(["wikijs:read"]);
+    expect(body.scopes_supported).toHaveLength(1);
   });
 
   it("includes Cache-Control header", async () => {

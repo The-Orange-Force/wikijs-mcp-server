@@ -56,16 +56,14 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     expect(server).toBe(FAKE_RESOURCE_URL);
   });
 
-  it("contains scopes_supported with all three scopes", async () => {
+  it("contains scopes_supported with only wikijs:read", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/.well-known/oauth-protected-resource",
     });
     const body = res.json();
-    expect(body.scopes_supported).toEqual(
-      expect.arrayContaining(["wikijs:read", "wikijs:write", "wikijs:admin"]),
-    );
-    expect(body.scopes_supported).toHaveLength(3);
+    expect(body.scopes_supported).toEqual(["wikijs:read"]);
+    expect(body.scopes_supported).toHaveLength(1);
   });
 
   it('contains bearer_methods_supported equal to ["header"]', async () => {

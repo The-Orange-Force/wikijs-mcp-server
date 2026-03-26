@@ -10,13 +10,11 @@ describe("mapScopes", () => {
     ]);
   });
 
-  it("prefixes all three MCP scopes", () => {
+  it("prefixes the single MCP scope wikijs:read", () => {
     expect(
-      mapScopes(["wikijs:read", "wikijs:write", "wikijs:admin"], CLIENT_ID),
+      mapScopes(["wikijs:read"], CLIENT_ID),
     ).toEqual([
       `api://${CLIENT_ID}/wikijs:read`,
-      `api://${CLIENT_ID}/wikijs:write`,
-      `api://${CLIENT_ID}/wikijs:admin`,
     ]);
   });
 
@@ -30,15 +28,20 @@ describe("mapScopes", () => {
   it("prefixes MCP scopes and passes OIDC scopes through in mixed input", () => {
     expect(
       mapScopes(
-        ["wikijs:read", "openid", "wikijs:admin", "offline_access"],
+        ["wikijs:read", "openid", "offline_access"],
         CLIENT_ID,
       ),
     ).toEqual([
       `api://${CLIENT_ID}/wikijs:read`,
       "openid",
-      `api://${CLIENT_ID}/wikijs:admin`,
       "offline_access",
     ]);
+  });
+
+  it("passes unrecognized wikijs scopes through unchanged", () => {
+    expect(
+      mapScopes(["wikijs:admin"], CLIENT_ID),
+    ).toEqual(["wikijs:admin"]);
   });
 
   it("returns empty array for empty input", () => {
