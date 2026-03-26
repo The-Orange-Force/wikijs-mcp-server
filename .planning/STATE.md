@@ -4,7 +4,7 @@ milestone: v2.2
 milestone_name: OAuth Authorization Proxy
 status: completed
 stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-26T08:05:37Z"
+last_updated: "2026-03-26T08:09:37.488Z"
 last_activity: "2026-03-26 — Executed 14-01: Wire-up and protected resource metadata switch"
 progress:
   total_phases: 5
