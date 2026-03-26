@@ -2,6 +2,47 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.3 — Tool Consolidation
+
+**Shipped:** 2026-03-26
+**Phases:** 4 | **Plans:** 8
+
+### What Was Built
+- Consolidated 17 MCP tools to 3 read-only page tools (get_page, list_pages, search_pages)
+- Path-based search ID resolution with singleByPath + pages.list fallback
+- Single-scope model (wikijs:read only) replacing 3-tier read/write/admin
+- STDIO transport removal and Alpine Docker base image switch
+- Dead code removal (types, API methods, msal-node dependency)
+- Rewritten documentation for 3-tool architecture
+
+### What Worked
+- **Aggressive consolidation paid off** — removing 14 tools and 2 scopes eliminated maintenance burden without losing value
+- **Rule 3 deviations were correct calls** — updating callers immediately when removing APIs prevented build breakage
+- **Single-scope model simplified everything** — auth tests, discovery metadata, scope-mapper all became simpler
+- **Alpine switch post-msal-node removal** — timing was right; no native dependency concerns remain
+
+### What Was Inefficient
+- **Test updates spread across multiple phases** — Phase 15-01, 15-02, 17-01 each fixed test assertions; could have been batched
+- **Documentation corruption** — README.md and CLAUDE.md had diff output embedded; required full rewrite
+- **VALIDATION.md files marked partial** — Nyquist compliance not formally achieved despite complete verification
+
+### Patterns Established
+- **Bridge fixes for incremental migration** — mcp-tools.ts handler extracted `.results` from PageSearchResult during Phase 15-16 transition
+- **Shared mock helper pattern** — tests/helpers/build-test-app.ts mockWikiJsApi as single source of truth
+- **Promise.allSettled for graceful partial failure** — search ID resolution handles dropped results without failing entire request
+
+### Key Lessons
+1. **Read-only scope is the right default for AI wiki tools** — write operations added complexity without clear use case
+2. **Disk state trumps plan expectations** — several plans expected pre-Phase-15 state but disk already had Phase 15 changes; adapt immediately
+3. **Single-scope model eliminates entire error classes** — no more "wrong scope for tool" failures, simpler token requirements
+
+### Cost Observations
+- Model mix: ~70% sonnet (execution), ~25% opus (planning/verification), ~5% haiku (research)
+- Total execution time: ~26 minutes across 4 phases
+- Notable: Fastest milestone to date; consolidation work was straightforward removal
+
+---
+
 ## Milestone: v2.2 — OAuth Authorization Proxy
 
 **Shipped:** 2026-03-26
@@ -55,6 +96,7 @@
 | v2.0 | 8 | 12 | Established TDD + phase-based GSD workflow |
 | v2.1 | 1 | 1 | Docker packaging, single-phase milestone |
 | v2.2 | 5 | 5 | OAuth proxy with research-driven planning, zero rework |
+| v2.3 | 4 | 8 | Aggressive consolidation (17→3 tools, 3→1 scopes), fastest milestone |
 
 ### Cumulative Quality
 
@@ -63,9 +105,11 @@
 | v2.0 | 97 | 4,133 | jose, zod, pino, graphql-request |
 | v2.1 | 97 | 4,133 | Docker (no runtime deps) |
 | v2.2 | 209 | 6,583 | @fastify/formbody |
+| v2.3 | 304 | 6,305 | None (removed msal-node) |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. **TDD catches integration issues early** — validated in v2.0 (auth middleware) and v2.2 (scope mapping, AADSTS normalization)
+1. **TDD catches integration issues early** — validated in v2.0 (auth middleware), v2.2 (scope mapping, AADSTS normalization), v2.3 (API method removal)
 2. **Research before planning prevents rework** — v2.2 had zero plan revisions due to thorough research phases
 3. **Pure function utilities as foundation** — extracting logic into tested pure functions before wiring routes has been consistently successful (scopes.ts in v2.0, scope-mapper.ts in v2.2)
+4. **Aggressive simplification pays dividends** — v2.3 removal of 14 tools and 2 scopes reduced maintenance without losing value

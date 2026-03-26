@@ -8,17 +8,9 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current Milestone: v2.3 Tool Consolidation
+## Current Milestone: None (v2.3 Shipped)
 
-**Goal:** Consolidate 17 tools down to 3 read-only page tools, fix search ID resolution, remove all write and user/group operations.
-
-**Target features:**
-- Consolidated `get_page` (metadata + content + isPublished in one call)
-- Consolidated `list_pages` (with optional `includeUnpublished` flag)
-- Fixed `search_pages` (path-based ID resolution for correct DB IDs)
-- Remove all write tools (create, update, delete, publish)
-- Remove all user/group tools
-- Simplify scopes to read-only
+**Next:** Define v2.4 or later milestone based on new requirements.
 
 ## Requirements
 
@@ -29,7 +21,6 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - ✓ WikiJS GraphQL API integration (page CRUD, search, user/group management)
 - ✓ HTTP server with MCP JSON-RPC transport via Fastify
 - ✓ Azure AD OAuth 2.1 authentication — v2.0
-- ✓ STDIO transport for editor integration
 - ✓ Zod schema validation for all tool inputs/outputs
 - ✓ Health check endpoint (unauthenticated)
 - ✓ Environment-based configuration
@@ -41,23 +32,23 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - ✓ Authorization proxy endpoint with scope mapping — v2.2
 - ✓ Token proxy endpoint (authorization_code + refresh_token) — v2.2
 - ✓ Protected Resource Metadata updated to reference self as authorization server — v2.2
+- ✓ Consolidated 3-tool model (get_page, list_pages, search_pages) — v2.3
+- ✓ Path-based search ID resolution with singleByPath + pages.list fallback — v2.3
+- ✓ Single-scope model (wikijs:read only) — v2.3
+- ✓ STDIO transport removed, Alpine Docker image — v2.3
+- ✓ Dead code removed (types, API methods, msal-node dependency) — v2.3
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Consolidated get_page tool (metadata + content + isPublished)
-- [ ] Consolidated list_pages tool (with includeUnpublished flag)
-- [ ] Fixed search_pages tool (path-based ID resolution)
-- [ ] Remove all write tools and user/group tools
-- [ ] Simplify scope enforcement to read-only
+(None — define next milestone requirements)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
 - Per-user WikiJS permissions — everyone has equal access via shared API token
-- STDIO transport OAuth — OAuth only applies to HTTP transport
 - Token issuance — server is a resource server only, Azure AD issues tokens
 - Rate limiting — Caddy handles rate limiting if needed
 - CORS configuration for browser clients — MCP clients are native apps
@@ -70,6 +61,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Write operations (create/update/delete pages) — use case is AI reading wiki, not authoring
 - User/group management tools — not needed for read-only wiki access
 - `search_unpublished_pages` — unreliable (Wiki.js doesn't index unpublished pages for search)
+- STDIO transport — removed in v2.3; HTTP-only simplifies codebase
 
 ## Context
 
@@ -80,6 +72,8 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - MCP protocol uses JSON-RPC 2.0 over HTTP POST with stateless JSON responses
 - **MCP spec (2025-03-26 revision)** requires resource servers to provide OAuth proxy when IdP lacks dynamic client registration
 - Claude Desktop discovers auth via `/.well-known/oauth-protected-resource` → `/.well-known/openid-configuration` → registration → authorize → token
+- **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope, 6,305 LOC TypeScript
+- **Tech stack:** TypeScript, Fastify, @modelcontextprotocol/sdk, graphql-request, jose, Zod, Vitest
 
 ## Constraints
 
@@ -110,14 +104,16 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 | Self-referencing PRM authorization_servers | Claude Desktop follows PRM → AS metadata chain; self-reference completes the loop | ✓ Shipped v2.2 |
 | Two-phase OAuth error handling | JSON 400 pre-redirect_uri, redirect errors post-redirect_uri (RFC 6749 compliance) | ✓ Shipped v2.2 |
 | AADSTS-specific error descriptions | Ambiguous Azure codes get clearer descriptions for MCP client display | ✓ Shipped v2.2 |
-| Read-only tools only | AI use case is reading wiki content, not authoring; write tools had bugs and added attack surface | — Pending |
-| Path-based search ID resolution | Wiki.js search returns index IDs not DB IDs; resolve via path matching | — Pending |
+| Read-only tools only | AI use case is reading wiki content, not authoring; write tools had bugs and added attack surface | ✓ Shipped v2.3 |
+| Path-based search ID resolution | Wiki.js search returns index IDs not DB IDs; resolve via path matching | ✓ Shipped v2.3 |
+| Single wikijs:read scope | All remaining tools are read-only; no need for write/admin scopes | ✓ Shipped v2.3 |
+| Alpine Docker image | Switched from node:20-slim after msal-node removal eliminated glibc dependency | ✓ Shipped v2.3 |
+| Remove STDIO transport | HTTP-only simplifies codebase; OAuth only applies to HTTP transport | ✓ Shipped v2.3 |
 
 ## Known Issues
 
 - Claude Desktop redirect_uri format needs live tenant testing (http://localhost port handling)
 - Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
-- Nyquist validation incomplete for phases 10-14 (VALIDATION.md files in draft status)
 
 ---
-*Last updated: 2026-03-26 after v2.3 milestone start*
+*Last updated: 2026-03-26 after v2.3 milestone*

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: Tool Consolidation
-status: complete
-stopped_at: Completed 18-03-PLAN.md
-last_updated: "2026-03-26T15:35:00.000Z"
-last_activity: "2026-03-26 -- Phase 18 complete, verification gap closed (removed stale src/README.md)"
+milestone: null
+milestone_name: null
+status: completed
+stopped_at: v2.3 Tool Consolidation shipped
+last_updated: "2026-03-26T17:00:00.000Z"
+last_activity: 2026-03-26 -- v2.3 milestone completed and archived
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,62 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.3 Tool Consolidation -- Phases 15-17 complete, Phase 18 next
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 18 of 18 (Dead Code Cleanup) -- COMPLETE
-Plan: 3 of 3 complete
-Status: Complete
-Last activity: 2026-03-26 -- Phase 18 complete, verification gap closed (removed stale src/README.md)
+Milestone: v2.3 Tool Consolidation -- SHIPPED
+Status: Ready for next milestone
+Last activity: 2026-03-26 -- v2.3 milestone completed and archived
 
-Progress: [██████████] 100%
+## Completed Milestones
 
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 8
-- Average duration: 3min
-- Total execution time: 26min
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 15 | 2 | 12min | 6min |
-| 16 | 2 | 5min | 2.5min |
-| 17 | 1 | 1min | 1min |
-| 18 | 3 | 7min | 2.3min |
-
-## Accumulated Context
-
-### Decisions
-
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Read-only tools only: AI use case is reading wiki content, not authoring
-- Path-based search ID resolution via singleByPath (reversed from earlier pages.list recommendation)
-- Used Phase 15 listPages method directly (already present on disk) instead of getAllPagesList with TODO
-- Shared readOnlyAnnotations object for consistent tool annotations across all 3 tools
-- Bridge fix in mcp-tools.ts search_pages handler extracts .results from PageSearchResult (Phase 16 will rewrite)
-- pages.list fallback uses limit 500 for search ID resolution
-- [Phase 16]: All 16-02 test updates were pre-completed as Rule 3 deviations during Plans 15-01, 15-02, and 17-01
-- [Phase 17]: Collapsed to single-scope model (wikijs:read only) - simplifies auth, reduces configuration surface
-- [Phase 18]: Version 2.3.0 synchronized across all files; dead code cleanup verified complete from prior phases
-- [Phase 18]: Switched to Alpine Docker image (node:20-alpine) after msal-node removal eliminated glibc dependency
-- [Phase 18]: Documentation files (README.md, CLAUDE.md) rewritten after corruption fix; tests pre-consolidated during prior phases
-
-### Pending Todos
-
-None.
-
-### Blockers/Concerns
-
-- singleByPath requires manage:pages + delete:pages permissions -- must verify API token has these
+- v2.0 OAuth 2.1 Extension (2026-03-24)
+- v2.1 Docker Deployment (2026-03-25)
+- v2.2 OAuth Authorization Proxy (2026-03-26)
+- v2.3 Tool Consolidation (2026-03-26)
 
 ## Session Continuity
 
-Last session: 2026-03-26T15:25:00.000Z
-Stopped at: Completed 18-03-PLAN.md
-Resume file: None
+Next: Run `/gsd:new-milestone` to start planning v2.4+
