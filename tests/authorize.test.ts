@@ -114,7 +114,7 @@ describe("GET /authorize", () => {
       const res = await app.inject({
         method: "GET",
         url: "/authorize",
-        query: validQuery({ scope: "wikijs:read wikijs:write" }),
+        query: validQuery({ scope: "wikijs:read" }),
       });
 
       const location = new URL(res.headers.location as string);
