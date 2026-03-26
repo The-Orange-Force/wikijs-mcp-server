@@ -19,11 +19,17 @@ export interface WikiJsPage {
   id: number;
   path: string;
   title: string;
-  description?: string;
+  description: string;
   content?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  url?: string; // Добавляем поле для ссылки на страницу
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Search result wrapper for paginated search responses (used by Plan 02)
+export interface PageSearchResult {
+  results: WikiJsPage[];
+  totalHits: number;
 }
 
 // Тип для пользователей Wiki.js

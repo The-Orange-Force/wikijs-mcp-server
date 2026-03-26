@@ -113,13 +113,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
       },
       annotations: readOnlyAnnotations,
     },
-    // TODO: Phase 15 renames getAllPagesList to listPages(limit, orderBy, includeUnpublished).
-    // Update this handler when Phase 15 is merged.
     wrapToolHandler(
       TOOL_LIST_PAGES,
       async ({ limit, orderBy, includeUnpublished }) => {
         try {
-          const pages = await wikiJsApi.getAllPagesList(
+          const pages = await wikiJsApi.listPages(
             limit,
             orderBy,
             includeUnpublished,

@@ -39,7 +39,7 @@ export class WikiJsApi {
     }
   }
 
-  // Получение страницы по ID
+  // Получение страницы по ID (consolidated: metadata + content + isPublished in one call)
   async getPageById(id: number): Promise<WikiJsPage> {
     const query = `
       {
@@ -49,6 +49,8 @@ export class WikiJsApi {
             path
             title
             description
+            content
+            isPublished
             createdAt
             updatedAt
           }
@@ -59,25 +61,11 @@ export class WikiJsApi {
     return response.pages.single;
   }
 
-  // Получение контента страницы
-  async getPageContent(id: number): Promise<string> {
-    const query = `
-      {
-        pages {
-          single (id: ${id}) {
-            content
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(query);
-    return response.pages.single.content;
-  }
-
-  // Получение списка страниц
-  async getPagesList(
+  // List pages with optional unpublished filter (replaces getPagesList + getAllPagesList)
+  async listPages(
     limit: number = 50,
-    orderBy: string = "TITLE"
+    orderBy: string = "TITLE",
+    includeUnpublished: boolean = false
   ): Promise<WikiJsPage[]> {
     const query = `
       {
@@ -87,6 +75,7 @@ export class WikiJsApi {
             path
             title
             description
+            isPublished
             createdAt
             updatedAt
           }
@@ -94,7 +83,13 @@ export class WikiJsApi {
       }
     `;
     const response: any = await this.client.request(query);
-    return response.pages.list;
+    let pages: WikiJsPage[] = response.pages.list;
+
+    if (!includeUnpublished) {
+      pages = pages.filter((page) => page.isPublished === true);
+    }
+
+    return pages;
   }
 
   // Поиск страниц
@@ -328,50 +323,17 @@ export class WikiJsApi {
     return response.users.update.responseResult;
   }
 
-  // Получение всех страниц включая неопубликованные
-  async getAllPagesList(
-    limit: number = 50,
-    orderBy: string = "TITLE",
-    includeUnpublished: boolean = true
-  ): Promise<(WikiJsPage & { isPublished: boolean })[]> {
-    const query = `
-      {
-        pages {
-          list (limit: ${limit}, orderBy: ${orderBy}) {
-            id
-            path
-            title
-            description
-            createdAt
-            updatedAt
-            isPublished
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(query);
-    let pages = response.pages.list;
-
-    // Фильтруем по статусу публикации если нужно
-    if (!includeUnpublished) {
-      pages = pages.filter((page: any) => page.isPublished);
-    }
-
-    return pages;
-  }
-
-  // Поиск неопубликованных страниц
+  // Search unpublished pages (delegates to listPages with includeUnpublished)
   async searchUnpublishedPages(
     query: string,
     limit: number = 10
-  ): Promise<(WikiJsPage & { isPublished: boolean })[]> {
-    // Получаем все страницы включая неопубликованные
-    const allPages = await this.getAllPagesList(200, "UPDATED", true);
+  ): Promise<WikiJsPage[]> {
+    const allPages = await this.listPages(200, "UPDATED", true);
 
-    // Фильтруем только неопубликованные страницы
+    // Filter to unpublished pages only
     const unpublishedPages = allPages.filter((page) => !page.isPublished);
 
-    // Ищем по запросу в названии, пути или описании
+    // Search by query in title, path, or description
     const queryLower = query.toLowerCase();
     const matches = unpublishedPages.filter((page) => {
       const titleMatch = page.title.toLowerCase().includes(queryLower);
@@ -384,33 +346,14 @@ export class WikiJsApi {
     return matches.slice(0, limit);
   }
 
-  // Принудительное удаление страницы (включая неопубликованные)
-  // Wiki.js pages.delete only accepts (id: Int!) — no extra flags exist.
+  // Force delete a page (delegates to deletePage -- Wiki.js has no special flag)
   async forceDeletePage(id: number): Promise<ResponseResult> {
     return this.deletePage(id);
   }
 
-  // Получение статуса публикации страницы
-  async getPageStatus(
-    id: number
-  ): Promise<WikiJsPage & { isPublished: boolean }> {
-    const query = `
-      {
-        pages {
-          single (id: ${id}) {
-            id
-            path
-            title
-            description
-            createdAt
-            updatedAt
-            isPublished
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(query);
-    return response.pages.single;
+  // Get page publication status (delegates to getPageById which now includes isPublished)
+  async getPageStatus(id: number): Promise<WikiJsPage> {
+    return this.getPageById(id);
   }
 
   // Публикация страницы
