@@ -102,17 +102,23 @@ export class WikiJsApi {
     const gqlQuery = `
       {
         pages {
-          search (query: "${query}", limit: ${limit}) {
-            id
-            path
-            title
-            description
+          search (query: ${JSON.stringify(query)}) {
+            results {
+              id
+              path
+              title
+              description
+              locale
+            }
+            suggestions
+            totalHits
           }
         }
       }
     `;
     const response: any = await this.client.request(gqlQuery);
-    return response.pages.search;
+    const results = response.pages.search.results ?? [];
+    return results.slice(0, limit);
   }
 
   // Создание новой страницы
@@ -130,8 +136,10 @@ export class WikiJsApi {
             description: ${JSON.stringify(description)}
             editor: "markdown"
             isPublished: true
+            isPrivate: false
             locale: "en"
             path: ${JSON.stringify(path)}
+            tags: []
             title: ${JSON.stringify(title)}
           ) {
             responseResult {
@@ -211,7 +219,7 @@ export class WikiJsApi {
             isSystem
             isActive
             createdAt
-            updatedAt
+            lastLoginAt
           }
         }
       }
@@ -225,10 +233,15 @@ export class WikiJsApi {
     const gqlQuery = `
       {
         users {
-          search (query: "${query}") {
+          search (query: ${JSON.stringify(query)}) {
             id
             name
             email
+            providerKey
+            isSystem
+            isActive
+            createdAt
+            lastLoginAt
           }
         }
       }
@@ -372,76 +385,9 @@ export class WikiJsApi {
   }
 
   // Принудительное удаление страницы (включая неопубликованные)
+  // Wiki.js pages.delete only accepts (id: Int!) — no extra flags exist.
   async forceDeletePage(id: number): Promise<ResponseResult> {
-    // Попробуем несколько вариантов удаления
-    const mutations = [
-      // Обычное удаление
-      `mutation {
-        pages {
-          delete (id: ${id}) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }`,
-      // Удаление с purge параметром
-      `mutation {
-        pages {
-          delete (id: ${id}, purge: true) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }`,
-      // Альтернативная мутация через render
-      `mutation {
-        pages {
-          render (id: ${id}, mode: DELETE) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }`,
-    ];
-
-    for (const [index, mutation] of mutations.entries()) {
-      try {
-        console.log(`Попытка ${index + 1} удаления страницы ${id}`);
-        const response: any = await this.client.request(mutation);
-
-        if (
-          response.pages.delete?.responseResult?.succeeded ||
-          response.pages.render?.responseResult?.succeeded
-        ) {
-          console.log(`Страница ${id} успешно удалена на попытке ${index + 1}`);
-          return (
-            response.pages.delete?.responseResult ||
-            response.pages.render?.responseResult
-          );
-        }
-      } catch (error) {
-        console.warn(`Попытка ${index + 1} не удалась: ${error}`);
-      }
-    }
-
-    // Если все попытки не удались
-    return {
-      succeeded: false,
-      errorCode: 500,
-      message: `Не удалось удалить страницу ${id} ни одним из доступных методов`,
-    };
+    return this.deletePage(id);
   }
 
   // Получение статуса публикации страницы

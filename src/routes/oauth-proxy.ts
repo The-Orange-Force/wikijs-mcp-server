@@ -68,7 +68,9 @@ export async function oauthProxyRoutes(
       .send(metadata);
   });
 
-  // POST /register -- RFC 7591 Dynamic Client Registration (static response)
+  // POST /register -- RFC 7591 Dynamic Client Registration
+  // Echoes back client-supplied metadata per RFC 7591 §3.2.1 so the client
+  // can proceed with the authorization code flow.
   fastify.post("/register", async (request, reply) => {
     const contentType = request.headers["content-type"];
     if (!contentType || !contentType.includes("application/json")) {
@@ -78,17 +80,29 @@ export async function oauthProxyRoutes(
       });
     }
 
-    const body = request.body as Record<string, unknown> | null;
-    if (body && typeof body === "object" && "client_name" in body) {
-      request.log.info({ client_name: body.client_name }, "DCR registration request");
-    }
+    const body = (request.body as Record<string, unknown>) ?? {};
+    request.log.info({ dcrRequest: body }, "DCR registration request");
 
-    return reply.code(201).send({
+    // Echo back client-provided fields alongside our static registration
+    const response: Record<string, unknown> = {
       client_id: appConfig.azure.clientId,
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-    });
+    };
+
+    // Echo redirect_uris, client_name, scope if provided (RFC 7591 §3.2.1)
+    if (Array.isArray(body.redirect_uris)) {
+      response.redirect_uris = body.redirect_uris;
+    }
+    if (typeof body.client_name === "string") {
+      response.client_name = body.client_name;
+    }
+    if (typeof body.scope === "string") {
+      response.scope = body.scope;
+    }
+
+    return reply.code(201).send(response);
   });
 
   // ---------------------------------------------------------------------------

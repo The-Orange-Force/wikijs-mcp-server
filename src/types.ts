@@ -35,7 +35,7 @@ export interface WikiJsUser {
   isSystem?: boolean;
   isActive?: boolean;
   createdAt?: string;
-  updatedAt?: string;
+  lastLoginAt?: string;
 }
 
 // Тип для групп Wiki.js
