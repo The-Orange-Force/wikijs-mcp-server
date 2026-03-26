@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: OAuth Authorization Proxy
 status: completed
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-03-25T21:40:01.024Z"
-last_activity: "2026-03-25 — Executed 13-01: POST /token proxy with AADSTS normalization"
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-26T08:05:37Z"
+last_activity: "2026-03-26 — Executed 14-01: Wire-up and protected resource metadata switch"
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 100
 ---
 
@@ -18,26 +18,26 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-25)
+See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.2 OAuth Authorization Proxy — Phase 13 complete, ready for Phase 14
+**Current focus:** v2.2 OAuth Authorization Proxy — Phase 14 complete, milestone complete
 
 ## Current Position
 
-Phase: 13 of 14 (Token Proxy Endpoint)
+Phase: 14 of 14 (Wire-up and Protected Resource Metadata Switch)
 Plan: 1 of 1 (complete)
-Status: Phase 13 complete
-Last activity: 2026-03-25 — Executed 13-01: POST /token proxy with AADSTS normalization
+Status: Phase 14 complete — milestone complete
+Last activity: 2026-03-26 — Executed 14-01: Wire-up and protected resource metadata switch
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 3min
-- Total execution time: 12min
+- Total execution time: 15min
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ Progress: [██████████] 100%
 | 11 | 1 | 2min | 2min |
 | 12 | 1 | 3min | 3min |
 | 13 | 1 | 5min | 5min |
+| 14 | 1 | 3min | 3min |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Recent decisions affecting current work:
 - [Phase 13]: AADSTS-specific descriptions override generic ones for ambiguous codes
 - [Phase 13]: @fastify/formbody registered inside oauth-proxy plugin scope (not global)
 - [Phase 13]: fetch is optional in OAuthProxyOptions, defaults to globalThis.fetch
+- [Phase 14]: PRM authorization_servers switched from Azure AD tenant URL to appConfig.azure.resourceUrl (self)
+- [Phase 14]: Mock fetch captures outbound calls for assertion without returning fake token responses
+- [Phase 14]: E2E test uses 6 sequential steps sharing state via let declarations to validate chain links
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:35:33.000Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-03-26T08:05:37Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None

@@ -43,7 +43,7 @@ Phase 9: Docker Packaging — .dockerignore, Dockerfile (multi-stage node:20-sli
 - [x] **Phase 11: Discovery and Registration Endpoints** - OAuth metadata and Dynamic Client Registration serving static JSON responses (completed 2026-03-25)
 - [x] **Phase 12: Authorization Redirect Endpoint** - GET /authorize redirecting to Azure AD with mapped scopes (completed 2026-03-25)
 - [x] **Phase 13: Token Proxy Endpoint** - POST /token proxying authorization_code and refresh_token grants to Azure AD (completed 2026-03-25)
-- [ ] **Phase 14: Wire Up and Protected Resource Metadata Switch** - Register proxy plugin in server, update metadata to reference self as authorization server
+- [x] **Phase 14: Wire Up and Protected Resource Metadata Switch** - Register proxy plugin in server, update metadata to reference self as authorization server (completed 2026-03-26)
 
 ## Phase Details
 
@@ -109,7 +109,7 @@ Plans:
   2. The `oauthProxyRoutes` plugin is registered in both the production server (`server.ts`) and test helper (`build-test-app.ts`)
   3. All proxy endpoints remain publicly accessible while `POST /mcp` continues to require JWT authentication
   4. The full discovery chain works: client reads protected resource metadata, follows to authorization server metadata, registers, authorizes, obtains tokens, and invokes MCP tools
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 14-01-PLAN.md — Metadata switchover, mock fetch injection, test updates, and E2E discovery chain test
 
@@ -123,7 +123,7 @@ Plans:
 | 11. Discovery and Registration Endpoints | 1/1 | Complete    | 2026-03-25 |
 | 12. Authorization Redirect Endpoint | 1/1 | Complete    | 2026-03-25 |
 | 13. Token Proxy Endpoint | 1/1 | Complete    | 2026-03-25 |
-| 14. Wire Up and Protected Resource Metadata Switch | 0/1 | Not started | - |
+| 14. Wire Up and Protected Resource Metadata Switch | 1/1 | Complete   | 2026-03-26 |
 
 ---
 *Created: 2026-03-25*

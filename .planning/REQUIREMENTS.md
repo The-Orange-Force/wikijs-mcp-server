@@ -14,7 +14,7 @@
 
 - [x] **META-01**: Server serves OAuth authorization server metadata at both `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration` with identical content
 - [x] **META-02**: Discovery document includes `code_challenge_methods_supported: ["S256"]` and all MCP-required fields (`authorization_endpoint`, `token_endpoint`, `registration_endpoint`, `response_types_supported`, `grant_types_supported`)
-- [ ] **META-03**: Protected Resource Metadata (`/.well-known/oauth-protected-resource`) references self (`MCP_RESOURCE_URL`) as authorization server
+- [x] **META-03**: Protected Resource Metadata (`/.well-known/oauth-protected-resource`) references self (`MCP_RESOURCE_URL`) as authorization server
 
 ### Registration
 
@@ -33,8 +33,8 @@
 
 ### Integration
 
-- [ ] **INTG-01**: All proxy endpoints are public (unauthenticated) — existing JWT validation on `POST /mcp` is unchanged
-- [ ] **INTG-02**: Claude Desktop completes full OAuth flow and successfully invokes MCP tools
+- [x] **INTG-01**: All proxy endpoints are public (unauthenticated) — existing JWT validation on `POST /mcp` is unchanged
+- [x] **INTG-02**: Claude Desktop completes full OAuth flow and successfully invokes MCP tools
 
 ## Future Requirements
 
@@ -64,15 +64,15 @@
 | SCOPE-02 | Phase 10 | Complete |
 | META-01 | Phase 11 | Complete |
 | META-02 | Phase 11 | Complete |
-| META-03 | Phase 14 | Pending |
+| META-03 | Phase 14 | Complete |
 | REGN-01 | Phase 11 | Complete |
 | AUTHZ-01 | Phase 12 | Complete |
 | AUTHZ-02 | Phase 12 | Complete |
 | TOKN-01 | Phase 13 | Complete |
 | TOKN-02 | Phase 13 | Complete |
 | TOKN-03 | Phase 13 | Complete |
-| INTG-01 | Phase 14 | Pending |
-| INTG-02 | Phase 14 | Pending |
+| INTG-01 | Phase 14 | Complete |
+| INTG-02 | Phase 14 | Complete |
 
 **Coverage:**
 - v2.2 requirements: 13 total
