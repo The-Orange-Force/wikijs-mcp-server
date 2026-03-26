@@ -101,7 +101,7 @@ Plans:
   2. A token with wikijs:read scope can invoke all 3 tools
   3. A token missing wikijs:read scope is rejected for all 3 tools
   4. The scopes_supported field in discovery metadata lists only wikijs:read
-**Plans:** 1/1 plan complete
+**Plans:** 1/1 plans complete
 Plans:
 - [x] 17-01-PLAN.md -- Simplify scopes to wikijs:read only and update all test assertions
 
