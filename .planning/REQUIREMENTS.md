@@ -11,14 +11,14 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 - [ ] **TOOL-01**: get_page returns metadata, content, and isPublished in a single call
 - [ ] **TOOL-02**: list_pages supports optional includeUnpublished flag
-- [ ] **TOOL-03**: All write tools removed (create_page, update_page, delete_page, force_delete_page, publish_page)
-- [ ] **TOOL-04**: All user/group tools removed (list_users, search_users, create_user, update_user, list_groups)
+- [x] **TOOL-03**: All write tools removed (create_page, update_page, delete_page, force_delete_page, publish_page)
+- [x] **TOOL-04**: All user/group tools removed (list_users, search_users, create_user, update_user, list_groups)
 
 ### Search
 
 - [ ] **SRCH-01**: search_pages resolves search index IDs to database page IDs via singleByPath
 - [ ] **SRCH-02**: search_pages falls back to pages.list cross-reference if singleByPath fails
-- [ ] **SRCH-03**: All 3 tools have verbose LLM-optimized descriptions
+- [x] **SRCH-03**: All 3 tools have verbose LLM-optimized descriptions
 
 ### Scope
 
@@ -59,11 +59,11 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 |-------------|-------|--------|
 | TOOL-01 | Phase 15 | Pending |
 | TOOL-02 | Phase 15 | Pending |
-| TOOL-03 | Phase 16 | Pending |
-| TOOL-04 | Phase 16 | Pending |
+| TOOL-03 | Phase 16 | Complete |
+| TOOL-04 | Phase 16 | Complete |
 | SRCH-01 | Phase 15 | Pending |
 | SRCH-02 | Phase 15 | Pending |
-| SRCH-03 | Phase 16 | Pending |
+| SRCH-03 | Phase 16 | Complete |
 | SCOP-01 | Phase 17 | Pending |
 | SCOP-02 | Phase 17 | Pending |
 | CLEN-01 | Phase 18 | Pending |

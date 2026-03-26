@@ -87,7 +87,7 @@ Plans:
   2. No write tools (create_page, update_page, delete_page, force_delete_page, publish_page) appear in tools/list
   3. No user/group tools (list_users, search_users, create_user, update_user, list_groups) appear in tools/list
   4. Each tool's description is multi-sentence, explaining what it returns and when to use it
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 16-01-PLAN.md -- Rewrite mcp-tools.ts with 3 read-only tools and update SCOPE_TOOL_MAP
 - [ ] 16-02-PLAN.md -- Update all test files for 3-tool consolidation
@@ -129,7 +129,7 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. API Layer Consolidation | 0/2 | Planned | - |
-| 16. Tool Registration Consolidation | 0/2 | Planned | - |
+| 16. Tool Registration Consolidation | 1/2 | In Progress|  |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/3 | Planned | - |
 
