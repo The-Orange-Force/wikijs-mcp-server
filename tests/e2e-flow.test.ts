@@ -105,7 +105,7 @@ describe("E2E OAuth discovery chain", () => {
         client_id: clientId,
         redirect_uri: "http://localhost:3000/callback",
         response_type: "code",
-        scope: "wikijs:read wikijs:write",
+        scope: "wikijs:read",
         state: "e2e-state-abc",
         code_challenge: "E2E_test_challenge_value_1234567890abcdef",
         code_challenge_method: "S256",
@@ -121,7 +121,8 @@ describe("E2E OAuth discovery chain", () => {
     const scope = location.searchParams.get("scope") ?? "";
     expect(scope).toContain("api://");
     expect(scope).toContain("wikijs:read");
-    expect(scope).toContain("wikijs:write");
+    expect(scope).toContain("wikijs:read");
+
     // openid and offline_access appended
     expect(scope).toContain("openid");
     expect(scope).toContain("offline_access");

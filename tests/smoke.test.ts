@@ -6,7 +6,10 @@ import {
   createTestToken,
   TEST_CONFIG,
 } from "../src/auth/__tests__/helpers.js";
-import { mockWikiJsApi, makeTestConfig } from "./helpers/build-test-app.js";
+import {
+  buildTestApp,
+  makeTestConfig,
+} from "./helpers/build-test-app.js";
 let server: FastifyInstance;
 let baseUrl: string;
 let validToken: string;
