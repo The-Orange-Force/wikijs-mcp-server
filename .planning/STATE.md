@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tool Consolidation
 status: executing
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-03-26T14:28:19.283Z"
-last_activity: 2026-03-26 -- Completed 16-02 (test and mock updates for 3-tool consolidation)
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-26T14:35:30.000Z"
+last_activity: 2026-03-26 -- Completed 17-01 (scope simplification to single wikijs:read)
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 8
-  completed_plans: 4
-  percent: 50
+  completed_plans: 5
+  percent: 62
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.3 Tool Consolidation -- Phases 15-16 complete, Phase 17 next
+**Current focus:** v2.3 Tool Consolidation -- Phases 15-17 complete, Phase 18 next
 
 ## Current Position
 
-Phase: 16 of 18 (Tool Registration Consolidation) -- COMPLETE
-Plan: 2 of 2 complete
+Phase: 17 of 18 (Scope and Auth Simplification) -- IN PROGRESS
+Plan: 1 of 1 complete
 Status: Executing
-Last activity: 2026-03-26 -- Completed 16-02 (test and mock updates for 3-tool consolidation)
+Last activity: 2026-03-26 -- Completed 17-01 (scope simplification to single wikijs:read)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 62%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 4min
-- Total execution time: 17min
+- Total execution time: 18min
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 15 | 2 | 12min | 6min |
 | 16 | 2 | 5min | 2.5min |
+| 17 | 1 | 1min | 1min |
 
 ## Accumulated Context
 
@@ -60,6 +61,7 @@ Recent decisions affecting current work:
 - Bridge fix in mcp-tools.ts search_pages handler extracts .results from PageSearchResult (Phase 16 will rewrite)
 - pages.list fallback uses limit 500 for search ID resolution
 - [Phase 16]: All 16-02 test updates were pre-completed as Rule 3 deviations during Plans 15-01, 15-02, and 17-01
+- [Phase 17]: Collapsed to single-scope model (wikijs:read only) - simplifies auth, reduces configuration surface
 
 ### Pending Todos
 
@@ -71,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T14:24:15.354Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-03-26T14:35:30.000Z
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None

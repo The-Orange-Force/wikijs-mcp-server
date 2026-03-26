@@ -59,7 +59,7 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
 
 - [x] **Phase 15: API Layer Consolidation** - Build consolidated GraphQL methods for get, list, and search with path-based ID resolution (completed 2026-03-26)
 - [x] **Phase 16: Tool Registration Consolidation** - Replace 17 tool registrations with 3 read-only tools with verbose descriptions (completed 2026-03-26)
-- [ ] **Phase 17: Scope and Auth Simplification** - Reduce scope model from 3 scopes to wikijs:read only
+- [x] **Phase 17: Scope and Auth Simplification** - Reduce scope model from 3 scopes to wikijs:read only (completed 2026-03-26)
 - [ ] **Phase 18: Cleanup** - Remove STDIO transport, dead dependencies, and unused code
 
 ## Phase Details
@@ -101,9 +101,9 @@ Plans:
   2. A token with wikijs:read scope can invoke all 3 tools
   3. A token missing wikijs:read scope is rejected for all 3 tools
   4. The scopes_supported field in discovery metadata lists only wikijs:read
-**Plans:** 1 plan
+**Plans:** 1/1 plan complete
 Plans:
-- [ ] 17-01-PLAN.md -- Simplify scopes to wikijs:read only and update all test assertions
+- [x] 17-01-PLAN.md -- Simplify scopes to wikijs:read only and update all test assertions
 
 ### Phase 18: Cleanup
 **Goal**: All dead code, unused dependencies, and legacy transport removed
@@ -130,9 +130,9 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 |-------|----------------|--------|-----------|
 | 15. API Layer Consolidation | 2/2 | Complete    | 2026-03-26 |
 | 16. Tool Registration Consolidation | 2/2 | Complete    | 2026-03-26 |
-| 17. Scope and Auth Simplification | 0/1 | Planned | - |
+| 17. Scope and Auth Simplification | 1/1 | Complete    | 2026-03-26 |
 | 18. Cleanup | 0/3 | Planned | - |
 
 ---
 *Created: 2026-03-26*
-*Last updated: 2026-03-26 -- Phase 15 planned (2 plans)*
+*Last updated: 2026-03-26 -- Phase 17 complete (1 plan)*

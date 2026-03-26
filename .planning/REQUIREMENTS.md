@@ -22,8 +22,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 ### Scope
 
-- [ ] **SCOP-01**: Scope model simplified to wikijs:read only (remove wikijs:write and wikijs:admin)
-- [ ] **SCOP-02**: SCOPE_TOOL_MAP maps all 3 tools to wikijs:read
+- [x] **SCOP-01**: Scope model simplified to wikijs:read only (remove wikijs:write and wikijs:admin)
+- [x] **SCOP-02**: SCOPE_TOOL_MAP maps all 3 tools to wikijs:read
 
 ### Cleanup
 
@@ -64,8 +64,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 | SRCH-01 | Phase 15 | Complete |
 | SRCH-02 | Phase 15 | Complete |
 | SRCH-03 | Phase 16 | Complete |
-| SCOP-01 | Phase 17 | Pending |
-| SCOP-02 | Phase 17 | Pending |
+| SCOP-01 | Phase 17 | Complete |
+| SCOP-02 | Phase 17 | Complete |
 | CLEN-01 | Phase 18 | Pending |
 | CLEN-02 | Phase 18 | Pending |
 | CLEN-03 | Phase 18 | Pending |
