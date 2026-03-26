@@ -17,27 +17,11 @@ export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
 export const SCOPE_TOOL_MAP: Record<Scope, readonly string[]> = {
   [SCOPES.READ]: [
     "get_page",
-    "get_page_content",
     "list_pages",
-    "list_all_pages",
     "search_pages",
-    "search_unpublished_pages",
-    "get_page_status",
   ],
-  [SCOPES.WRITE]: [
-    "create_page",
-    "update_page",
-    "publish_page",
-  ],
-  [SCOPES.ADMIN]: [
-    "delete_page",
-    "force_delete_page",
-    "list_users",
-    "search_users",
-    "list_groups",
-    "create_user",
-    "update_user",
-  ],
+  [SCOPES.WRITE]: [],
+  [SCOPES.ADMIN]: [],
 } as const;
 
 /** Flat array of all supported scope strings. */
