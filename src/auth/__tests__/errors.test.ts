@@ -124,11 +124,9 @@ describe('WWW-Authenticate header builders', () => {
   it('buildWwwAuthenticate403 includes error="insufficient_scope" and scope parameter', () => {
     const result = buildWwwAuthenticate403(resourceMetadataUrl, [
       'wikijs:read',
-      'wikijs:write',
-      'wikijs:admin',
     ]);
     expect(result).toBe(
-      'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource", error="insufficient_scope", error_description="insufficient scope", scope="wikijs:read wikijs:write wikijs:admin"',
+      'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource", error="insufficient_scope", error_description="insufficient scope", scope="wikijs:read"',
     );
   });
 });

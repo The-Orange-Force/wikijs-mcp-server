@@ -179,7 +179,7 @@ describe('scope validation (AUTH-07)', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('returns 200 for a single valid scope (wikijs:admin)', async () => {
+  it('returns 403 for a token with only wikijs:admin scope', async () => {
     const token = await createTokenWithClaims({ oid: 'x', scp: 'wikijs:admin' });
     const res = await app.inject({
       method: 'GET',
@@ -187,10 +187,25 @@ describe('scope validation (AUTH-07)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.error).toBe('insufficient_scope');
   });
 
-  it('returns 200 for multiple valid scopes (default test token)', async () => {
+  it('returns 403 for a token with only wikijs:write scope', async () => {
+    const token = await createTokenWithClaims({ oid: 'x', scp: 'wikijs:write' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/test',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.error).toBe('insufficient_scope');
+  });
+
+  it('returns 200 for the default test token (wikijs:read)', async () => {
     const token = await createTestToken();
     const res = await app.inject({
       method: 'GET',
@@ -211,7 +226,7 @@ describe('scope validation (AUTH-07)', () => {
 
     expect(res.statusCode).toBe(403);
     const body = res.json();
-    expect(body.required_scopes).toEqual(['wikijs:read', 'wikijs:write', 'wikijs:admin']);
+    expect(body.required_scopes).toEqual(['wikijs:read']);
   });
 });
 
@@ -274,7 +289,7 @@ describe('error response format (AUTH-06)', () => {
 
     expect(res.statusCode).toBe(403);
     const wwwAuth = res.headers['www-authenticate'] as string;
-    expect(wwwAuth).toContain('scope="wikijs:read wikijs:write wikijs:admin"');
+    expect(wwwAuth).toContain('scope="wikijs:read"');
   });
 
   it('403 response body has error, error_description, and required_scopes keys', async () => {

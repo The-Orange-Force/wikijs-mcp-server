@@ -61,7 +61,7 @@ export async function createTestToken(
     preferred_username: 'testuser@contoso.com',
     name: 'Test User',
     email: 'testuser@contoso.com',
-    scp: 'wikijs:read wikijs:write',
+    scp: 'wikijs:read',
     ...claims,
   })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT', kid: 'test-key-1' })
