@@ -1,23 +1,24 @@
 # WikiJS MCP Server
 
-## Current State
-
-**Shipped:** v2.2 (2026-03-26)
+## What This Is
 
 A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials.
 
-**What's live:**
-- MCP transport via Fastify (POST /mcp with stateless JSON responses)
-- RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource` (self-referencing)
-- JWT validation against Azure AD JWKS using jose
-- Scope enforcement (wikijs:read, wikijs:write, wikijs:admin)
-- Per-request correlation IDs and user identity logging
-- Docker container deployment (multi-stage build, caddy_net, HEALTHCHECK)
-- OAuth authorization proxy: discovery, DCR, authorize redirect, token proxy
-- Full OAuth flow: PRM → AS metadata → DCR → authorize → token → MCP tools
-- 209 passing tests, 6,583 lines of TypeScript
+## Core Value
 
-**Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
+Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
+
+## Current Milestone: v2.3 Tool Consolidation
+
+**Goal:** Consolidate 17 tools down to 3 read-only page tools, fix search ID resolution, remove all write and user/group operations.
+
+**Target features:**
+- Consolidated `get_page` (metadata + content + isPublished in one call)
+- Consolidated `list_pages` (with optional `includeUnpublished` flag)
+- Fixed `search_pages` (path-based ID resolution for correct DB IDs)
+- Remove all write tools (create, update, delete, publish)
+- Remove all user/group tools
+- Simplify scopes to read-only
 
 ## Requirements
 
@@ -45,7 +46,11 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 <!-- Current scope. Building toward these. -->
 
-(None — planning next milestone)
+- [ ] Consolidated get_page tool (metadata + content + isPublished)
+- [ ] Consolidated list_pages tool (with includeUnpublished flag)
+- [ ] Fixed search_pages tool (path-based ID resolution)
+- [ ] Remove all write tools and user/group tools
+- [ ] Simplify scope enforcement to read-only
 
 ### Out of Scope
 
@@ -62,6 +67,9 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 - `/oauth/*` subpath routes — Claude Desktop constructs paths from base URL, ignoring metadata; root-level paths required
 - Dual-PKCE — only needed when proxy issues own tokens
 - `client_id_metadata_document_supported` — defer until Claude clients ship support
+- Write operations (create/update/delete pages) — use case is AI reading wiki, not authoring
+- User/group management tools — not needed for read-only wiki access
+- `search_unpublished_pages` — unreliable (Wiki.js doesn't index unpublished pages for search)
 
 ## Context
 
@@ -102,6 +110,8 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 | Self-referencing PRM authorization_servers | Claude Desktop follows PRM → AS metadata chain; self-reference completes the loop | ✓ Shipped v2.2 |
 | Two-phase OAuth error handling | JSON 400 pre-redirect_uri, redirect errors post-redirect_uri (RFC 6749 compliance) | ✓ Shipped v2.2 |
 | AADSTS-specific error descriptions | Ambiguous Azure codes get clearer descriptions for MCP client display | ✓ Shipped v2.2 |
+| Read-only tools only | AI use case is reading wiki content, not authoring; write tools had bugs and added attack surface | — Pending |
+| Path-based search ID resolution | Wiki.js search returns index IDs not DB IDs; resolve via path matching | — Pending |
 
 ## Known Issues
 
@@ -110,4 +120,4 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 - Nyquist validation incomplete for phases 10-14 (VALIDATION.md files in draft status)
 
 ---
-*Last updated: 2026-03-26 after v2.2 milestone*
+*Last updated: 2026-03-26 after v2.3 milestone start*

@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: none
-status: between_milestones
-stopped_at: v2.2 milestone completed
-last_updated: "2026-03-26T10:30:00.000Z"
-last_activity: "2026-03-26 — Completed v2.2 OAuth Authorization Proxy milestone"
+milestone: v2.3
+milestone_name: Tool Consolidation
+status: defining_requirements
+stopped_at: defining requirements
+last_updated: "2026-03-26T12:00:00.000Z"
+last_activity: "2026-03-26 — Milestone v2.3 started"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -21,11 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Planning next milestone
+**Current focus:** v2.3 Tool Consolidation — defining requirements
 
 ## Current Position
 
-No active milestone. v2.2 OAuth Authorization Proxy shipped 2026-03-26.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-26 — Milestone v2.3 started
 
 ## Accumulated Context
 
@@ -45,5 +48,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-26
-Stopped at: v2.2 milestone completed
+Stopped at: Milestone v2.3 started — defining requirements
 Resume file: None
