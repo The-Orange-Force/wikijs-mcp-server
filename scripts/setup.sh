@@ -45,5 +45,4 @@ npm run build
 
 echo -e "\n${GREEN}=== Setup complete! ===${NC}"
 echo -e "${YELLOW}To start the MCP HTTP server:${NC} ./scripts/start_http.sh"
-echo -e "${YELLOW}To start the STDIO server:${NC} npm run server:stdio"
 echo -e "\n${YELLOW}Make sure you have configured your .env file with Wiki.js connection settings.${NC}"

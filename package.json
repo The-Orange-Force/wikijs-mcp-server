@@ -16,13 +16,11 @@
     "start": "./scripts/start_http.sh",
     "stop": "./scripts/stop_server.sh",
     "start:http": "./scripts/start_http.sh",
-    "start:typescript": "./scripts/start_typescript.sh",
     "test": "vitest run",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:watch": "vitest",
     "dev": "nodemon --exec tsx src/server.ts",
-    "build": "tsc",
-    "server:stdio": "node lib/mcp_wikijs_stdin.js"
+    "build": "tsc"
   },
   "keywords": [
     "wikijs",
@@ -43,7 +41,6 @@
   "files": [
     "dist/",
     "src/",
-    "lib/",
     "scripts/",
     "*.md",
     "example.env",

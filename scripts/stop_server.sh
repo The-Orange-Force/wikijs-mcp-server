@@ -32,19 +32,18 @@ fi
 # Stop all MCP server processes by name
 echo "Stopping all MCP server processes..."
 pkill -f "dist/server.js" && echo "Stopped dist/server.js" || echo "dist/server.js not running"
-pkill -f "mcp_wikijs_stdin.js" && echo "Stopped mcp_wikijs_stdin.js" || echo "mcp_wikijs_stdin.js not running"
 
 # Wait for processes to terminate
 sleep 1
 
 # Check for remaining processes
-RUNNING_PROCESSES=$(ps aux | grep -E "(dist/server\.js|mcp_wikijs_stdin)" | grep -v grep | wc -l)
+RUNNING_PROCESSES=$(ps aux | grep -E "dist/server\.js" | grep -v grep | wc -l)
 
 if [ $RUNNING_PROCESSES -eq 0 ]; then
     echo "All MCP servers stopped successfully"
 else
     echo "WARNING: Some MCP processes are still running:"
-    ps aux | grep -E "(dist/server\.js|mcp_wikijs_stdin)" | grep -v grep
+    ps aux | grep -E "dist/server\.js" | grep -v grep
     echo ""
     echo "To force stop, run:"
     echo "pkill -9 -f 'dist/server.js'"

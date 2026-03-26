@@ -12,7 +12,6 @@ cd "$PROJECT_DIR"
 # Kill existing MCP server processes if running
 echo "Stopping existing MCP servers..."
 pkill -f "dist/server.js" || true
-pkill -f "mcp_wikijs_stdin.js" || true
 
 # Wait for processes to terminate
 sleep 1
