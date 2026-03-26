@@ -1,97 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildApp } from "../src/server.js";
-import { WikiJsApi } from "../src/api.js";
 import { createMcpServer } from "../src/mcp-tools.js";
 import type { FastifyInstance } from "fastify";
-import type { AppConfig } from "../src/config.js";
 import {
   getLocalJwks,
   createTestToken,
   TEST_CONFIG,
 } from "../src/auth/__tests__/helpers.js";
-
-// ---------------------------------------------------------------------------
-// Mock WikiJsApi -- only surviving read-only methods + checkConnection
-// ---------------------------------------------------------------------------
-const mockWikiJsApi = {
-  checkConnection: async () => true,
-  getPageById: async (id: number) => ({
-    id,
-    path: "test/page",
-    title: "Test Page",
-    description: "A test page",
-    content: "# Test Content",
-    isPublished: true,
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-01-01T00:00:00Z",
-  }),
-  listPages: async () => [
-    { id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" },
-  ],
-  searchPages: async () => ({
-    results: [{ id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" }],
-    totalHits: 1,
-  }),
-} as unknown as WikiJsApi;
-
-// ---------------------------------------------------------------------------
-// Server lifecycle -- uses buildApp with local JWKS for test auth
-// ---------------------------------------------------------------------------
+import { mockWikiJsApi, makeTestConfig } from "./helpers/build-test-app.js";
 let server: FastifyInstance;
 let baseUrl: string;
 let validToken: string;
 
-function makeTestConfig(): AppConfig {
-  return {
-    port: 0,
-    wikijs: {
-      baseUrl: "http://localhost:3000",
-      token: "test-token",
-    },
-    azure: {
-      tenantId: TEST_CONFIG.tenantId,
-      clientId: TEST_CONFIG.clientId,
-      resourceUrl: TEST_CONFIG.resourceUrl,
-      jwksUri: `https://login.microsoftonline.com/${TEST_CONFIG.tenantId}/discovery/v2.0/keys`,
-      issuer: TEST_CONFIG.issuer,
-    },
-  };
-}
-
 beforeAll(async () => {
   validToken = await createTestToken();
-  const jwks = await getLocalJwks();
-  const appConfig = makeTestConfig();
 
-  // Build the app via buildApp, then manually override auth JWKS.
-  // We need to use buildApp's plugin architecture but with local JWKS.
-  // Since buildApp registers protectedRoutes with the config JWKS,
-  // we create the server directly using Fastify with our test setup.
-  const fastify = await import("fastify");
-  const { buildLoggerConfig } = await import("../src/logging.js");
-  const { publicRoutes } = await import("../src/routes/public-routes.js");
-  const { protectedRoutes } = await import("../src/routes/mcp-routes.js");
-
-  server = fastify.default({ ...buildLoggerConfig() });
-
-  server.addHook("onRequest", async (request, reply) => {
-    reply.header("x-request-id", request.id);
-  });
-
-  server.register(publicRoutes, {
-    wikiJsApi: mockWikiJsApi,
-    appConfig,
-  });
-
-  server.register(protectedRoutes, {
-    wikiJsApi: mockWikiJsApi,
-    auth: {
-      jwks,
-      issuer: appConfig.azure.issuer,
-      audience: appConfig.azure.clientId,
-      resourceMetadataUrl: `${appConfig.azure.resourceUrl}/.well-known/oauth-protected-resource`,
-    },
-  });
+  // Build the app via buildTestApp from the shared helper
+  server = await buildTestApp();
+  await server.ready();
 
   // Listen on port 0 to get a random available port
   const address = await server.listen({ port: 0, host: "127.0.0.1" });
@@ -290,7 +215,7 @@ describe("Server routes", () => {
 
     const data = await res.json();
     expect(data.name).toBe("wikijs-mcp");
-    expect(data.version).toBe("2.0.0");
+    expect(data.version).toBe("2.3.0")
     expect(data.auth_required).toBe(true);
     expect(data.protected_resource_metadata).toBeDefined();
     expect(data.endpoints).toBeDefined();
