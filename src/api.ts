@@ -1,17 +1,28 @@
 import { GraphQLClient } from "graphql-request";
-import {
-  WikiJsPage,
-  WikiJsUser,
-  WikiJsGroup,
-  ResponseResult,
-} from "./types.js";
+import { WikiJsPage, PageSearchResult } from "./types.js";
+import { requestContext } from "./request-context.js";
 
-// Класс для взаимодействия с Wiki.js GraphQL API
+/** Raw search result item from the Wiki.js pages.search GraphQL query. */
+interface RawSearchResult {
+  id: string;
+  path: string;
+  title: string;
+  description: string;
+  locale: string;
+}
+
+/** Item pending fallback resolution after singleByPath fails. */
+interface UnresolvedItem {
+  path: string;
+  locale: string;
+  searchId: string;
+}
+
+// Wiki.js GraphQL API client
 export class WikiJsApi {
   private client: GraphQLClient;
 
   constructor(baseUrl: string, token: string) {
-    // GraphQL эндпоинт Wiki.js
     this.client = new GraphQLClient(`${baseUrl}/graphql`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -19,7 +30,7 @@ export class WikiJsApi {
     });
   }
 
-  // Проверка соединения с Wiki.js
+  // Verify connectivity to Wiki.js by issuing a minimal query
   async checkConnection(): Promise<boolean> {
     try {
       const query = `
@@ -34,12 +45,12 @@ export class WikiJsApi {
       const response = await this.client.request(query);
       return !!response;
     } catch (error) {
-      console.error("Ошибка соединения с Wiki.js:", error);
+      console.error("Wiki.js connection error:", error);
       return false;
     }
   }
 
-  // Получение страницы по ID (consolidated: metadata + content + isPublished in one call)
+  // Retrieve a single page by ID (metadata + content + isPublished in one call)
   async getPageById(id: number): Promise<WikiJsPage> {
     const query = `
       {
@@ -61,7 +72,7 @@ export class WikiJsApi {
     return response.pages.single;
   }
 
-  // List pages with optional unpublished filter (replaces getPagesList + getAllPagesList)
+  // List pages with optional unpublished filter
   async listPages(
     limit: number = 50,
     orderBy: string = "TITLE",
@@ -92,8 +103,73 @@ export class WikiJsApi {
     return pages;
   }
 
-  // Поиск страниц
-  async searchPages(query: string, limit: number = 10): Promise<WikiJsPage[]> {
+  // Resolve a single page by path and locale via singleByPath query
+  private async resolvePageByPath(path: string, locale: string): Promise<WikiJsPage> {
+    const query = `
+      {
+        pages {
+          singleByPath (path: ${JSON.stringify(path)}, locale: ${JSON.stringify(locale)}) {
+            id
+            path
+            title
+            description
+            isPublished
+            createdAt
+            updatedAt
+          }
+        }
+      }
+    `;
+    const response: any = await this.client.request(query);
+    return response.pages.singleByPath;
+  }
+
+  // Batch-resolve unresolved search results via a single pages.list call
+  private async resolveViaPagesList(
+    unresolved: UnresolvedItem[]
+  ): Promise<{ resolved: WikiJsPage[]; dropped: UnresolvedItem[] }> {
+    const query = `
+      {
+        pages {
+          list (limit: 500, orderBy: UPDATED) {
+            id
+            path
+            title
+            description
+            isPublished
+            createdAt
+            updatedAt
+          }
+        }
+      }
+    `;
+    const response: any = await this.client.request(query);
+    const allPages: WikiJsPage[] = response.pages.list;
+
+    // Build lookup map keyed by path
+    const pagesByPath = new Map<string, WikiJsPage>();
+    for (const page of allPages) {
+      pagesByPath.set(page.path, page);
+    }
+
+    const resolved: WikiJsPage[] = [];
+    const dropped: UnresolvedItem[] = [];
+
+    for (const item of unresolved) {
+      const page = pagesByPath.get(item.path);
+      if (page) {
+        resolved.push(page);
+      } else {
+        dropped.push(item);
+      }
+    }
+
+    return { resolved, dropped };
+  }
+
+  // Search pages by keyword query, resolving search index IDs to real database page IDs
+  async searchPages(query: string, limit: number = 10): Promise<PageSearchResult> {
+    // Step 1: Execute the search query
     const gqlQuery = `
       {
         pages {
@@ -112,276 +188,57 @@ export class WikiJsApi {
       }
     `;
     const response: any = await this.client.request(gqlQuery);
-    const results = response.pages.search.results ?? [];
-    return results.slice(0, limit);
-  }
+    const rawResults: RawSearchResult[] = (response.pages.search.results ?? []).slice(0, limit);
+    const totalHits: number = response.pages.search.totalHits ?? 0;
 
-  // Создание новой страницы
-  async createPage(
-    title: string,
-    content: string,
-    path: string,
-    description: string = ""
-  ): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        pages {
-          create (
-            content: ${JSON.stringify(content)}
-            description: ${JSON.stringify(description)}
-            editor: "markdown"
-            isPublished: true
-            isPrivate: false
-            locale: "en"
-            path: ${JSON.stringify(path)}
-            tags: []
-            title: ${JSON.stringify(title)}
-          ) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-            page {
-              id
-              path
-              title
-            }
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(mutation);
-    return response.pages.create.responseResult;
-  }
-
-  // Обновление страницы
-  async updatePage(id: number, content: string): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        pages {
-          update (
-            id: ${id}
-            content: ${JSON.stringify(content)}
-          ) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(mutation);
-    return response.pages.update.responseResult;
-  }
-
-  // Удаление страницы
-  async deletePage(id: number): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        pages {
-          delete (
-            id: ${id}
-          ) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(mutation);
-    return response.pages.delete.responseResult;
-  }
-
-  // Получение списка пользователей
-  async getUsersList(): Promise<WikiJsUser[]> {
-    const query = `
-      {
-        users {
-          list {
-            id
-            name
-            email
-            providerKey
-            isSystem
-            isActive
-            createdAt
-            lastLoginAt
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(query);
-    return response.users.list;
-  }
-
-  // Поиск пользователей
-  async searchUsers(query: string): Promise<WikiJsUser[]> {
-    const gqlQuery = `
-      {
-        users {
-          search (query: ${JSON.stringify(query)}) {
-            id
-            name
-            email
-            providerKey
-            isSystem
-            isActive
-            createdAt
-            lastLoginAt
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(gqlQuery);
-    return response.users.search;
-  }
-
-  // Получение списка групп
-  async getGroupsList(): Promise<WikiJsGroup[]> {
-    const query = `
-      {
-        groups {
-          list {
-            id
-            name
-            isSystem
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(query);
-    return response.groups.list;
-  }
-
-  // Создание пользователя
-  async createUser(
-    email: string,
-    name: string,
-    passwordRaw: string,
-    providerKey: string = "local",
-    groups: number[] = [2],
-    mustChangePassword: boolean = false,
-    sendWelcomeEmail: boolean = false
-  ): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        users {
-          create (
-            email: ${JSON.stringify(email)}
-            name: ${JSON.stringify(name)}
-            passwordRaw: ${JSON.stringify(passwordRaw)}
-            providerKey: ${JSON.stringify(providerKey)}
-            groups: [${groups.join(",")}]
-            mustChangePassword: ${mustChangePassword}
-            sendWelcomeEmail: ${sendWelcomeEmail}
-          ) {
-            responseResult {
-              succeeded
-              slug
-              message
-            }
-            user {
-              id
-            }
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(mutation);
-    return response.users.create.responseResult;
-  }
-
-  // Обновление пользователя
-  async updateUser(id: number, name: string): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        users {
-          update (
-            id: ${id}
-            name: ${JSON.stringify(name)}
-          ) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }
-    `;
-    const response: any = await this.client.request(mutation);
-    return response.users.update.responseResult;
-  }
-
-  // Search unpublished pages (delegates to listPages with includeUnpublished)
-  async searchUnpublishedPages(
-    query: string,
-    limit: number = 10
-  ): Promise<WikiJsPage[]> {
-    const allPages = await this.listPages(200, "UPDATED", true);
-
-    // Filter to unpublished pages only
-    const unpublishedPages = allPages.filter((page) => !page.isPublished);
-
-    // Search by query in title, path, or description
-    const queryLower = query.toLowerCase();
-    const matches = unpublishedPages.filter((page) => {
-      const titleMatch = page.title.toLowerCase().includes(queryLower);
-      const pathMatch = page.path.toLowerCase().includes(queryLower);
-      const descMatch = page.description?.toLowerCase().includes(queryLower);
-
-      return titleMatch || pathMatch || descMatch;
-    });
-
-    return matches.slice(0, limit);
-  }
-
-  // Force delete a page (delegates to deletePage -- Wiki.js has no special flag)
-  async forceDeletePage(id: number): Promise<ResponseResult> {
-    return this.deletePage(id);
-  }
-
-  // Get page publication status (delegates to getPageById which now includes isPublished)
-  async getPageStatus(id: number): Promise<WikiJsPage> {
-    return this.getPageById(id);
-  }
-
-  // Публикация страницы
-  async publishPage(id: number): Promise<ResponseResult> {
-    const mutation = `
-      mutation {
-        pages {
-          render (id: ${id}) {
-            responseResult {
-              succeeded
-              errorCode
-              slug
-              message
-            }
-          }
-        }
-      }
-    `;
-
-    try {
-      const response: any = await this.client.request(mutation);
-      return response.pages.render.responseResult;
-    } catch (error) {
-      return {
-        succeeded: false,
-        errorCode: 500,
-        message: `Ошибка при публикации страницы: ${error}`,
-      };
+    if (rawResults.length === 0) {
+      return { results: [], totalHits };
     }
+
+    // Step 2: Resolve each result via singleByPath in parallel
+    const settlements = await Promise.allSettled(
+      rawResults.map((item) => this.resolvePageByPath(item.path, item.locale))
+    );
+
+    const resolved: WikiJsPage[] = [];
+    const unresolved: UnresolvedItem[] = [];
+
+    for (let i = 0; i < settlements.length; i++) {
+      const settlement = settlements[i];
+      if (settlement.status === "fulfilled") {
+        resolved.push(settlement.value);
+      } else {
+        unresolved.push({
+          path: rawResults[i].path,
+          locale: rawResults[i].locale,
+          searchId: rawResults[i].id,
+        });
+      }
+    }
+
+    // Step 3: Fallback to pages.list for unresolved results
+    if (unresolved.length > 0) {
+      const fallback = await this.resolveViaPagesList(unresolved);
+      resolved.push(...fallback.resolved);
+
+      // Step 4: Log warnings for still-dropped results
+      const ctx = requestContext.getStore();
+      for (const dropped of fallback.dropped) {
+        ctx?.log.warn(
+          { path: dropped.path, searchId: dropped.searchId },
+          "Search result could not be resolved to a database page; dropping from results"
+        );
+      }
+
+      // Log consolidated permission warning if all singleByPath calls failed
+      if (unresolved.length === rawResults.length) {
+        ctx?.log.warn(
+          { unresolvedCount: unresolved.length },
+          "All singleByPath calls failed; check API token has manage:pages + delete:pages permissions"
+        );
+      }
+    }
+
+    return { results: resolved, totalHits };
   }
 }
