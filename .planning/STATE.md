@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tool Consolidation
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-26T14:04:50.654Z"
-last_activity: 2026-03-26 -- Completed 16-01 (3 read-only tools with LLM-optimized descriptions)
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-26T14:08:35.000Z"
+last_activity: 2026-03-26 -- Completed 15-01 (consolidated getPageById and listPages API methods)
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 1
-  percent: 68
+  completed_plans: 2
+  percent: 75
 ---
 
 # Project State
@@ -21,28 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.3 Tool Consolidation -- Phase 16 Plan 01 complete, Plan 02 next
+**Current focus:** v2.3 Tool Consolidation -- Phase 15 Plan 01 complete, Plan 02 next
 
 ## Current Position
 
-Phase: 16 of 18 (Tool Registration Consolidation)
-Plan: 1 of 2 complete
+Phase: 15 of 18 (API Layer Consolidation)
+Plan: 1 of 2 complete (also 16-01 complete)
 Status: Executing
-Last activity: 2026-03-26 -- Completed 16-01 (3 read-only tools with LLM-optimized descriptions)
+Last activity: 2026-03-26 -- Completed 15-01 (consolidated getPageById and listPages API methods)
 
-Progress: [███████░░░] 68%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 3min
-- Total execution time: 3min
+- Total plans completed: 2
+- Average duration: 6min
+- Total execution time: 12min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
+| 15 | 1 | 9min | 9min |
 | 16 | 1 | 3min | 3min |
 
 ## Accumulated Context
@@ -64,11 +65,9 @@ None.
 ### Blockers/Concerns
 
 - singleByPath requires manage:pages + delete:pages permissions -- must verify API token has these
-- Test suite has hard-coded assertions for 17 tools and 3 scopes that will break immediately
-- Two copies of mockWikiJsApi in tests need coordinated updates
 
 ## Session Continuity
 
-Last session: 2026-03-26T14:04:50.651Z
-Stopped at: Completed 16-01-PLAN.md
-Resume file: None
+Last session: 2026-03-26T14:08:35.000Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: .planning/phases/15-api-layer-consolidation/15-02-PLAN.md

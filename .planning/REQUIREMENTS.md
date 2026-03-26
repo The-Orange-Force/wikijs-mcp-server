@@ -9,8 +9,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 ### Tool Consolidation
 
-- [ ] **TOOL-01**: get_page returns metadata, content, and isPublished in a single call
-- [ ] **TOOL-02**: list_pages supports optional includeUnpublished flag
+- [x] **TOOL-01**: get_page returns metadata, content, and isPublished in a single call
+- [x] **TOOL-02**: list_pages supports optional includeUnpublished flag
 - [x] **TOOL-03**: All write tools removed (create_page, update_page, delete_page, force_delete_page, publish_page)
 - [x] **TOOL-04**: All user/group tools removed (list_users, search_users, create_user, update_user, list_groups)
 
@@ -57,8 +57,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOOL-01 | Phase 15 | Pending |
-| TOOL-02 | Phase 15 | Pending |
+| TOOL-01 | Phase 15 | Complete |
+| TOOL-02 | Phase 15 | Complete |
 | TOOL-03 | Phase 16 | Complete |
 | TOOL-04 | Phase 16 | Complete |
 | SRCH-01 | Phase 15 | Pending |
