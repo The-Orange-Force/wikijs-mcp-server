@@ -36,7 +36,7 @@ export async function publicRoutes(
   // GET / -- Server info endpoint with auth discovery hints
   fastify.get("/", async () => ({
     name: "wikijs-mcp",
-    version: "2.0.0",
+    version: "2.3.0",
     auth_required: true,
     protected_resource_metadata: `${appConfig.azure.resourceUrl}/.well-known/oauth-protected-resource`,
     authorization_server_metadata: `${appConfig.azure.resourceUrl}/.well-known/oauth-authorization-server`,

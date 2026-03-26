@@ -21,7 +21,7 @@ import { wrapToolHandler } from "./tool-wrapper.js";
 export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
   const mcpServer = new McpServer({
     name: "wikijs-mcp",
-    version: "1.3.0",
+    version: "2.3.0",
   });
 
   // Tool name constants (used in both registerTool and wrapToolHandler)
