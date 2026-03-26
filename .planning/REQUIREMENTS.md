@@ -57,24 +57,24 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| TOOL-03 | — | Pending |
-| TOOL-04 | — | Pending |
-| SRCH-01 | — | Pending |
-| SRCH-02 | — | Pending |
-| SRCH-03 | — | Pending |
-| SCOP-01 | — | Pending |
-| SCOP-02 | — | Pending |
-| CLEN-01 | — | Pending |
-| CLEN-02 | — | Pending |
-| CLEN-03 | — | Pending |
+| TOOL-01 | Phase 15 | Pending |
+| TOOL-02 | Phase 15 | Pending |
+| TOOL-03 | Phase 16 | Pending |
+| TOOL-04 | Phase 16 | Pending |
+| SRCH-01 | Phase 15 | Pending |
+| SRCH-02 | Phase 15 | Pending |
+| SRCH-03 | Phase 16 | Pending |
+| SCOP-01 | Phase 17 | Pending |
+| SCOP-02 | Phase 17 | Pending |
+| CLEN-01 | Phase 18 | Pending |
+| CLEN-02 | Phase 18 | Pending |
+| CLEN-03 | Phase 18 | Pending |
 
 **Coverage:**
 - v2.3 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12 (pending roadmap creation)
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after initial definition*
+*Last updated: 2026-03-26 after roadmap creation (traceability updated)*

@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tool Consolidation
-status: defining_requirements
-stopped_at: defining requirements
-last_updated: "2026-03-26T12:00:00.000Z"
-last_activity: "2026-03-26 — Milestone v2.3 started"
+status: ready_to_plan
+stopped_at: roadmap created
+last_updated: "2026-03-26T14:00:00.000Z"
+last_activity: "2026-03-26 — v2.3 roadmap created (4 phases, 12 requirements)"
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,20 +21,39 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.3 Tool Consolidation — defining requirements
+**Current focus:** v2.3 Tool Consolidation -- Phase 15 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-26 — Milestone v2.3 started
+Phase: 15 of 18 (API Layer Consolidation) -- first of 4 v2.3 phases
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-26 -- v2.3 roadmap created (4 phases, 12 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: --
+- Total execution time: --
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- Read-only tools only: AI use case is reading wiki content, not authoring
+- Path-based search ID resolution via singleByPath (reversed from earlier pages.list recommendation)
 
 ### Pending Todos
 
@@ -42,11 +61,12 @@ None.
 
 ### Blockers/Concerns
 
-- Claude Desktop redirect_uri format needs live tenant testing (http://localhost port handling)
-- Shared client_id token theft (Pitfall 6) deferred — consent interstitial needed later (CONSENT-01)
+- singleByPath requires manage:pages + delete:pages permissions -- must verify API token has these
+- Test suite has hard-coded assertions for 17 tools and 3 scopes that will break immediately
+- Two copies of mockWikiJsApi in tests need coordinated updates
 
 ## Session Continuity
 
 Last session: 2026-03-26
-Stopped at: Milestone v2.3 started — defining requirements
+Stopped at: v2.3 roadmap created -- ready to plan Phase 15
 Resume file: None
