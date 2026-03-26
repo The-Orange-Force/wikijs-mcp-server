@@ -57,7 +57,7 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
 - Integer phases (15, 16, 17, 18): Planned milestone work
 - Decimal phases (e.g., 15.1): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 15: API Layer Consolidation** - Build consolidated GraphQL methods for get, list, and search with path-based ID resolution
+- [x] **Phase 15: API Layer Consolidation** - Build consolidated GraphQL methods for get, list, and search with path-based ID resolution (completed 2026-03-26)
 - [ ] **Phase 16: Tool Registration Consolidation** - Replace 17 tool registrations with 3 read-only tools with verbose descriptions
 - [ ] **Phase 17: Scope and Auth Simplification** - Reduce scope model from 3 scopes to wikijs:read only
 - [ ] **Phase 18: Cleanup** - Remove STDIO transport, dead dependencies, and unused code
@@ -73,7 +73,7 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
   2. Calling listPages with includeUnpublished=false returns only published pages; with includeUnpublished=true returns all pages
   3. Calling searchPages returns results where each result's ID is the real database page ID (not the search index ID)
   4. When singleByPath fails for a search result, the fallback cross-references pages.list to resolve the correct ID
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 15-01-PLAN.md -- Extend WikiJsPage interface, consolidate getPageById and listPages methods
 - [ ] 15-02-PLAN.md -- Implement search ID resolution with singleByPath + pages.list fallback
@@ -128,7 +128,7 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 15. API Layer Consolidation | 1/2 | In Progress|  |
+| 15. API Layer Consolidation | 2/2 | Complete   | 2026-03-26 |
 | 16. Tool Registration Consolidation | 1/2 | In Progress|  |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/3 | Planned | - |

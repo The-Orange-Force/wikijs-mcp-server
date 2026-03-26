@@ -16,8 +16,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 ### Search
 
-- [ ] **SRCH-01**: search_pages resolves search index IDs to database page IDs via singleByPath
-- [ ] **SRCH-02**: search_pages falls back to pages.list cross-reference if singleByPath fails
+- [x] **SRCH-01**: search_pages resolves search index IDs to database page IDs via singleByPath
+- [x] **SRCH-02**: search_pages falls back to pages.list cross-reference if singleByPath fails
 - [x] **SRCH-03**: All 3 tools have verbose LLM-optimized descriptions
 
 ### Scope
@@ -61,8 +61,8 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 | TOOL-02 | Phase 15 | Complete |
 | TOOL-03 | Phase 16 | Complete |
 | TOOL-04 | Phase 16 | Complete |
-| SRCH-01 | Phase 15 | Pending |
-| SRCH-02 | Phase 15 | Pending |
+| SRCH-01 | Phase 15 | Complete |
+| SRCH-02 | Phase 15 | Complete |
 | SRCH-03 | Phase 16 | Complete |
 | SCOP-01 | Phase 17 | Pending |
 | SCOP-02 | Phase 17 | Pending |
