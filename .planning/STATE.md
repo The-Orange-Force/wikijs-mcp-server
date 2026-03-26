@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Tool Consolidation
 status: executing
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-03-26T14:19:48.471Z"
-last_activity: 2026-03-26 -- Completed 15-02 (search ID resolution with singleByPath + pages.list fallback)
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-03-26T14:24:15.356Z"
+last_activity: 2026-03-26 -- Completed 16-02 (test and mock updates for 3-tool consolidation)
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 3
-  percent: 38
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -21,30 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.3 Tool Consolidation -- Phase 15 complete, Phase 16 Plan 01 done, Phase 17 next
+**Current focus:** v2.3 Tool Consolidation -- Phases 15-16 complete, Phase 17 next
 
 ## Current Position
 
-Phase: 15 of 18 (API Layer Consolidation) -- COMPLETE
-Plan: 2 of 2 complete (also 16-01 complete)
+Phase: 16 of 18 (Tool Registration Consolidation) -- COMPLETE
+Plan: 2 of 2 complete
 Status: Executing
-Last activity: 2026-03-26 -- Completed 15-02 (search ID resolution with singleByPath + pages.list fallback)
+Last activity: 2026-03-26 -- Completed 16-02 (test and mock updates for 3-tool consolidation)
 
-Progress: [████░░░░░░] 38%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 5min
-- Total execution time: 15min
+- Total plans completed: 4
+- Average duration: 4min
+- Total execution time: 17min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 15 | 2 | 12min | 6min |
-| 16 | 1 | 3min | 3min |
+| 16 | 2 | 5min | 2.5min |
 
 ## Accumulated Context
 
@@ -59,6 +59,7 @@ Recent decisions affecting current work:
 - Shared readOnlyAnnotations object for consistent tool annotations across all 3 tools
 - Bridge fix in mcp-tools.ts search_pages handler extracts .results from PageSearchResult (Phase 16 will rewrite)
 - pages.list fallback uses limit 500 for search ID resolution
+- [Phase 16]: All 16-02 test updates were pre-completed as Rule 3 deviations during Plans 15-01, 15-02, and 17-01
 
 ### Pending Todos
 
@@ -70,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-26T14:15:10.000Z
-Stopped at: Completed 15-02-PLAN.md
-Resume file: .planning/phases/16-tool-registration-consolidation/16-02-PLAN.md
+Last session: 2026-03-26T14:24:15.354Z
+Stopped at: Completed 16-02-PLAN.md
+Resume file: None

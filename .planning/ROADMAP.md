@@ -58,7 +58,7 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
 - Decimal phases (e.g., 15.1): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 15: API Layer Consolidation** - Build consolidated GraphQL methods for get, list, and search with path-based ID resolution (completed 2026-03-26)
-- [ ] **Phase 16: Tool Registration Consolidation** - Replace 17 tool registrations with 3 read-only tools with verbose descriptions
+- [x] **Phase 16: Tool Registration Consolidation** - Replace 17 tool registrations with 3 read-only tools with verbose descriptions (completed 2026-03-26)
 - [ ] **Phase 17: Scope and Auth Simplification** - Reduce scope model from 3 scopes to wikijs:read only
 - [ ] **Phase 18: Cleanup** - Remove STDIO transport, dead dependencies, and unused code
 
@@ -87,7 +87,7 @@ Plans:
   2. No write tools (create_page, update_page, delete_page, force_delete_page, publish_page) appear in tools/list
   3. No user/group tools (list_users, search_users, create_user, update_user, list_groups) appear in tools/list
   4. Each tool's description is multi-sentence, explaining what it returns and when to use it
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 16-01-PLAN.md -- Rewrite mcp-tools.ts with 3 read-only tools and update SCOPE_TOOL_MAP
 - [ ] 16-02-PLAN.md -- Update all test files for 3-tool consolidation
@@ -129,7 +129,7 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. API Layer Consolidation | 2/2 | Complete    | 2026-03-26 |
-| 16. Tool Registration Consolidation | 1/2 | In Progress|  |
+| 16. Tool Registration Consolidation | 2/2 | Complete   | 2026-03-26 |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/3 | Planned | - |
 
