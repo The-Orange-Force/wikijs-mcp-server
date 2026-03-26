@@ -15,15 +15,13 @@ describe("Scope-to-tool mapping", () => {
     expect(SUPPORTED_SCOPES).toHaveLength(3);
   });
 
-  it("every scope has at least one tool", () => {
-    for (const scope of SUPPORTED_SCOPES) {
-      expect(SCOPE_TOOL_MAP[scope as Scope].length).toBeGreaterThanOrEqual(1);
-    }
+  it("read scope has tools mapped", () => {
+    expect(SCOPE_TOOL_MAP[SCOPES.READ].length).toBeGreaterThanOrEqual(1);
   });
 
-  it("maps exactly 17 tools total", () => {
+  it("maps exactly 3 tools total (consolidated read-only tools)", () => {
     const allTools = Object.values(SCOPE_TOOL_MAP).flat();
-    expect(allTools).toHaveLength(17);
+    expect(allTools).toHaveLength(3);
   });
 
   it("has no duplicate tool names across scopes", () => {
@@ -43,39 +41,20 @@ describe("Scope-to-tool mapping", () => {
   it("assigns read tools to wikijs:read", () => {
     const readTools = SCOPE_TOOL_MAP[SCOPES.READ];
     expect(readTools).toContain("get_page");
-    expect(readTools).toContain("get_page_content");
     expect(readTools).toContain("list_pages");
-    expect(readTools).toContain("list_all_pages");
     expect(readTools).toContain("search_pages");
-    expect(readTools).toContain("search_unpublished_pages");
-    expect(readTools).toContain("get_page_status");
-    expect(readTools).toHaveLength(7);
+    expect(readTools).toHaveLength(3);
   });
 
-  it("assigns write tools to wikijs:write", () => {
-    const writeTools = SCOPE_TOOL_MAP[SCOPES.WRITE];
-    expect(writeTools).toContain("create_page");
-    expect(writeTools).toContain("update_page");
-    expect(writeTools).toContain("publish_page");
-    expect(writeTools).toHaveLength(3);
+  it("write and admin scopes are empty (write/admin tools removed in consolidation)", () => {
+    expect(SCOPE_TOOL_MAP[SCOPES.WRITE]).toHaveLength(0);
+    expect(SCOPE_TOOL_MAP[SCOPES.ADMIN]).toHaveLength(0);
   });
 
-  it("assigns admin tools to wikijs:admin", () => {
-    const adminTools = SCOPE_TOOL_MAP[SCOPES.ADMIN];
-    expect(adminTools).toContain("delete_page");
-    expect(adminTools).toContain("force_delete_page");
-    expect(adminTools).toContain("list_users");
-    expect(adminTools).toContain("search_users");
-    expect(adminTools).toContain("list_groups");
-    expect(adminTools).toContain("create_user");
-    expect(adminTools).toContain("update_user");
-    expect(adminTools).toHaveLength(7);
-  });
-
-  it("TOOL_SCOPE_MAP returns correct scope for specific tools", () => {
+  it("TOOL_SCOPE_MAP returns correct scope for read tools", () => {
     expect(TOOL_SCOPE_MAP["get_page"]).toBe("wikijs:read");
-    expect(TOOL_SCOPE_MAP["create_page"]).toBe("wikijs:write");
-    expect(TOOL_SCOPE_MAP["delete_page"]).toBe("wikijs:admin");
+    expect(TOOL_SCOPE_MAP["list_pages"]).toBe("wikijs:read");
+    expect(TOOL_SCOPE_MAP["search_pages"]).toBe("wikijs:read");
   });
 
   it("SCOPES object has correct constant values", () => {

@@ -20,11 +20,14 @@ const mockWikiJsApi = {
     path: "test/page",
     title: "Test Page",
     description: "A test page",
+    content: "# Test Content",
+    isPublished: true,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
   }),
-  getPageContent: async () => "# Test Content",
-  getPagesList: async () => [{ id: 1, path: "test", title: "Test" }],
+  listPages: async () => [
+    { id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" },
+  ],
   searchPages: async () => [{ id: 1, path: "test", title: "Test" }],
   createPage: async () => ({ succeeded: true, message: "OK" }),
   updatePage: async () => ({ succeeded: true, message: "OK" }),
@@ -38,16 +41,17 @@ const mockWikiJsApi = {
   getGroupsList: async () => [{ id: 1, name: "Admins", isSystem: true }],
   createUser: async () => ({ succeeded: true, message: "OK" }),
   updateUser: async () => ({ succeeded: true, message: "OK" }),
-  getAllPagesList: async () => [
-    { id: 1, path: "test", title: "Test", isPublished: true },
-  ],
   searchUnpublishedPages: async () => [],
   forceDeletePage: async () => ({ succeeded: true, message: "OK" }),
-  getPageStatus: async () => ({
-    id: 1,
+  getPageStatus: async (id: number) => ({
+    id,
     path: "test",
     title: "Test",
+    description: "Test page",
+    content: "# Test Content",
     isPublished: true,
+    createdAt: "2024-01-01T00:00:00Z",
+    updatedAt: "2024-01-01T00:00:00Z",
   }),
   publishPage: async () => ({ succeeded: true, message: "OK" }),
 } as unknown as WikiJsApi;
@@ -178,7 +182,7 @@ describe("TRNS-02: GET /mcp returns 401 without auth", () => {
 // TRNS-03: MCP tools/list and tools/call
 // ---------------------------------------------------------------------------
 describe("TRNS-03: MCP tools/list and tools/call", () => {
-  it("POST /mcp with tools/list returns all 17 tools", async () => {
+  it("POST /mcp with tools/list returns all 3 read-only tools", async () => {
     const res = await mcpPost({
       jsonrpc: "2.0",
       id: 2,
@@ -194,7 +198,7 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
     expect(data.result).toBeDefined();
     expect(data.result.tools).toBeDefined();
     expect(Array.isArray(data.result.tools)).toBe(true);
-    expect(data.result.tools.length).toBe(17);
+    expect(data.result.tools.length).toBe(3);
 
     // Verify each tool has required properties
     for (const tool of data.result.tools) {
@@ -209,35 +213,21 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
     const toolNames = data.result.tools.map((t: { name: string }) => t.name);
     const expectedTools = [
       "get_page",
-      "get_page_content",
       "list_pages",
       "search_pages",
-      "create_page",
-      "update_page",
-      "delete_page",
-      "list_all_pages",
-      "search_unpublished_pages",
-      "force_delete_page",
-      "get_page_status",
-      "publish_page",
-      "list_users",
-      "search_users",
-      "create_user",
-      "list_groups",
-      "update_user",
     ];
     for (const expected of expectedTools) {
       expect(toolNames).toContain(expected);
     }
   });
 
-  it("POST /mcp with tools/call invokes list_users tool with mock", async () => {
+  it("POST /mcp with tools/call invokes list_pages tool with mock", async () => {
     const res = await mcpPost({
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
       params: {
-        name: "list_users",
+        name: "list_pages",
         arguments: {},
       },
     });
@@ -256,8 +246,8 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
     // Parse the text content and verify it contains our mock data
     const parsed = JSON.parse(data.result.content[0].text);
     expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed[0].name).toBe("Admin");
-    expect(parsed[0].email).toBe("admin@test.com");
+    expect(parsed[0].id).toBe(1);
+    expect(parsed[0].path).toBe("test");
   });
 });
 

@@ -506,16 +506,16 @@ describe("Tool observability integration", () => {
     expect(log.username).toBeDefined();
   });
 
-  it("list_users: logs toolName, duration, userId, username at info level (zero-arg tool)", async () => {
-    await callTool("list_users", {});
+  it("list_pages: logs toolName, duration, userId, username at info level (zero-arg tool)", async () => {
+    await callTool("list_pages", {});
 
     const infoLogs = logCapture.logs.filter(
-      (l) => l.level === 30 && l.toolName === "list_users",
+      (l) => l.level === 30 && l.toolName === "list_pages",
     );
     expect(infoLogs.length).toBe(1);
 
     const log = infoLogs[0];
-    expect(log.toolName).toBe("list_users");
+    expect(log.toolName).toBe("list_pages");
     expect(typeof log.duration).toBe("number");
     expect(log.duration).toBeGreaterThanOrEqual(0);
     expect(log.userId).toBeDefined();
