@@ -129,7 +129,7 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 15. API Layer Consolidation | 2/2 | Complete    | 2026-03-26 |
-| 16. Tool Registration Consolidation | 2/2 | Complete   | 2026-03-26 |
+| 16. Tool Registration Consolidation | 2/2 | Complete    | 2026-03-26 |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/3 | Planned | - |
 
