@@ -73,7 +73,10 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
   2. Calling listPages with includeUnpublished=false returns only published pages; with includeUnpublished=true returns all pages
   3. Calling searchPages returns results where each result's ID is the real database page ID (not the search index ID)
   4. When singleByPath fails for a search result, the fallback cross-references pages.list to resolve the correct ID
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 15-01-PLAN.md -- Extend WikiJsPage interface, consolidate getPageById and listPages methods
+- [ ] 15-02-PLAN.md -- Implement search ID resolution with singleByPath + pages.list fallback
 
 ### Phase 16: Tool Registration Consolidation
 **Goal**: MCP server exposes exactly 3 tools (get_page, list_pages, search_pages) with clear LLM-optimized descriptions
@@ -125,11 +128,11 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 15. API Layer Consolidation | 0/? | Not started | - |
+| 15. API Layer Consolidation | 0/2 | Planned | - |
 | 16. Tool Registration Consolidation | 0/2 | Planned | - |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/3 | Planned | - |
 
 ---
 *Created: 2026-03-26*
-*Last updated: 2026-03-26 -- Phase 16 planned (2 plans)*
+*Last updated: 2026-03-26 -- Phase 15 planned (2 plans)*
