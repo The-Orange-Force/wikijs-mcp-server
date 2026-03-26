@@ -60,7 +60,7 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
 - [x] **Phase 15: API Layer Consolidation** - Build consolidated GraphQL methods for get, list, and search with path-based ID resolution (completed 2026-03-26)
 - [x] **Phase 16: Tool Registration Consolidation** - Replace 17 tool registrations with 3 read-only tools with verbose descriptions (completed 2026-03-26)
 - [x] **Phase 17: Scope and Auth Simplification** - Reduce scope model from 3 scopes to wikijs:read only (completed 2026-03-26)
-- [ ] **Phase 18: Cleanup** - Remove STDIO transport, dead dependencies, and unused code
+- [x] **Phase 18: Cleanup** - Remove STDIO transport, dead dependencies, and unused code (in progress - 18-01 complete)
 
 ## Phase Details
 
@@ -115,9 +115,9 @@ Plans:
   3. WikiJsUser, WikiJsGroup, ResponseResult types do not exist in types.ts
   4. All removed API methods (createPage, updatePage, deletePage, etc.) are gone from api.ts
   5. npm test passes with no failures and npm run build compiles cleanly
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 Plans:
-- [ ] 18-01-PLAN.md -- Remove dead source code (types, API methods, scopes) and sync version to 2.3.0
+- [x] 18-01-PLAN.md -- Remove dead source code (types, API methods, scopes) and sync version to 2.3.0 (completed 2026-03-26)
 - [ ] 18-02-PLAN.md -- Remove STDIO transport, uninstall msal-node, switch Dockerfile to Alpine
 - [ ] 18-03-PLAN.md -- Update all tests for 3-tool/1-scope model and rewrite documentation
 
@@ -131,8 +131,8 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 | 15. API Layer Consolidation | 2/2 | Complete    | 2026-03-26 |
 | 16. Tool Registration Consolidation | 2/2 | Complete    | 2026-03-26 |
 | 17. Scope and Auth Simplification | 1/1 | Complete    | 2026-03-26 |
-| 18. Cleanup | 0/3 | Planned | - |
+| 18. Cleanup | 2/3 | In Progress|  |
 
 ---
 *Created: 2026-03-26*
-*Last updated: 2026-03-26 -- Phase 17 complete (1 plan)*
+*Last updated: 2026-03-26 -- Phase 18-01 complete (version sync to 2.3.0)*

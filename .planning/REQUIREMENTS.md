@@ -27,9 +27,9 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 
 ### Cleanup
 
-- [ ] **CLEN-01**: STDIO transport removed (lib/mcp_wikijs_stdin.js and references)
-- [ ] **CLEN-02**: @azure/msal-node removed from package.json
-- [ ] **CLEN-03**: Dead API methods, types (WikiJsUser, WikiJsGroup, ResponseResult), and unused code removed
+- [x] **CLEN-01**: STDIO transport removed (lib/mcp_wikijs_stdin.js and references)
+- [x] **CLEN-02**: @azure/msal-node removed from package.json
+- [x] **CLEN-03**: Dead API methods, types (WikiJsUser, WikiJsGroup, ResponseResult), and unused code removed
 
 ## Future Requirements
 
@@ -66,9 +66,9 @@ Requirements for Tool Consolidation milestone. Consolidates 17 tools to 3 read-o
 | SRCH-03 | Phase 16 | Complete |
 | SCOP-01 | Phase 17 | Complete |
 | SCOP-02 | Phase 17 | Complete |
-| CLEN-01 | Phase 18 | Pending |
-| CLEN-02 | Phase 18 | Pending |
-| CLEN-03 | Phase 18 | Pending |
+| CLEN-01 | Phase 18 | Complete |
+| CLEN-02 | Phase 18 | Complete |
+| CLEN-03 | Phase 18 | Complete |
 
 **Coverage:**
 - v2.3 requirements: 12 total
