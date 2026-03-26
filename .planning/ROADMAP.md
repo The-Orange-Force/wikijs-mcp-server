@@ -95,7 +95,9 @@ Phase 14: Wire Up and Protected Resource Metadata Switch -- Self-referencing PRM
   2. A token with wikijs:read scope can invoke all 3 tools
   3. A token missing wikijs:read scope is rejected for all 3 tools
   4. The scopes_supported field in discovery metadata lists only wikijs:read
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 17-01-PLAN.md -- Simplify scopes to wikijs:read only and update all test assertions
 
 ### Phase 18: Cleanup
 **Goal**: All dead code, unused dependencies, and legacy transport removed
@@ -118,9 +120,9 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 |-------|----------------|--------|-----------|
 | 15. API Layer Consolidation | 0/? | Not started | - |
 | 16. Tool Registration Consolidation | 0/? | Not started | - |
-| 17. Scope and Auth Simplification | 0/? | Not started | - |
+| 17. Scope and Auth Simplification | 0/1 | Planned | - |
 | 18. Cleanup | 0/? | Not started | - |
 
 ---
 *Created: 2026-03-26*
-*Last updated: 2026-03-26 -- v2.3 roadmap created*
+*Last updated: 2026-03-26 -- Phase 17 planned (1 plan)*
