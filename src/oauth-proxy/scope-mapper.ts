@@ -12,7 +12,7 @@ const OIDC_PASSTHROUGH = new Set(["openid", "offline_access"]);
  *
  * - OIDC scopes (openid, offline_access) pass through unchanged.
  * - Already-prefixed scopes (api://...) are not double-prefixed.
- * - Known MCP scopes (wikijs:read, wikijs:write, wikijs:admin) get prefixed.
+ * - Known MCP scopes (wikijs:read) get prefixed.
  * - Unknown scopes pass through unchanged (proxy stays transparent).
  */
 export function mapScopes(scopes: string[], clientId: string): string[] {

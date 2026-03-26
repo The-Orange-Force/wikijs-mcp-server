@@ -1,11 +1,9 @@
 // ---------------------------------------------------------------------------
-// Scope-to-tool mapping -- single source of truth for Phase 4/5 enforcement
+// Scope-to-tool mapping -- single source of truth
 // ---------------------------------------------------------------------------
 
 export const SCOPES = {
   READ: "wikijs:read",
-  WRITE: "wikijs:write",
-  ADMIN: "wikijs:admin",
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -20,8 +18,6 @@ export const SCOPE_TOOL_MAP: Record<Scope, readonly string[]> = {
     "list_pages",
     "search_pages",
   ],
-  [SCOPES.WRITE]: [],
-  [SCOPES.ADMIN]: [],
 } as const;
 
 /** Flat array of all supported scope strings. */
