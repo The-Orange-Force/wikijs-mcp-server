@@ -109,7 +109,11 @@ Plans:
   3. WikiJsUser, WikiJsGroup, ResponseResult types do not exist in types.ts
   4. All removed API methods (createPage, updatePage, deletePage, etc.) are gone from api.ts
   5. npm test passes with no failures and npm run build compiles cleanly
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 18-01-PLAN.md -- Remove dead source code (types, API methods, scopes) and sync version to 2.3.0
+- [ ] 18-02-PLAN.md -- Remove STDIO transport, uninstall msal-node, switch Dockerfile to Alpine
+- [ ] 18-03-PLAN.md -- Update all tests for 3-tool/1-scope model and rewrite documentation
 
 ## Progress
 
@@ -121,8 +125,8 @@ Phases execute in numeric order: 15 -> 16 -> 17 -> 18
 | 15. API Layer Consolidation | 0/? | Not started | - |
 | 16. Tool Registration Consolidation | 0/? | Not started | - |
 | 17. Scope and Auth Simplification | 0/1 | Planned | - |
-| 18. Cleanup | 0/? | Not started | - |
+| 18. Cleanup | 0/3 | Planned | - |
 
 ---
 *Created: 2026-03-26*
-*Last updated: 2026-03-26 -- Phase 17 planned (1 plan)*
+*Last updated: 2026-03-26 -- Phase 18 planned (3 plans)*
