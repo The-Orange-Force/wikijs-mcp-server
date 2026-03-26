@@ -28,7 +28,10 @@ const mockWikiJsApi = {
   listPages: async () => [
     { id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" },
   ],
-  searchPages: async () => [{ id: 1, path: "test", title: "Test" }],
+  searchPages: async () => ({
+    results: [{ id: 1, path: "test", title: "Test", description: "Test page", isPublished: true, createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" }],
+    totalHits: 1,
+  }),
 } as unknown as WikiJsApi;
 
 // ---------------------------------------------------------------------------

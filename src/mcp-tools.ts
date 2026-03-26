@@ -172,10 +172,10 @@ export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
     },
     wrapToolHandler(TOOL_SEARCH_PAGES, async ({ query, limit }) => {
       try {
-        const results = await wikiJsApi.searchPages(query, limit);
+        const result = await wikiJsApi.searchPages(query, limit);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(results, null, 2) },
+            { type: "text" as const, text: JSON.stringify(result.results, null, 2) },
           ],
         };
       } catch (error) {
