@@ -1,32 +1,23 @@
-# WikiJS MCP Server — OAuth 2.1 Extension
+# WikiJS MCP Server
 
 ## Current State
 
-**Shipped:** v2.1 (2026-03-25)
+**Shipped:** v2.2 (2026-03-26)
 
-The WikiJS MCP Server requires Azure AD authentication for all MCP tool invocations and is deployed as a Docker container behind Caddy. Only authenticated colleagues can access the company WikiJS instance via MCP clients.
+A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials.
 
 **What's live:**
 - MCP transport via Fastify (POST /mcp with stateless JSON responses)
-- RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`
+- RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource` (self-referencing)
 - JWT validation against Azure AD JWKS using jose
 - Scope enforcement (wikijs:read, wikijs:write, wikijs:admin)
 - Per-request correlation IDs and user identity logging
 - Docker container deployment (multi-stage build, caddy_net, HEALTHCHECK)
-- 97 passing tests, 4,133 lines of TypeScript
+- OAuth authorization proxy: discovery, DCR, authorize redirect, token proxy
+- Full OAuth flow: PRM → AS metadata → DCR → authorize → token → MCP tools
+- 209 passing tests, 6,583 lines of TypeScript
 
-**Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients.
-
-## Current Milestone: v2.2 OAuth Authorization Proxy
-
-**Goal:** Implement an OAuth 2.1 authorization proxy so that Claude Desktop (and any spec-compliant MCP client) can complete the full auth flow without pre-configured client credentials.
-
-**Target features:**
-- OpenID Connect discovery endpoint (`.well-known/openid-configuration`) pointing to local proxy endpoints
-- Dynamic Client Registration (RFC 7591) returning pre-configured Azure AD client_id
-- Authorization endpoint proxying to Azure AD with scope mapping (bare → fully-qualified)
-- Token endpoint proxying to Azure AD (authorization_code + refresh_token)
-- Updated Protected Resource Metadata pointing to self as authorization server
+**Core value delivered:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
 ## Requirements
 
@@ -36,24 +27,25 @@ The WikiJS MCP Server requires Azure AD authentication for all MCP tool invocati
 
 - ✓ WikiJS GraphQL API integration (page CRUD, search, user/group management)
 - ✓ HTTP server with MCP JSON-RPC transport via Fastify
-- ✓ Azure AD OAuth 2.1 authentication (v2.0)
+- ✓ Azure AD OAuth 2.1 authentication — v2.0
 - ✓ STDIO transport for editor integration
 - ✓ Zod schema validation for all tool inputs/outputs
 - ✓ Health check endpoint (unauthenticated)
 - ✓ Environment-based configuration
-- ✓ Docker container packaging with multi-stage build (v2.1)
-- ✓ docker-compose.yml for caddy_net deployment (v2.1)
-- ✓ Docker HEALTHCHECK using /health endpoint (v2.1)
+- ✓ Docker container packaging with multi-stage build — v2.1
+- ✓ docker-compose.yml for caddy_net deployment — v2.1
+- ✓ Docker HEALTHCHECK using /health endpoint — v2.1
+- ✓ OpenID Connect discovery override pointing OAuth endpoints to self — v2.2
+- ✓ Dynamic Client Registration (RFC 7591) returning Azure AD client_id — v2.2
+- ✓ Authorization proxy endpoint with scope mapping — v2.2
+- ✓ Token proxy endpoint (authorization_code + refresh_token) — v2.2
+- ✓ Protected Resource Metadata updated to reference self as authorization server — v2.2
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] OpenID Connect discovery override pointing OAuth endpoints to self
-- [ ] Dynamic Client Registration (RFC 7591) returning Azure AD client_id
-- [ ] Authorization proxy endpoint with scope mapping
-- [ ] Token proxy endpoint (authorization_code + refresh_token)
-- [ ] Protected Resource Metadata updated to reference self as authorization server
+(None — planning next milestone)
 
 ### Out of Scope
 
@@ -61,12 +53,15 @@ The WikiJS MCP Server requires Azure AD authentication for all MCP tool invocati
 
 - Per-user WikiJS permissions — everyone has equal access via shared API token
 - STDIO transport OAuth — OAuth only applies to HTTP transport
-- Dynamic Client Registration — manual client ID configuration is acceptable
 - Token issuance — server is a resource server only, Azure AD issues tokens
-- Rate limiting — can be added later, not part of auth proxy layer
+- Rate limiting — Caddy handles rate limiting if needed
 - CORS configuration for browser clients — MCP clients are native apps
 - Token storage/caching — proxy is stateless, passes tokens through
 - Custom client_secret generation — Azure AD app is a public client
+- MSAL library usage — wrong abstraction for server-side proxying
+- `/oauth/*` subpath routes — Claude Desktop constructs paths from base URL, ignoring metadata; root-level paths required
+- Dual-PKCE — only needed when proxy issues own tokens
+- `client_id_metadata_document_supported` — defer until Claude clients ship support
 
 ## Context
 
@@ -99,6 +94,20 @@ The WikiJS MCP Server requires Azure AD authentication for all MCP tool invocati
 | Stateless MCP transport (no SSE) | Simpler architecture, matches SDK recommendations | ✓ Shipped v2.0 |
 | node:20-slim over Alpine | @azure/msal-node musl libc compatibility issues | ✓ Shipped v2.1 |
 | No host port exposure in Docker | Caddy handles ingress via caddy_net, bypassing TLS otherwise | ✓ Shipped v2.1 |
+| Root-level OAuth paths (/authorize, /token, /register) | Claude Desktop ignores metadata, constructs paths from base URL | ✓ Shipped v2.2 |
+| No callback endpoint | Azure AD redirects directly to client's redirect_uri | ✓ Shipped v2.2 |
+| Single Fastify plugin for all proxy routes | src/routes/oauth-proxy.ts with fetch injection for testability | ✓ Shipped v2.2 |
+| @fastify/formbody scoped inside OAuth proxy plugin | Avoids global body parsing side effects | ✓ Shipped v2.2 |
+| Strip RFC 8707 resource parameter | Azure AD rejects unknown params (AADSTS9010010) | ✓ Shipped v2.2 |
+| Self-referencing PRM authorization_servers | Claude Desktop follows PRM → AS metadata chain; self-reference completes the loop | ✓ Shipped v2.2 |
+| Two-phase OAuth error handling | JSON 400 pre-redirect_uri, redirect errors post-redirect_uri (RFC 6749 compliance) | ✓ Shipped v2.2 |
+| AADSTS-specific error descriptions | Ambiguous Azure codes get clearer descriptions for MCP client display | ✓ Shipped v2.2 |
+
+## Known Issues
+
+- Claude Desktop redirect_uri format needs live tenant testing (http://localhost port handling)
+- Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
+- Nyquist validation incomplete for phases 10-14 (VALIDATION.md files in draft status)
 
 ---
-*Last updated: 2026-03-25 after v2.2 milestone start*
+*Last updated: 2026-03-26 after v2.2 milestone*
