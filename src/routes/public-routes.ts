@@ -39,8 +39,9 @@ export async function publicRoutes(
     version: "2.0.0",
     auth_required: true,
     protected_resource_metadata: `${appConfig.azure.resourceUrl}/.well-known/oauth-protected-resource`,
+    authorization_server_metadata: `${appConfig.azure.resourceUrl}/.well-known/oauth-authorization-server`,
     endpoints: {
-      "GET /": "Server info",
+      "GET /": "Server info (unauthenticated)",
       "GET /health": "Health check (unauthenticated)",
       "POST /mcp": "MCP JSON-RPC endpoint (requires Bearer token)",
       "GET /mcp": "MCP SSE endpoint -- returns 405 in stateless mode (requires Bearer token)",
@@ -52,6 +53,10 @@ export async function publicRoutes(
         "OpenID Connect Discovery (unauthenticated)",
       "POST /register":
         "Dynamic Client Registration (unauthenticated)",
+      "GET /authorize":
+        "OAuth authorization redirect (unauthenticated)",
+      "POST /token":
+        "OAuth token proxy (unauthenticated)",
     },
   }));
 
@@ -81,9 +86,7 @@ export async function publicRoutes(
     async (_request: FastifyRequest, reply: FastifyReply) => {
       const metadata: Record<string, unknown> = {
         resource: appConfig.azure.resourceUrl,
-        authorization_servers: [
-          `https://login.microsoftonline.com/${appConfig.azure.tenantId}/v2.0`,
-        ],
+        authorization_servers: [appConfig.azure.resourceUrl],
         scopes_supported: SUPPORTED_SCOPES,
         bearer_methods_supported: ["header"],
         resource_signing_alg_values_supported: ["RS256"],

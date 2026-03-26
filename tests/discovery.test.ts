@@ -43,7 +43,7 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     expect(body.resource).toBe(FAKE_RESOURCE_URL);
   });
 
-  it("contains authorization_servers with a valid URL including tenant ID", async () => {
+  it("contains authorization_servers referencing self (MCP_RESOURCE_URL)", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/.well-known/oauth-protected-resource",
@@ -52,9 +52,8 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     expect(body.authorization_servers).toBeInstanceOf(Array);
     expect(body.authorization_servers.length).toBeGreaterThanOrEqual(1);
     const server = body.authorization_servers[0];
-    // Non-brittle: check valid URL and contains tenant ID
     expect(() => new URL(server)).not.toThrow();
-    expect(server).toContain(FAKE_TENANT_ID);
+    expect(server).toBe(FAKE_RESOURCE_URL);
   });
 
   it("contains scopes_supported with all three scopes", async () => {

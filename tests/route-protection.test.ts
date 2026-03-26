@@ -151,7 +151,7 @@ describe("Route protection", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("GET / without token returns 200 with auth_required and protected_resource_metadata", async () => {
+  it("GET / without token returns 200 with auth_required, protected_resource_metadata, and authorization_server_metadata", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/",
@@ -161,9 +161,58 @@ describe("Route protection", () => {
     const body = res.json();
     expect(body.auth_required).toBe(true);
     expect(body.protected_resource_metadata).toBeDefined();
-    expect(body.protected_resource_metadata).toContain(
-      ".well-known/oauth-protected-resource",
-    );
+    expect(body.protected_resource_metadata).toContain(".well-known/oauth-protected-resource");
+    expect(body.authorization_server_metadata).toBeDefined();
+    expect(body.authorization_server_metadata).toContain(".well-known/oauth-authorization-server");
+  });
+
+  it("GET /.well-known/oauth-authorization-server without token returns 200", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/.well-known/oauth-authorization-server",
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("GET /.well-known/openid-configuration without token returns 200", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/.well-known/openid-configuration",
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("POST /register without token returns 201", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/register",
+      headers: { "content-type": "application/json" },
+      payload: { client_name: "test" },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("GET /authorize without token returns 302 or 400 (not 401)", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/authorize",
+      query: {
+        client_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+        redirect_uri: "http://localhost:3000/callback",
+        response_type: "code",
+      },
+    });
+    expect(res.statusCode).not.toBe(401);
+  });
+
+  it("POST /token without token returns non-401 status", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/token",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "grant_type=authorization_code&code=test&client_id=6ba7b810-9dad-11d1-80b4-00c04fd430c8&redirect_uri=http://localhost:3000/callback",
+    });
+    expect(res.statusCode).not.toBe(401);
   });
 });
 

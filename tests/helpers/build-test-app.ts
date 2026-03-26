@@ -16,6 +16,27 @@ import { protectedRoutes } from "../../src/routes/mcp-routes.js";
 import { oauthProxyRoutes } from "../../src/routes/oauth-proxy.js";
 import { getLocalJwks, TEST_CONFIG } from "../../src/auth/__tests__/helpers.js";
 
+/** Captured fetch call for test assertions. */
+export interface CapturedFetchCall {
+  url: string;
+  init?: RequestInit;
+}
+
+/** Global captures for test inspection. Tests should clear in beforeEach. */
+export const capturedFetchCalls: CapturedFetchCall[] = [];
+
+/** Mock fetch that captures calls and returns generic 400. Prevents accidental real Azure AD calls. */
+async function mockFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  capturedFetchCalls.push({
+    url: typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url,
+    init,
+  });
+  return new Response(
+    JSON.stringify({ error: "mock_error", error_description: "Mock fetch -- no real Azure AD calls in tests" }),
+    { status: 400, headers: { "content-type": "application/json" } },
+  );
+}
+
 /** Mock WikiJsApi for tests that don't need real WikiJS */
 export const mockWikiJsApi = {
   checkConnection: async () => true,
@@ -118,8 +139,8 @@ export async function buildTestApp(
     appConfig,
   });
 
-  // OAuth authorization proxy routes -- no auth required
-  server.register(oauthProxyRoutes, { appConfig });
+  // OAuth authorization proxy routes -- no auth required (mock fetch prevents real Azure AD calls)
+  server.register(oauthProxyRoutes, { appConfig, fetch: mockFetch });
 
   // Protected MCP routes -- auth enforced via scoped preHandler
   server.register(protectedRoutes, {
