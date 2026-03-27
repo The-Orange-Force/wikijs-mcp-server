@@ -67,7 +67,7 @@ Phase 18: Cleanup -- STDIO removal, Alpine Docker, dead code removal, documentat
 ## Phases
 
 - [x] **Phase 19: Instructions Loading and Initialize Response** - Load instructions from configurable file path with fallback default and return in MCP initialize response (completed 2026-03-27)
-- [ ] **Phase 20: Docker Integration and Default Instructions** - Ship default instructions file and wire docker-compose volume mount
+- [x] **Phase 20: Docker Integration and Default Instructions** - Ship default instructions file and wire docker-compose volume mount (completed 2026-03-27)
 
 ## Phase Details
 
@@ -107,7 +107,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 19. Instructions Loading and Initialize Response | 2/2 | Complete    | 2026-03-27 |
-| 20. Docker Integration and Default Instructions | 0/1 | Not started | - |
+| 20. Docker Integration and Default Instructions | 1/1 | Complete   | 2026-03-27 |
 
 ---
 *Last updated: 2026-03-27*

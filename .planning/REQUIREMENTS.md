@@ -20,8 +20,8 @@ Requirements for MCP Instructions Field milestone. Each maps to roadmap phases.
 
 ### Docker Integration
 
-- [ ] **DOCK-01**: `docker-compose.yml` includes volume mount for instructions file
-- [ ] **DOCK-02**: Default `instructions.txt` file shipped in the repository
+- [x] **DOCK-01**: `docker-compose.yml` includes volume mount for instructions file
+- [x] **DOCK-02**: Default `instructions.txt` file shipped in the repository
 
 ## Future Requirements
 
@@ -49,8 +49,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FILE-01 | Phase 19 | Complete |
 | FILE-02 | Phase 19 | Complete |
 | FILE-03 | Phase 19 | Complete |
-| DOCK-01 | Phase 20 | Pending |
-| DOCK-02 | Phase 20 | Pending |
+| DOCK-01 | Phase 20 | Complete |
+| DOCK-02 | Phase 20 | Complete |
 
 **Coverage:**
 - v2.4 requirements: 7 total
