@@ -1,185 +1,177 @@
 # Project Research Summary
 
-**Project:** wikijs-mcp-server v2.5 — GDPR Path Filter
-**Domain:** Path-based access control utility for MCP tool layer
+**Project:** wikijs-mcp-server v2.6
+**Domain:** Marker-based GDPR content redaction and page URL injection for MCP server
 **Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The v2.5 milestone adds a GDPR compliance layer to an existing, production-grade MCP server. The task is narrow and well-defined: implement a single `isBlocked(path: string): boolean` predicate and apply it as a post-fetch filter in all three existing tool handlers (`get_page`, `list_pages`, `search_pages`). The blocking rule is structurally deterministic — a path is blocked if it has exactly 2 segments and the first segment is "Clients" (case-insensitive). No new npm dependencies are required; the existing stack (TypeScript 5.3, Vitest, Zod) handles everything.
+The v2.6 milestone replaces the v2.5 path-based GDPR blocking (`isBlocked()`) with surgical marker-based content redaction. Wiki authors wrap sensitive sections in `<!-- gdpr-start -->` / `<!-- gdpr-end -->` HTML comment markers; the MCP server strips those sections before returning content to AI assistants. This is a fundamentally different security model: v2.5 blocked entire pages, v2.6 redacts specific sections and makes the rest of each page accessible. The scope is tightly bounded — only `get_page` returns a `content` field, so redaction applies to one tool handler. `list_pages` and `search_pages` are simplified by removing their GDPR filters entirely.
 
-The recommended approach mirrors an existing codebase pattern: a pure utility function in a dedicated file (like `scope-mapper.ts`), co-located unit tests, and an import into `mcp-tools.ts` where filtering is applied at the tool layer — after the WikiJs API call returns, before the MCP response is constructed. The API layer (`api.ts`) stays policy-neutral. The two response strategies are asymmetric by design: `get_page` returns a generic "Page not found." error (preventing existence disclosure), while `list_pages` and `search_pages` silently omit blocked pages from their result arrays.
+The recommended implementation requires zero new dependencies. All capabilities — regex content redaction, malformed marker fail-safe, URL construction — are covered by Node.js built-ins and the existing stack. The redaction function is a pure string transformation (`redactContent(content: string | undefined | null): RedactionResult`) that belongs in `src/gdpr.ts` and is called from the `get_page` handler in `mcp-tools.ts`. The `WikiJsApi` layer remains policy-neutral. URL injection reuses `WIKIJS_BASE_URL` from existing config and adds the `locale` field to the `getPageById` GraphQL query.
 
-The primary risk is not implementation complexity — the predicate is two lines — but correctness in edge cases and security hygiene. Path normalization bypasses (case variants, leading/trailing slashes, double slashes) must be handled inside `isBlocked()` or the filter can be circumvented. The existence-oracle problem in `get_page` requires that the upstream WikiJs API call always completes before the path check runs, to equalize timing between blocked and absent pages. Audit logging of blocked access attempts must avoid including the company name (itself potentially GDPR-sensitive), and the MCP instructions file must not reveal the filter structure.
-
----
+The most significant risk is a transition window where PII is exposed: if `isBlocked()` is removed before wiki authors have added markers to all previously-blocked pages, client pages will be accessible with full PII content. The mitigation is clear — remove `isBlocked()` only after markers are in place and verified. Secondary risks are regex correctness (greedy vs. lazy quantifier, malformed marker handling) and URL encoding edge cases. All are well-understood with documented solutions.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack requires no additions. Zero new npm packages are needed. The feature is implemented entirely in TypeScript built-ins: `String.prototype.split()`, `Array.prototype.filter()`, and direct string comparison. Vitest (already present) covers unit tests using the same table-driven pattern established by `scope-mapper.test.ts`. The existing `WikiJsPage.path: string` field in `src/types.ts` is the only field the filter reads.
+No new dependencies are needed. The v2.6 features (regex content redaction, malformed marker handling, URL construction) are implemented with `String.prototype.replace()`, `String.prototype.indexOf()`, and the WHATWG `URL` class — all built into Node.js >= 20. The existing Zod, Pino, and Vitest dependencies cover validation, logging, and testing respectively.
+
+The one decision that was researched and resolved: the `re2` library (Google's linear-time regex engine) is unnecessary. The marker pattern uses fixed literal anchors (`<!-- gdpr-start -->`, `<!-- gdpr-end -->`) with a single non-greedy `[\s\S]*?` between them — this is provably linear-time with no backtracking risk. Adding `re2` would introduce a native C++ dependency that complicates the Alpine Docker image for zero security benefit.
 
 **Core technologies (all existing — nothing added):**
-- TypeScript 5.3 strict ESM — pure function with full type safety, no new TS features needed
-- Vitest 4.x — existing test runner, same `describe/it/expect` pattern as `scope-mapper` tests
-- Built-in `String.split()` + comparison — no glob engine, no policy framework, no regex library
+- `RegExp` with `[\s\S]*?gi`: marker pair redaction — compiled once at module level, O(n) time, case-insensitive and global flags
+- `String.prototype.indexOf()`: malformed marker detection — faster than regex for presence checks, used in the fail-safe path
+- WHATWG `URL` class (Node.js built-in): page URL construction — handles double slashes, special characters, percent-encoding
+- Zod (already installed): no new env vars needed; `WIKIJS_BASE_URL` is reused for URL construction
+- Pino via Fastify (already installed): malformed marker warning logs via existing `requestContext` pattern
 
-Evaluated and rejected: `accesscontrol`/`casbin`/`role-acl` (wrong abstraction — RBAC for multi-role systems, 100–400 KB for a 3-line predicate), `micromatch`/`picomatch`/`minimatch` (glob engines — abstraction mismatch for a deterministic structural rule).
-
-See `.planning/research/STACK.md` for full dependency analysis and alternatives considered.
+See `.planning/research/STACK.md` for full dependency analysis, ReDoS safety rationale, and alternatives considered.
 
 ### Expected Features
 
-The blocking rule is exactly specified and scoped conservatively. All features below derive from that single requirement.
+**Must have (table stakes):**
+- Remove path-based GDPR filtering — delete `isBlocked()` and all call sites in `mcp-tools.ts`; prerequisite for marker-based redaction
+- Marker-based content redaction — regex `/<!-- *gdpr-start *-->[\s\S]*?<!-- *gdpr-end *-->/gi` with global and case-insensitive flags
+- Redaction placeholder `[REDACTED]` — industry-standard convention per GDPR guidance; single consistent placeholder regardless of amount of content removed
+- Multiple marker pairs per page — handled automatically by the `g` (global) regex flag
+- Malformed marker fail-safe — if `<!-- gdpr-start -->` has no matching `<!-- gdpr-end -->`, redact from start marker to end of content; fail-closed is the only GDPR-safe default
+- Warning log for malformed markers — `log.warn({ pageId, malformedMarker: true }, ...)` via existing `requestContext` pattern
+- Redaction scoped to `get_page` only — `list_pages` and `search_pages` return metadata only, no content field
+- Page URL injection in `get_page` — construct and inject `url` field using `WIKIJS_BASE_URL` + page locale + page path
 
-**Must have (table stakes — P1):**
-- `isBlocked(path)` utility — pure exported function, single source of truth for all three tools
-- `get_page` returns generic "Page not found." for blocked pages — indistinguishable from truly absent page; same text, same timing
-- `search_pages` silently excludes blocked pages from results — no existence leak via search
-- `list_pages` silently excludes blocked pages from results — no existence leak via list
-- Path normalization inside `isBlocked()` — strip leading/trailing slashes, case-fold first segment — prevents bypass via path variants
-- Unit tests covering all edge cases for `isBlocked()` — security predicates require full branch coverage
+**Should have (differentiators):**
+- Case-insensitive and whitespace-tolerant markers — `i` flag and ` *` around marker text prevent bypass via casing or spacing variations
+- Structured audit log for redacted pages — `log.info({ pageId, redactionCount, malformed })` for GDPR Article 30 compliance trail
+- Whitespace normalization — collapse excessive blank lines after redaction for cleaner output
 
-**Should have (differentiators — P2):**
-- Structured audit logging for blocked access attempts — GDPR Article 30 accountability trail, using `requestContext` correlation ID and user identity; the log must NOT include the company name (the path segment is itself potentially sensitive)
+**Defer to v2.7+:**
+- URL injection for `list_pages` / `search_pages` results — not required for the core GDPR use case
+- Redaction count in response text — cosmetic improvement; `[REDACTED]` placeholder already signals removal
+- Fenced code block awareness — accept-and-document as a limitation for v2.6; add complexity only if it becomes a real problem
 
-**Defer (v2.6+):**
-- Configurable block rules / pattern-based blocking — no current requirement; a code change with tests is safer than a config surface
-- Block check before WikiJs fetch for `get_page` — impossible with current ID-based API; deferred until a path-based lookup tool exists
-- Per-category blocking or redaction strategies — only if compliance requirements evolve beyond simple blocking
-
-See `.planning/research/FEATURES.md` for full feature dependency graph and MVP definition.
+See `.planning/research/FEATURES.md` for full feature dependency graph, anti-features, and MVP definition.
 
 ### Architecture Approach
 
-The filter lives exclusively in `mcp-tools.ts` tool handlers, applied between the WikiJs API call and `JSON.stringify`. A new file `src/gdpr.ts` exports `isBlocked()` as the single source of truth; `mcp-tools.ts` imports and calls it in all three handlers. No other files change. The `api.ts` data layer remains policy-neutral. `tool-wrapper.ts` remains a timing/logging concern only.
+The architecture is a targeted rewrite of one module (`src/gdpr.ts`) and modifications to the `get_page` handler in `mcp-tools.ts`. The data flow is: `WikiJsApi.getPageById()` returns raw `WikiJsPage` (including a new `locale` field from the GraphQL query) → `redactContent(page.content)` strips GDPR sections → URL is constructed → response is assembled with `{ ...page, content: redacted.content, url }`. The `list_pages` and `search_pages` handlers are simplified by removing all GDPR filtering — they return data as-is from the API. The `wikiJsBaseUrl` value is threaded as a parameter through `server.ts` → `protectedRoutes` options → `createMcpServer()`, following the existing pattern for the `instructions` parameter.
 
 **Major components:**
-1. `src/gdpr.ts` (NEW) — exports `isBlocked(path: string): boolean`; pure function, no imports, no state; normalizes leading/trailing slashes and case-folds the first segment before the structural check
-2. `src/mcp-tools.ts` (MODIFIED) — imports `isBlocked`; applies it in all three tool handlers post-fetch; `get_page` uses `isError: true` with generic text, `list_pages` and `search_pages` use `Array.filter()`
-3. `src/__tests__/gdpr.test.ts` (NEW) — Vitest unit tests for `isBlocked()` covering exact match, case variants, leading/trailing slash, 1-segment, 3-segment, unrelated paths, empty string
-4. `tests/gdpr-filter.test.ts` (NEW) — Integration tests using `buildTestApp()` and a mock `WikiJsApi`; verifies MCP response shapes for blocked and non-blocked paths via Fastify `inject()`
+1. `src/gdpr.ts` (REWRITTEN) — exports `redactContent(content: string | undefined | null): RedactionResult`; pure function with no side effects; replaces `isBlocked()`
+2. `src/mcp-tools.ts` (MODIFIED) — calls `redactContent()` in `get_page`; injects URL; removes all `isBlocked()` usage; accepts `wikijsBaseUrl` as a new parameter
+3. `src/api.ts` (MODIFIED) — adds `locale` field to `getPageById` GraphQL query; one-line change
+4. `src/types.ts` (MODIFIED) — adds `locale?: string` to `WikiJsPage` interface
+5. `src/server.ts` + `src/routes/mcp-routes.ts` (MODIFIED) — thread `wikijsBaseUrl` to `createMcpServer()`
 
-**Unchanged:** `src/api.ts`, `src/tool-wrapper.ts`, `src/types.ts`, `src/config.ts`, `src/routes/mcp-routes.ts`, `src/server.ts`, `tests/helpers/build-test-app.ts`.
+Key architectural constraint: Fastify `onSend` hooks cannot intercept MCP responses because the MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's reply pipeline. Redaction must be applied at the tool handler layer, not at the HTTP layer.
 
-**Build order:** Step 1: `src/gdpr.ts` + unit tests. Step 2: integrate into `mcp-tools.ts`. Step 3: integration tests. Linear, no parallelism needed.
-
-See `.planning/research/ARCHITECTURE.md` for component boundaries, data flow diagrams, code patterns, and full build order rationale.
+See `.planning/research/ARCHITECTURE.md` for component boundaries, data flow diagrams, before/after code patterns, and full build order rationale.
 
 ### Critical Pitfalls
 
-1. **Existence oracle via asymmetric error responses** — `get_page` must call `getPageById()` first (to normalize timing), then check `isBlocked(page.path)`. If the upstream call is skipped for blocked paths, they return faster — timing reveals that the page exists. The error text for a blocked page must also be textually identical to a genuine absent-page error.
+1. **Transition window PII exposure** — removing `isBlocked()` before wiki authors add markers to all previously-blocked pages exposes full PII. Mitigation: deploy redaction code first (additive alongside existing filter), add markers to all sensitive pages, audit coverage, then remove `isBlocked()` as a final separate step.
 
-2. **Path normalization bypasses** — A case-sensitive comparison against `"Clients"` is bypassed by `clients/acme`, `/Clients/Acme`, `Clients/Acme/`, or `Clients//Acme`. `isBlocked()` must normalize input before comparison: strip leading slashes, collapse double slashes, strip trailing slashes, then lowercase the first segment. Unit tests must cover all variants.
+2. **Unclosed start marker causes silent PII leak** — a `<!-- gdpr-start -->` without matching `<!-- gdpr-end -->` passes content through unredacted with the naive single-regex approach. Mitigation: two-pass approach — run paired-marker regex first, then scan for remaining orphaned start markers and redact to end of content. This is fail-closed, not fail-open.
 
-3. **Search results fallback path gap** — `searchPages()` in `api.ts` uses a multi-stage resolution that includes a `resolveViaPagesList` fallback. The `isBlocked()` filter must be applied to results from ALL resolution paths in `search_pages`, not only the primary GraphQL search results. A filter on the primary results only leaves the fallback path unguarded.
+3. **Greedy quantifier consumes multiple GDPR sections** — `/<!-- gdpr-start -->[\s\S]*<!-- gdpr-end -->/g` (greedy `*`) matches from the first start marker to the last end marker, destroying public content between separate GDPR sections. Mitigation: use the lazy quantifier `[\s\S]*?`. Test with two marker pairs and public content between them.
 
-4. **GDPR-sensitive data in audit logs** — Logging the blocked path (e.g., `Clients/AcmeCorp`) makes the server log a secondary store for GDPR-sensitive identifiers. Log the event type, tool name, and user identity only — never the company name segment of the path.
+4. **URL construction edge cases** — template literal concatenation fails on paths with spaces, Unicode, double slashes from trailing `/` on base URL. Mitigation: use the WHATWG `URL` class or `encodeURIComponent` per path segment. Add test cases for paths with spaces, Unicode, and special characters.
 
-5. **`totalHits` leaking unfiltered count** — `search_pages` must not expose `totalHits` from the WikiJs response. The current code already omits it (returns only `result.results`). This must not be regressed during filter integration.
+5. **Markers inside fenced code blocks** — regex has no concept of markdown structure; markers in code examples will be processed as real markers. Mitigation: document the limitation for v2.6; wiki authors must escape markers in code blocks.
 
-See `.planning/research/PITFALLS.md` for all pitfalls with detection strategies, phase warnings, and source citations.
-
----
+See `.planning/research/PITFALLS.md` for all pitfalls including nested marker behavior, locale mismatch edge cases, and detection strategies.
 
 ## Implications for Roadmap
 
-This milestone maps cleanly to a 3-phase linear implementation. All dependencies are sequential; no parallelism is possible or necessary.
+Research converges on a 3-phase implementation sequence. The phases are ordered by dependency: pure functions first, integration second, cleanup/tests last.
 
-### Phase 1: Core Utility — `isBlocked()` Function and Unit Tests
+### Phase 1: Core Redaction Function
 
-**Rationale:** Everything downstream depends on this function. It has zero dependencies and is the foundation that prevents all path-normalization bypass pitfalls. Testing it in isolation before touching `mcp-tools.ts` ensures the security predicate is verified before integration.
-**Delivers:** `src/gdpr.ts` with a hardened `isBlocked()` function; `src/__tests__/gdpr.test.ts` with full branch coverage including all normalization edge cases.
-**Addresses:** `isBlocked()` utility (P1 table stakes); path normalization (P1); unit test coverage requirement.
-**Avoids:** Pitfall 2 (path normalization bypasses) — addressed entirely in this phase before any integration work.
-**No research-phase needed:** Pattern is established (follows `scope-mapper.ts`); implementation is a pure function with no external dependencies.
+**Rationale:** `redactContent()` is a pure function with no dependencies. It is the foundation everything else builds on. Starting here validates the regex pattern, the malformed-marker behavior, and the `RedactionResult` interface before any integration work begins.
+**Delivers:** `src/gdpr.ts` rewritten with `redactContent()`, `src/types.ts` updated with `locale?: string`, `src/__tests__/gdpr.test.ts` rewritten with full test coverage including happy path, multiple pairs, malformed marker, null/undefined inputs.
+**Addresses:** Must-have features — marker redaction, fail-safe, placeholder text, multiple pairs, case/whitespace tolerance.
+**Avoids:** Pitfall 2 (unclosed marker) and Pitfall 3 (greedy quantifier) — both are first-commit regex decisions that must be correct from the start.
 
-### Phase 2: Tool Handler Integration
+### Phase 2: Integration — Remove Old Filtering, Wire Redaction and URL Injection
 
-**Rationale:** With a verified `isBlocked()` in place, the three tool handler changes are mechanical and low-risk — 2-4 lines each. Grouping all three tools in one phase ensures they ship together; a filter that covers only two of three tools is a compliance gap.
-**Delivers:** Modified `src/mcp-tools.ts` with `isBlocked()` applied in all three handlers; `get_page` returns generic "not found" for blocked pages; `list_pages` and `search_pages` silently filter results.
-**Addresses:** `get_page` generic error (P1); `search_pages` silent filter (P1); `list_pages` silent filter (P1); `totalHits` non-exposure verified (P1).
-**Avoids:** Pitfall 1 (existence oracle) — `get_page` calls upstream first, then checks path; Pitfall 3 (search fallback gap) — filter applied to all resolution paths; Pitfall 5 (`totalHits` regression).
-**No research-phase needed:** Architecture is fully specified; change surface is 3 handlers with identical patterns.
+**Rationale:** With `redactContent()` tested and working, the integration changes are low-risk. This phase removes the `isBlocked()` filter from all three tool handlers, wires the new redaction into `get_page`, adds URL injection, and threads `wikijsBaseUrl` through the call chain.
+**Delivers:** `src/mcp-tools.ts`, `src/api.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` all updated. The `get_page` tool returns redacted content and a `url` field. `list_pages` and `search_pages` return unfiltered results.
+**Uses:** `redactContent()` from Phase 1, `locale` field from Phase 1's types change, existing `WIKIJS_BASE_URL` config.
+**Implements:** Content transformation between fetch and serialize; config threading pattern for `wikijsBaseUrl`.
+**Avoids:** Pitfall 4 (URL construction edge cases) — use `URL` class, not template literals. Pitfall 6 (inconsistent redaction across tools) — redaction is scoped to `get_page` content only.
 
-### Phase 3: Integration Tests and Security Audit
+### Phase 3: Integration Tests and Cleanup
 
-**Rationale:** End-to-end verification using Fastify `inject()` confirms MCP response shapes are correct from a client perspective. This phase also covers the security hygiene audit: instructions file review, log output verification, `tool-wrapper.ts` payload logging check.
-**Delivers:** `tests/gdpr-filter.test.ts` with integration tests for all three tools; manual audit of `instructions.txt` for filter disclosure; verification that blocked events produce a server-side log entry without company name.
-**Addresses:** Audit logging (P2 differentiator); integration test coverage from FEATURES.md MVP definition.
-**Avoids:** Pitfall 4 (GDPR-sensitive data in logs); Pitfall 7 (MCP instructions file disclosure); Pitfall 8 (no audit trail for blocked access).
-**No research-phase needed:** Test patterns follow existing `buildTestApp()` integration test conventions.
+**Rationale:** Rewrite integration tests after the implementation is stable. Tests that mock `WikiJsApi` and exercise the full `get_page` handler verify that redaction, malformed-marker logging, and URL injection work together as a system. `isBlocked()` removal is confirmed safe only after end-to-end tests pass.
+**Delivers:** `src/__tests__/mcp-tools-gdpr.test.ts` rewritten. Confirms `get_page` with markers, without markers, with malformed markers, and URL correctness. Confirms `list_pages` and `search_pages` return all pages. Removes obsolete v2.5 path-filter tests.
+**Avoids:** Pitfall 1 (transition window) — the old `isBlocked()` code is removed only in this final phase, after redaction is verified end-to-end.
 
 ### Phase Ordering Rationale
 
-- Phase 1 before Phase 2: `isBlocked()` must exist and be tested before it can be imported into tool handlers. An untested security predicate is worse than no predicate.
-- Phase 2 before Phase 3: Integration tests require the full filter to be in place; testing a partial integration creates false confidence.
-- All three phases belong in the same milestone: the filter is a compliance requirement — a partially deployed implementation creates a gap between "deployed" and "compliant."
+- Pure function before integration: `redactContent()` has no dependencies and can be tested in complete isolation. A verified contract before touching `mcp-tools.ts` eliminates a class of integration bugs.
+- `locale` in types and API before URL injection: URL construction requires `page.locale`, which requires the GraphQL query change in `api.ts` and the type change in `types.ts`. These land in Phase 1/2 before the URL injection code uses them.
+- `isBlocked()` removal last: the old filter must not be removed until the new redaction is working end-to-end. This is the safety gate that prevents the transition window PII exposure (Pitfall 1).
+- Three phases matches the v2.5 precedent established in ARCHITECTURE.md.
 
 ### Research Flags
 
-Phases with well-documented patterns (skip `/gsd:research-phase` for all three):
+No phases require `/gsd:research-phase` — the domain is fully documented across the four research files.
 
-- **Phase 1:** The implementation pattern is established by `scope-mapper.ts`. The predicate logic is fully specified in ARCHITECTURE.md and PITFALLS.md. No additional research needed.
-- **Phase 2:** Architecture specifies exactly which lines change in each handler. No new integrations, no new APIs. No additional research needed.
-- **Phase 3:** Integration test patterns follow existing `buildTestApp()` conventions already used by `tests/helpers/`. No additional research needed.
+Phases with standard patterns (skip additional research):
+- **Phase 1:** Pure regex and string operations on well-understood input. Regex pattern is analyzed and confirmed safe (linear-time, no ReDoS risk) in STACK.md and PITFALLS.md. Pure function testing follows existing Vitest patterns.
+- **Phase 2:** Config threading and GraphQL query modification follow established patterns already in the codebase. All integration points are precisely identified in ARCHITECTURE.md.
+- **Phase 3:** Vitest unit and integration tests follow existing test patterns. No new test infrastructure needed.
 
 Execution-time concerns (not research gaps, flag for code review):
-
-- **Phase 2, `get_page` timing:** The upstream call must complete before the path check runs. Flag for review: confirm no short-circuit path was introduced.
-- **Phase 2, `search_pages` fallback:** Confirm `isBlocked()` is applied to results from `resolveViaPagesList` as well as the primary search results.
-
----
+- **Phase 2, URL construction:** Confirm the WHATWG `URL` class is used, not template literal concatenation. Test with paths containing spaces and Unicode.
+- **Phase 2, `locale` fallback:** Confirm `page.locale ?? "en"` fallback is present wherever the URL is constructed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Direct codebase analysis; zero new dependencies; verified against existing `scope-mapper.ts` pattern; no version compatibility concerns |
-| Features | HIGH | Requirement fully specified in PROJECT.md; OWASP and GDPR sources are authoritative; scope boundaries (exactly 2 segments) are explicit |
-| Architecture | HIGH | Based on direct inspection of `src/mcp-tools.ts`, `src/api.ts`, `src/tool-wrapper.ts`, `src/types.ts`; change surface fully mapped; all unchanged files identified |
-| Pitfalls | HIGH | Path normalization bypass patterns sourced from real CVEs (CWE-288) and PortSwigger research; existence oracle guidance from OWASP, Authress, LockMeDown; GDPR audit logging from ICO and Exabeam |
+| Stack | HIGH | Zero new dependencies; all capabilities verified against official Node.js and MDN docs; ReDoS safety confirmed via regex structure analysis |
+| Features | HIGH | Requirements clearly defined in PROJECT.md; feature boundaries well-reasoned with explicit anti-features documented; dependency graph complete |
+| Architecture | HIGH | Based on direct code inspection of current `src/` files; all integration points identified precisely; before/after code patterns specified |
+| Pitfalls | HIGH | Regex backtracking patterns verified against authoritative regex security sources; transition safety analysis based on direct inspection of 371 existing tests; Wiki.js path/URL format verified via official docs |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Case sensitivity discrepancy between research files:** FEATURES.md specifies strict case-sensitive matching (`segments[0] === 'Clients'`), while ARCHITECTURE.md and PITFALLS.md both specify case-insensitive matching (`segments[0].toLowerCase() === 'clients'`). The safe and correct answer is case-insensitive matching — use `.toLowerCase()`. FEATURES.md's strict case guidance should be treated as an error in the research output and the ARCHITECTURE.md / PITFALLS.md specification should govern implementation.
+- **Wiki author migration prerequisite:** The transition from path-based blocking to marker-based redaction requires wiki authors to add `<!-- gdpr-start -->` / `<!-- gdpr-end -->` markers to all previously-blocked `Clients/<CompanyName>` pages before `isBlocked()` is removed. This is an operational dependency outside the codebase. The roadmap should include an explicit gate (audit step) between Phase 2 and the removal of `isBlocked()`, or treat the removal as a separate post-migration task.
 
-- **`resolveViaPagesList` fallback coverage:** PITFALLS.md flags this as a risk but does not enumerate the exact lines in `mcp-tools.ts` or `api.ts` where the fallback results are assembled. During Phase 2, the developer must trace the full resolution path and confirm `isBlocked()` is applied at every point where pages are added to the results before returning.
+- **Locale fallback correctness:** Architecture research recommends `page.locale ?? "en"` as the URL fallback. If the target Wiki.js instance uses a non-English default locale, hardcoding `"en"` produces wrong URLs. This should be validated against the actual deployment; if needed, the fallback can be driven by `WIKIJS_LOCALE` (already documented in CLAUDE.md as an optional env var).
 
-- **Audit log event shape:** PITFALLS.md and FEATURES.md agree that audit logging must not include the company name. The exact log fields are not specified. Recommend: `log.info({ tool, blocked: true, userId: ctx.user.oid, correlationId }, "gdpr-path-filter: access blocked")` — event type, user identity, correlation ID; no path.
-
----
+- **URL encoding for paths with spaces and Unicode:** PITFALLS.md confirms this is a real risk and that Wiki.js allows spaces in paths (e.g., `Clients/Acme Corp`). Implementation must include test cases for paths with spaces, Unicode, and special characters. The WHATWG `URL` class handles this correctly; template literal concatenation does not.
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-- Direct codebase analysis: `src/oauth-proxy/scope-mapper.ts`, `src/oauth-proxy/__tests__/scope-mapper.test.ts`, `src/mcp-tools.ts`, `src/api.ts`, `src/tool-wrapper.ts`, `src/types.ts` — establishes implementation pattern, integration points, and existing type definitions
-- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/) — BOLA: return 404 over 403 to prevent resource enumeration; server-side filtering requirement
-- [OWASP REST Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html) — client-side filtering as anti-pattern
-- [PortSwigger: Access control vulnerabilities](https://portswigger.net/web-security/access-control) — existence oracle via 403 vs 404 distinction
-- [DailyCVE: Gateway auth bypass via path canonicalization mismatch (CWE-288)](https://dailycve.com/gateway-authentication-bypass-via-path-canonicalization-mismatch-cwe-288-moderate/) — real CVE for case/trailing-slash bypass patterns
-- [ICO: What is personal data?](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/personal-information-what-is-it/what-is-personal-data/what-is-personal-data/) — GDPR personal data scope; company names and client directory pages
-- [Azure AI Search: Security Trimming Pattern](https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search) — silent filter as the standard pattern for search result access control
-- PROJECT.md — authoritative requirement source for the v2.5 milestone and the exact blocking rule
+- Direct codebase analysis — `src/mcp-tools.ts`, `src/gdpr.ts`, `src/api.ts`, `src/types.ts`, `src/config.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` — establishes integration points, existing patterns, and change surface
+- [MDN: String.prototype.replace()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace) — regex replacement API reference
+- [MDN: RegExp dotAll flag](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/dotAll) — `s` flag availability in ES2018+
+- [Node.js URL API documentation](https://nodejs.org/api/url.html) — WHATWG URL class reference and best practices
+- [WHATWG HTML Comments Issue](https://github.com/whatwg/html/issues/10153) — nested comments not allowed per HTML spec
+- [Wiki.js GraphQL API](https://docs.requarks.io/dev/api) — content field returns raw editor content; `locale` field confirmed on search results
 
 ### Secondary (MEDIUM confidence)
 
-- [Authress: Choosing 401/403/404](https://authress.io/knowledge-base/articles/choosing-the-right-http-error-code-401-403-404) — existence oracle prevention; consistent with OWASP guidance
-- [LockMeDown: Return 404 instead of 403](https://lockmedown.com/when-should-you-return-404-instead-of-403-http-status-code/) — practical 404-over-403 guidance
-- [Exabeam: GDPR audit logging requirements](https://www.exabeam.com/explainers/gdpr-compliance/how-does-gdpr-comply-with-log-management/) — GDPR Article 30 audit trail requirements
-- [Mezmo: GDPR logging best practices](https://www.mezmo.com/blog/best-practices-for-gdpr-logging) — what to capture without over-logging sensitive identifiers
-- [Hoop.dev: What GDPR really expects from audit logs](https://hoop.dev/blog/what-gdpr-really-expects-from-audit-logs/) — data minimisation principle applied to log content
-- [Wiki.js GitHub Discussion #6672](https://github.com/requarks/wiki/discussions/6672) — path format without leading slash; Wiki.js path normalization behavior
-- [Medium: Path normalisation story (API gateway bypass)](https://medium.com/@dipanshuchhanikar/bypassing-authentication-in-a-major-api-gateway-a-path-normalization-story-5f1bea6d3f08) — practical path-canonicalization bypass examples
+- [Sonar: Dangers of Regular Expressions in JavaScript](https://www.sonarsource.com/blog/vulnerable-regular-expressions-javascript/) — ReDoS pattern analysis confirming fixed-delimiter patterns are safe
+- [AuthZed: Fail Open vs Fail Closed](https://authzed.com/blog/fail-open) — security principle definitions; GDPR mandates fail-closed for data protection
+- [TermsFeed: Data Redaction Under GDPR](https://www.termsfeed.com/blog/gdpr-data-redaction/) — `[REDACTED]` as standard placeholder per GDPR guidance
+- [Redactable: GDPR Redaction Guidelines](https://www.redactable.com/blog/gdpr-redaction-guidelines) — consistency in placeholder text
+- [Wiki.js Locales](https://docs.requarks.io/locales) — locale prefix in page URLs
+- [Wiki.js Pages](https://docs.requarks.io/guide/pages) — path-based page structure
+- [How to Safely Concatenate URLs with Node.js](https://plainenglish.io/blog/how-to-safely-concatenate-url-with-node-js-f6527b623d5) — URL class vs string concatenation best practices
 
 ### Tertiary (evaluated and rejected)
 
-- [accesscontrol npm](https://www.npmjs.com/package/accesscontrol), [casbin/node-casbin](https://github.com/casbin/node-casbin), [micromatch npm](https://www.npmjs.com/package/micromatch), [picomatch npm](https://www.npmjs.com/package/picomatch) — each evaluated and rejected as wrong abstraction for a deterministic 2-segment structural predicate
+- [RE2 safe regex library](https://www.oreateai.com/blog/unlocking-the-power-of-re2-a-safe-alternative-for-regular-expressions-in-nodejs/f47e51a51ef4b558a7aaeec6890a5ebb) — evaluated and rejected; native C++ dep complicates Alpine Docker image with no benefit for this pattern shape
+- [html-comment-regex npm](https://www.npmjs.com/package/html-comment-regex) — evaluated and rejected; abandoned since 2016; our pattern is simpler and more specific
 
 ---
 *Research completed: 2026-03-27*

@@ -1,204 +1,12 @@
-# Architecture: GDPR Path Filter Integration
+# Architecture: Marker-Based Content Redaction and Page URL Injection
 
-**Domain:** MCP server post-fetch data filter (wikijs-mcp-server v2.5)
+**Domain:** MCP server content transformation layer (wikijs-mcp-server v2.6)
 **Researched:** 2026-03-27
-**Confidence:** HIGH (based on direct code analysis of existing src/ files)
+**Confidence:** HIGH (based on direct code analysis of existing src/ files and v2.5 architecture patterns)
 
 ---
 
-## Existing Request Flow (Baseline)
-
-```
-MCP Client (Claude Desktop / Claude Code)
-    |
-    | POST /mcp  (Bearer token)
-    v
-+---------------------------+
-| Fastify: mcp-routes.ts    |  JWT validation (preHandler)
-| protectedRoutes plugin    |  requestContext.run() sets correlation ID + user
-+---------------------------+
-    |
-    | Per-request McpServer + StreamableHTTPServerTransport
-    v
-+---------------------------+
-| mcp-tools.ts              |  createMcpServer(wikiJsApi, instructions)
-| registerTool() handlers   |  wrapToolHandler() — timing + structured logging
-+---------------------------+
-    |
-    | wikiJsApi.getPageById()
-    | wikiJsApi.listPages()
-    | wikiJsApi.searchPages()
-    v
-+---------------------------+
-| api.ts: WikiJsApi         |  graphql-request client
-+---------------------------+
-    |
-    v
-Wiki.js GraphQL API
-```
-
-All three tool handlers follow the same flow:
-1. Call a `WikiJsApi` method to fetch data from WikiJS
-2. On success, `JSON.stringify` the result and return it
-3. On error, return `isError: true` with a descriptive text message
-
----
-
-## Where the Filter Lives
-
-**Decision: Tool-level filter in `mcp-tools.ts`, applied after the `WikiJsApi` call returns.**
-
-The filter must be applied at the point where data has been fetched from WikiJS but has not yet been returned to the MCP client. There are three candidate locations:
-
-| Location | Description | Verdict |
-|----------|-------------|---------|
-| Inside `WikiJsApi` methods (`api.ts`) | Filter before returning to callers | Rejected — see rationale below |
-| In `wrapToolHandler` (`tool-wrapper.ts`) | Filter in the timing wrapper | Rejected — see rationale below |
-| In tool handlers (`mcp-tools.ts`) | Filter after API call, before response construction | **Chosen** |
-
-### Why Not `api.ts`
-
-`WikiJsApi` is a data access layer. Its methods return whatever WikiJS returns. Embedding a security policy inside the data layer couples a business rule (GDPR classification) to a low-level component. If `WikiJsApi` were ever reused by a different surface (an admin endpoint that IS allowed to access GDPR pages), the filter would incorrectly block it. The API layer should remain policy-neutral.
-
-### Why Not `tool-wrapper.ts`
-
-`wrapToolHandler` wraps the entire handler and operates on the `TResult` (the MCP tool response object). By the time the wrapper sees the result, the data is already serialized as JSON text inside a `content` array. Parsing JSON to extract paths and re-filtering is fragile and defeats the purpose of structured data. The wrapper's responsibility is timing and logging — adding filtering there violates single responsibility.
-
-### Why Tool-Level in `mcp-tools.ts`
-
-The tool handlers already contain all the tool-specific business logic: which fields to return, how to format errors, what the success response looks like. Filtering belongs here because:
-
-- `get_page`: Receives a single `WikiJsPage`; can check `page.path` before constructing the response.
-- `list_pages`: Receives `WikiJsPage[]`; can `Array.filter()` before `JSON.stringify`.
-- `search_pages`: Receives `PageSearchResult`; can filter `result.results` before `JSON.stringify`.
-
-The filter is applied in-handler, after the API call and before response construction. This is the minimum-change integration point.
-
----
-
-## New Component: `src/gdpr.ts`
-
-A single shared utility module. It lives at the top level of `src/` alongside `config.ts`, `types.ts`, and `scopes.ts` — small, stateless, domain-logic modules.
-
-**Purpose:** Export `isBlocked(path: string): boolean` — the single source of truth for GDPR path classification.
-
-**Rule:** A path is blocked if it has exactly 2 segments and the first segment (case-insensitive) is `Clients`.
-
-```
-Clients/AcmeCorp          → blocked (direct client directory)
-Clients/AcmeCorp/notes    → NOT blocked (sub-page of client directory)
-Clients                   → NOT blocked (root index, not a company page)
-Public/AcmeCorp           → NOT blocked (wrong top-level segment)
-```
-
-This rule is directly specified in PROJECT.md: "identifies GDPR-sensitive paths (exactly 2 segments starting with `Clients`)".
-
-**Signature:**
-
-```typescript
-// src/gdpr.ts
-export function isBlocked(path: string): boolean {
-  const segments = path.split('/').filter(s => s.length > 0);
-  return segments.length === 2 && segments[0].toLowerCase() === 'clients';
-}
-```
-
-No configuration, no dependencies, no imports. A pure function that accepts a string and returns a boolean.
-
----
-
-## Modified Files and Their Changes
-
-### `src/gdpr.ts` — NEW
-
-```
-Exports: isBlocked(path: string): boolean
-Tests: src/gdpr/__tests__/gdpr.test.ts (unit)
-Dependencies: none
-```
-
-### `src/mcp-tools.ts` — MODIFIED
-
-Three tool handlers each gain a single post-fetch filter. The filter is applied between the API call and the response construction.
-
-**`get_page` handler change:**
-
-```typescript
-// BEFORE
-const page = await wikiJsApi.getPageById(id);
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(page, null, 2) }],
-};
-
-// AFTER
-const page = await wikiJsApi.getPageById(id);
-if (isBlocked(page.path)) {
-  return {
-    isError: true,
-    content: [{ type: "text" as const, text: "Page not found." }],
-  };
-}
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(page, null, 2) }],
-};
-```
-
-The "not found" response must not reveal existence. The exact error text "Page not found." is intentionally generic — it must not say "access denied", "GDPR blocked", or "Clients directory". Using `isError: true` matches the existing error pattern in the same handler (WikiJS API errors also use `isError: true`).
-
-**`list_pages` handler change:**
-
-```typescript
-// BEFORE
-const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(pages, null, 2) }],
-};
-
-// AFTER
-const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
-const filtered = pages.filter(p => !isBlocked(p.path));
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(filtered, null, 2) }],
-};
-```
-
-Silent filter — no error, no indication that pages were removed. The result is a shorter list.
-
-**`search_pages` handler change:**
-
-```typescript
-// BEFORE
-const result = await wikiJsApi.searchPages(query, limit);
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(result.results, null, 2) }],
-};
-
-// AFTER
-const result = await wikiJsApi.searchPages(query, limit);
-const filteredResults = result.results.filter(p => !isBlocked(p.path));
-return {
-  content: [{ type: "text" as const, text: JSON.stringify(filteredResults, null, 2) }],
-};
-```
-
-Silent filter — same pattern as `list_pages`. Note: `result.totalHits` is already excluded from the serialized response (only `result.results` is serialized, per the existing implementation). The filtered results array is serialized directly.
-
-### No other files require modification
-
-| File | Status | Reason |
-|------|--------|--------|
-| `src/api.ts` | UNCHANGED | WikiJsApi remains policy-neutral |
-| `src/tool-wrapper.ts` | UNCHANGED | Wrapper handles only timing and logging |
-| `src/types.ts` | UNCHANGED | `WikiJsPage.path` already present |
-| `src/config.ts` | UNCHANGED | No new env vars — rule is hardcoded |
-| `src/routes/mcp-routes.ts` | UNCHANGED | Route layer has no filter role |
-| `src/server.ts` | UNCHANGED | No startup registration needed |
-| `src/scopes.ts` | UNCHANGED | Scope model unchanged |
-| `tests/helpers/build-test-app.ts` | UNCHANGED | Mock API returns non-Clients paths |
-
----
-
-## Updated Request Flow (with GDPR filter)
+## Existing Request Flow (Baseline from v2.5)
 
 ```
 MCP Client
@@ -207,7 +15,7 @@ MCP Client
 Fastify + JWT auth (mcp-routes.ts)
     |
     v
-mcp-tools.ts — tool handler (inside wrapToolHandler)
+mcp-tools.ts -- tool handler (inside wrapToolHandler)
     |
     | wikiJsApi.getPageById(id)   OR
     | wikiJsApi.listPages(...)    OR
@@ -220,15 +28,15 @@ Wiki.js GraphQL API
     |
     | returns WikiJsPage / WikiJsPage[] / PageSearchResult
     v
-WikiJsApi (api.ts) — data returned as-is
+WikiJsApi (api.ts) -- data returned as-is
     |
     v
-mcp-tools.ts — tool handler
+mcp-tools.ts -- tool handler
     |
-    | isBlocked(page.path)?           ← NEW: src/gdpr.ts
-    |   get_page:    → isError: true, "Page not found."
-    |   list_pages:  → .filter(p => !isBlocked(p.path))
-    |   search_pages:→ .filter(p => !isBlocked(p.path))
+    | isBlocked(page.path)?           <-- v2.5 (BEING REMOVED)
+    |   get_page:    -> isError: true, "Page not found."
+    |   list_pages:  -> .filter(p => !isBlocked(p.path))
+    |   search_pages:-> .filter(p => !isBlocked(p.path))
     v
 MCP response (JSON text in content array)
     |
@@ -236,133 +44,684 @@ MCP response (JSON text in content array)
 MCP Client
 ```
 
-The filter is applied at exactly one point per tool — after the API returns, before `JSON.stringify`.
+The v2.5 architecture used `isBlocked(path)` as a binary predicate: either the entire page is accessible, or it is hidden. v2.6 replaces this with surgical content redaction -- every page is accessible, but marked sections within the content are removed before the response is constructed.
 
 ---
 
-## Component Responsibilities
+## What Changes in v2.6
+
+| v2.5 Behavior | v2.6 Behavior |
+|----------------|---------------|
+| `isBlocked(path)` blocks entire page | All pages accessible; content is redacted |
+| Binary: page visible or hidden | Granular: specific content sections removed |
+| Filter in each tool handler | Single `redactContent()` call in `get_page` only |
+| No URL in response | `get_page` injects `url` field into response |
+| `src/gdpr.ts` exports `isBlocked()` | `src/gdpr.ts` exports `redactContent()` |
+| `logBlockedAccess()` in `mcp-tools.ts` | Logging moves into `redactContent()` or caller |
+
+### Key Insight: Redaction Only Applies to `get_page`
+
+`list_pages` and `search_pages` do NOT return page `content` -- they return metadata only (id, path, title, description, isPublished, createdAt, updatedAt). The `content` field is only present in `getPageById()` responses. Therefore:
+
+- **`get_page`**: Apply `redactContent()` to `page.content` before response. Inject `url` field.
+- **`list_pages`**: Remove all GDPR filtering. Return pages as-is.
+- **`search_pages`**: Remove all GDPR filtering. Return results as-is.
+
+This is a significant simplification over v2.5, which had to filter in all three handlers.
+
+---
+
+## Where the Redaction Function Lives
+
+**Decision: Pure utility function in `src/gdpr.ts`, called from the `get_page` handler in `mcp-tools.ts`.**
+
+The same architectural reasoning from v2.5 applies, but even more clearly:
+
+| Location | Description | Verdict |
+|----------|-------------|---------|
+| Inside `WikiJsApi.getPageById()` (`api.ts`) | Redact before returning to callers | **Rejected** -- policy-neutral data layer |
+| In `wrapToolHandler` (`tool-wrapper.ts`) | Redact in the timing wrapper | **Rejected** -- wrapper sees serialized JSON, not structured data |
+| In `get_page` handler (`mcp-tools.ts`) | Redact after API call, before response construction | **Chosen** |
+| As a Fastify plugin/middleware | Redact at the HTTP layer | **Rejected** -- see rationale below |
+
+### Why Not a Fastify Plugin or Middleware
+
+A Fastify plugin (registered via `server.register()`) or middleware (`onSend` hook) would operate on the serialized MCP JSON-RPC response. At that layer:
+1. The data is already `JSON.stringify`'d inside a `content[0].text` field inside a JSON-RPC envelope.
+2. Parsing it back to modify `page.content` is fragile and wasteful.
+3. Fastify hooks run for ALL routes, including non-MCP routes (`/health`, `/authorize`, etc.), requiring route filtering.
+4. The MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's `onSend` hooks entirely. A plugin physically cannot intercept MCP responses.
+
+Reason 4 alone is disqualifying. The MCP transport writes directly to the raw Node.js response object, not through Fastify's reply pipeline.
+
+### Why a Pure Function in `src/gdpr.ts`
+
+The existing `src/gdpr.ts` module already houses GDPR logic (`isBlocked`). Replacing its export with `redactContent()` maintains the single-responsibility pattern: `gdpr.ts` owns GDPR policy, `mcp-tools.ts` applies it.
+
+The function is pure: `(content: string) => { content: string; redacted: boolean }`. No side effects, no dependencies, trivially testable.
+
+---
+
+## New Component: `src/gdpr.ts` (Rewritten)
+
+The existing `isBlocked()` function is deleted. The module is rewritten with a single export: `redactContent()`.
+
+### Function Signature
+
+```typescript
+// src/gdpr.ts
+
+export interface RedactionResult {
+  /** The content with GDPR-marked sections removed */
+  content: string;
+  /** Whether any redaction was performed */
+  redacted: boolean;
+  /** Whether a malformed marker was encountered (start without matching end) */
+  malformed: boolean;
+}
+
+/**
+ * Redact GDPR-marked sections from page content.
+ *
+ * Removes content between <!-- gdpr-start --> and <!-- gdpr-end --> markers.
+ * The markers themselves are also removed.
+ *
+ * Fail-safe: if a <!-- gdpr-start --> marker has no matching <!-- gdpr-end -->,
+ * all content from the start marker to the end of the string is redacted.
+ *
+ * @param content - Raw page content (may be undefined/null for pages without content)
+ * @returns RedactionResult with cleaned content and metadata flags
+ */
+export function redactContent(content: string | undefined | null): RedactionResult;
+```
+
+### Behavior Specification
+
+**Normal markers:** `<!-- gdpr-start -->SENSITIVE<!-- gdpr-end -->` -- the markers and everything between them are removed.
+
+**Multiple sections:** Multiple start/end pairs are supported. Each is independently redacted.
+
+**Malformed (no end marker):** `<!-- gdpr-start -->SENSITIVE...EOF` -- everything from the start marker to end-of-string is redacted. The `malformed` flag is set to `true`.
+
+**No markers:** Content returned unchanged. `redacted: false`, `malformed: false`.
+
+**Null/undefined content:** Returns `{ content: "", redacted: false, malformed: false }`.
+
+### Implementation Strategy: Iterative Scan, Not Regex
+
+A regex approach (`content.replace(/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g, '')`) would work for the happy path but fails to handle the malformed-marker case correctly: `.*?` is non-greedy and would stop at the first `<!-- gdpr-end -->`, but if there is no end marker, it would match nothing (in a non-greedy pattern) or everything (in a greedy pattern), depending on whether there are other start/end pairs in the content.
+
+A safer approach is an iterative scan:
+
+```
+1. Find next <!-- gdpr-start -->
+2. Find next <!-- gdpr-end --> after that position
+3. If found: remove start marker through end marker (inclusive)
+4. If not found: remove from start marker to end of string; set malformed = true
+5. Repeat from position after removal
+```
+
+This handles interleaved markers, multiple sections, and the malformed case deterministically.
+
+However, for this codebase the regex approach with a post-check for orphaned start markers is simpler and sufficient:
+
+```
+1. Replace all <!-- gdpr-start -->...<!-- gdpr-end --> pairs (non-greedy)
+2. Check if any <!-- gdpr-start --> remains (orphaned)
+3. If so: remove from orphaned marker to end of string; set malformed = true
+```
+
+This works because:
+- Step 1 handles all well-formed pairs
+- Step 2 catches the single remaining malformed case (an orphaned start marker)
+- There can be at most one orphaned start marker (any earlier ones would have been consumed by the non-greedy match with the first available end marker)
+
+**Recommendation:** Use the regex approach with post-check. It is simpler, covers all specified cases, and is easier to read and test.
+
+---
+
+## Page URL Injection
+
+### Where the URL is Constructed
+
+Wiki.js pages are accessible at `{WIKIJS_BASE_URL}/{locale}/{path}`. However, `WIKIJS_BASE_URL` is not necessarily the public-facing URL of the Wiki.js instance -- it might be an internal Docker network URL (e.g., `http://wikijs:3000`) that the MCP server uses to reach the GraphQL API.
+
+**Decision: Reuse `WIKIJS_BASE_URL` for URL construction. Do NOT add a new env var.**
+
+Rationale:
+1. In the current deployment (PROJECT.md), `WIKIJS_BASE_URL` is the URL of the Wiki.js instance. The MCP server reaches it directly (same Caddy network).
+2. The URL is injected into `get_page` responses for human consumption -- it tells the user where to find the page in the wiki. If the MCP server can reach Wiki.js at `WIKIJS_BASE_URL`, that URL is likely reachable by the human reading the response too (they are on the same network, authenticated via the same Azure AD).
+3. Adding a separate `WIKIJS_PUBLIC_URL` env var adds configuration complexity for zero current benefit. If a deployment ever has a split internal/external URL, the env var can be added then.
+4. The `.env.example` already documents `WIKIJS_BASE_URL` as "Wiki.js base URL". It is the natural place to construct page URLs from.
+
+### URL Format
+
+Wiki.js page URLs follow the pattern: `{baseUrl}/{locale}/{path}`
+
+- `baseUrl`: From `config.wikijs.baseUrl` (already in config)
+- `locale`: The page locale. `getPageById` does not currently return locale. Wiki.js defaults to `en`.
+- `path`: From `page.path`
+
+The locale is a complication. The current `getPageById` GraphQL query does not request the `locale` field. Options:
+
+**Option A: Hardcode locale to `en` or use WIKIJS_LOCALE env var.** This is already partially supported -- the `.env.example` mentions `WIKIJS_LOCALE` as an optional var (per CLAUDE.md), though it is not currently in the Zod schema.
+
+**Option B: Add `locale` to the `getPageById` GraphQL query.** This makes the URL dynamically correct per page.
+
+**Decision: Add `locale` to the `getPageById` GraphQL query AND to `WikiJsPage` type.** This is a one-line change to the GraphQL query and a one-field addition to the type. It makes the URL correct without hardcoding assumptions. The locale field is already returned by search results (visible in `api.ts` `RawSearchResult` interface), so Wiki.js definitely supports it.
+
+### URL Construction Location
+
+The URL is constructed in the `get_page` handler in `mcp-tools.ts`, after fetching the page and before serializing the response. It is added to the page object as a `url` property before `JSON.stringify`.
+
+```typescript
+// In get_page handler, after redaction, before serialization:
+const pageWithUrl = {
+  ...page,
+  content: redacted.content,
+  url: `${config.wikijs.baseUrl}/${page.locale ?? 'en'}/${page.path}`,
+};
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(pageWithUrl, null, 2) },
+  ],
+};
+```
+
+### Config Threading
+
+The `get_page` handler needs `config.wikijs.baseUrl` to construct URLs. Currently, `createMcpServer()` receives `wikiJsApi` and `instructions` -- it does not have direct access to config.
+
+**Decision: Pass `wikijsBaseUrl` as a third parameter to `createMcpServer()`.** This follows the existing pattern of threading specific config values through function parameters (like `instructions`), rather than importing the global `config` singleton directly into `mcp-tools.ts`.
+
+```typescript
+// Updated signature:
+export function createMcpServer(
+  wikiJsApi: WikiJsApi,
+  instructions: string,
+  wikijsBaseUrl: string,
+): McpServer;
+```
+
+This is threaded from `server.ts` -> `protectedRoutes` options -> `createMcpServer()`.
+
+---
+
+## Modified Files and Their Changes
+
+### `src/gdpr.ts` -- REWRITTEN
+
+```
+Removes:  isBlocked(path: string): boolean
+Adds:     redactContent(content: string | undefined | null): RedactionResult
+          RedactionResult interface
+Tests:    src/__tests__/gdpr.test.ts (rewritten -- unit tests for redactContent)
+Dependencies: none
+```
+
+The module remains a pure-function utility with zero dependencies.
+
+### `src/mcp-tools.ts` -- MODIFIED
+
+**Changes:**
+1. Remove `import { isBlocked } from "./gdpr.js"` -- replace with `import { redactContent } from "./gdpr.js"`
+2. Remove `logBlockedAccess()` helper function entirely
+3. **`get_page` handler**: Remove `isBlocked()` check. Add `redactContent(page.content)` call. Add URL injection. Add malformed-marker warning log.
+4. **`list_pages` handler**: Remove `isBlocked()` filter. Return pages as-is.
+5. **`search_pages` handler**: Remove `isBlocked()` filter. Return results as-is.
+6. Update `createMcpServer` signature to accept `wikijsBaseUrl: string` parameter.
+
+**`get_page` handler -- before and after:**
+
+```typescript
+// v2.5 (BEFORE)
+const page = await wikiJsApi.getPageById(id);
+if (page?.path && isBlocked(page.path)) {
+  logBlockedAccess(TOOL_GET_PAGE);
+  throw new Error("Page not found");
+}
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(page, null, 2) },
+  ],
+};
+
+// v2.6 (AFTER)
+const page = await wikiJsApi.getPageById(id);
+const redacted = redactContent(page?.content);
+if (redacted.malformed) {
+  const ctx = requestContext.getStore();
+  ctx?.log.warn(
+    { toolName: TOOL_GET_PAGE, pageId: id },
+    "GDPR marker malformed: missing <!-- gdpr-end -->, redacted to end of content",
+  );
+}
+const pageWithUrl = {
+  ...page,
+  content: redacted.content,
+  url: `${wikijsBaseUrl}/${page.locale ?? "en"}/${page.path}`,
+};
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(pageWithUrl, null, 2) },
+  ],
+};
+```
+
+**`list_pages` handler -- before and after:**
+
+```typescript
+// v2.5 (BEFORE)
+const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
+const filtered = pages.filter(p => {
+  if (isBlocked(p.path)) {
+    logBlockedAccess(TOOL_LIST_PAGES);
+    return false;
+  }
+  return true;
+});
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
+  ],
+};
+
+// v2.6 (AFTER)
+const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(pages, null, 2) },
+  ],
+};
+```
+
+**`search_pages` handler -- before and after:**
+
+```typescript
+// v2.5 (BEFORE)
+const result = await wikiJsApi.searchPages(query, limit);
+const originalLength = result.results.length;
+const filtered = result.results.filter(p => {
+  if (isBlocked(p.path)) {
+    logBlockedAccess(TOOL_SEARCH_PAGES);
+    return false;
+  }
+  return true;
+});
+result.totalHits -= (originalLength - filtered.length);
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
+  ],
+};
+
+// v2.6 (AFTER)
+const result = await wikiJsApi.searchPages(query, limit);
+return {
+  content: [
+    { type: "text" as const, text: JSON.stringify(result.results, null, 2) },
+  ],
+};
+```
+
+### `src/types.ts` -- MODIFIED
+
+Add `locale` field to `WikiJsPage`:
+
+```typescript
+export interface WikiJsPage {
+  id: number;
+  path: string;
+  locale?: string;  // NEW -- page locale (e.g., "en")
+  title: string;
+  description: string;
+  content?: string;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+The field is optional because `listPages` and `searchPages` results may not include it (depending on the GraphQL query).
+
+### `src/api.ts` -- MODIFIED
+
+Add `locale` to the `getPageById` GraphQL query:
+
+```graphql
+{
+  pages {
+    single (id: ${id}) {
+      id
+      path
+      locale        # NEW
+      title
+      description
+      content
+      isPublished
+      createdAt
+      updatedAt
+    }
+  }
+}
+```
+
+One line added to one query. No other API methods change.
+
+### `src/server.ts` -- MODIFIED
+
+Thread `wikijsBaseUrl` through to `protectedRoutes`:
+
+```typescript
+server.register(protectedRoutes, {
+  wikiJsApi,
+  instructions: effectiveInstructions,
+  wikijsBaseUrl: appConfig.wikijs.baseUrl,  // NEW
+  auth: { ... },
+});
+```
+
+### `src/routes/mcp-routes.ts` -- MODIFIED
+
+Accept `wikijsBaseUrl` in `ProtectedRoutesOptions` and pass to `createMcpServer`:
+
+```typescript
+export interface ProtectedRoutesOptions {
+  wikiJsApi: WikiJsApi;
+  auth: AuthPluginOptions;
+  instructions: string;
+  wikijsBaseUrl: string;  // NEW
+}
+
+// In handler:
+const mcpServer = createMcpServer(wikiJsApi, instructions, wikijsBaseUrl);
+```
+
+### `src/config.ts` -- UNCHANGED
+
+No new env vars. `WIKIJS_BASE_URL` is already validated and available as `config.wikijs.baseUrl`.
+
+### Files Summary
+
+| File | Status | Change |
+|------|--------|--------|
+| `src/gdpr.ts` | REWRITTEN | `isBlocked()` -> `redactContent()` + `RedactionResult` interface |
+| `src/mcp-tools.ts` | MODIFIED | Remove path blocking, add content redaction + URL injection |
+| `src/types.ts` | MODIFIED | Add `locale?: string` to `WikiJsPage` |
+| `src/api.ts` | MODIFIED | Add `locale` to `getPageById` GraphQL query |
+| `src/server.ts` | MODIFIED | Thread `wikijsBaseUrl` to protected routes |
+| `src/routes/mcp-routes.ts` | MODIFIED | Accept + pass `wikijsBaseUrl` |
+| `src/__tests__/gdpr.test.ts` | REWRITTEN | Tests for `redactContent()` |
+| `src/__tests__/mcp-tools-gdpr.test.ts` | REWRITTEN | Tests for redaction integration + URL injection |
+| `src/config.ts` | UNCHANGED | No new env vars |
+| `src/tool-wrapper.ts` | UNCHANGED | Timing/logging unchanged |
+| `src/logging.ts` | UNCHANGED | Logger config unchanged |
+| `src/request-context.ts` | UNCHANGED | Context propagation unchanged |
+
+---
+
+## Updated Request Flow (v2.6)
+
+```
+MCP Client
+    |
+    v
+Fastify + JWT auth (mcp-routes.ts)
+    |
+    v
+mcp-tools.ts -- get_page handler (inside wrapToolHandler)
+    |
+    | wikiJsApi.getPageById(id)
+    v
+WikiJsApi (api.ts) -- returns WikiJsPage with locale
+    |
+    | returns { id, path, locale, title, description, content, ... }
+    v
+mcp-tools.ts -- get_page handler
+    |
+    | 1. redactContent(page.content)          <-- NEW: src/gdpr.ts
+    |    Removes <!-- gdpr-start -->...<!-- gdpr-end --> sections
+    |    Sets malformed flag if orphaned start marker
+    |
+    | 2. If malformed: log.warn(...)          <-- NEW: malformed marker warning
+    |
+    | 3. Construct URL: {baseUrl}/{locale}/{path}  <-- NEW: URL injection
+    |
+    | 4. Build response: { ...page, content: redacted, url }
+    v
+MCP response (JSON text in content array)
+    |
+    v
+MCP Client
+
+
+mcp-tools.ts -- list_pages handler
+    |
+    | wikiJsApi.listPages(...)
+    v
+WikiJsApi (api.ts) -- returns WikiJsPage[]
+    |
+    v
+mcp-tools.ts -- list_pages handler
+    |
+    | (NO FILTERING -- pages returned as-is)  <-- SIMPLIFIED from v2.5
+    v
+MCP response
+
+
+mcp-tools.ts -- search_pages handler
+    |
+    | wikiJsApi.searchPages(...)
+    v
+WikiJsApi (api.ts) -- returns PageSearchResult
+    |
+    v
+mcp-tools.ts -- search_pages handler
+    |
+    | (NO FILTERING -- results returned as-is)  <-- SIMPLIFIED from v2.5
+    v
+MCP response
+```
+
+---
+
+## Component Responsibilities (v2.6)
 
 | Component | Responsibility | Status |
 |-----------|---------------|--------|
-| `src/gdpr.ts` | `isBlocked()` — single source of truth for GDPR path classification | NEW |
-| `src/mcp-tools.ts` | Apply filter in each tool handler post-fetch | MODIFIED |
-| `src/api.ts` | Data access — policy-neutral, no filter | UNCHANGED |
-| `src/tool-wrapper.ts` | Timing and logging — no filter | UNCHANGED |
-| `src/types.ts` | `WikiJsPage.path` provides the field the filter reads | UNCHANGED |
+| `src/gdpr.ts` | `redactContent()` -- marker-based content redaction | REWRITTEN |
+| `src/mcp-tools.ts` | Apply redaction in `get_page`, inject URL, pass through `list_pages`/`search_pages` | MODIFIED |
+| `src/types.ts` | `WikiJsPage.locale` added | MODIFIED |
+| `src/api.ts` | `getPageById` returns `locale` field | MODIFIED |
+| `src/server.ts` | Thread `wikijsBaseUrl` to routes | MODIFIED |
+| `src/routes/mcp-routes.ts` | Accept + pass `wikijsBaseUrl` to `createMcpServer` | MODIFIED |
+| `src/tool-wrapper.ts` | Timing and logging -- unchanged | UNCHANGED |
+| `src/config.ts` | No new env vars | UNCHANGED |
 
 ---
 
 ## Test Architecture
 
-### Unit tests for `isBlocked()` — `src/gdpr/__tests__/gdpr.test.ts`
+### Unit Tests for `redactContent()` -- `src/__tests__/gdpr.test.ts` (Rewritten)
 
-Pure function with no side effects. Test with `vitest` directly — no mocking needed.
+Pure function with no side effects. Test with vitest directly -- no mocking needed.
 
-Test cases to cover:
-- `Clients/AcmeCorp` → `true`
-- `Clients/Smith GmbH` → `true`
-- `clients/acmecorp` → `true` (case-insensitive)
-- `Clients` → `false` (1 segment, no company name)
-- `Clients/AcmeCorp/notes` → `false` (3 segments, sub-page)
-- `Public/AcmeCorp` → `false` (wrong top-level segment)
-- `docs/guide` → `false` (normal page)
-- `` (empty string) → `false` (no segments)
+**Test cases to cover:**
 
-### Integration tests for tool filter behavior — `tests/gdpr-filter.test.ts`
+| Input | Expected Output | Flags |
+|-------|----------------|-------|
+| `"Hello <!-- gdpr-start -->SECRET<!-- gdpr-end --> world"` | `"Hello  world"` | `redacted: true, malformed: false` |
+| `"No markers here"` | `"No markers here"` | `redacted: false, malformed: false` |
+| `"Start <!-- gdpr-start -->SECRET..."` (no end marker) | `"Start "` | `redacted: true, malformed: true` |
+| `"A<!-- gdpr-start -->X<!-- gdpr-end -->B<!-- gdpr-start -->Y<!-- gdpr-end -->C"` | `"ABC"` | `redacted: true, malformed: false` |
+| `undefined` | `""` | `redacted: false, malformed: false` |
+| `null` | `""` | `redacted: false, malformed: false` |
+| `""` | `""` | `redacted: false, malformed: false` |
+| `"<!-- gdpr-start -->ALL REDACTED<!-- gdpr-end -->"` | `""` | `redacted: true, malformed: false` |
+| `"<!-- gdpr-start -->REST OF CONTENT"` (end missing) | `""` | `redacted: true, malformed: true` |
+| Content with extra whitespace around markers | Consistent behavior | Verify marker matching is exact |
 
-Uses `buildTestApp()` + a custom `WikiJsApi` mock that returns Clients paths. Sends real MCP JSON-RPC requests via Fastify's `inject()`. Verifies the MCP response content.
+### Integration Tests for Tool Behavior -- `src/__tests__/mcp-tools-gdpr.test.ts` (Rewritten)
 
-Test cases to cover:
-- `get_page` with blocked path → `isError: true`, content text is "Page not found." (not "GDPR" or "blocked")
-- `get_page` with normal path → success, page returned
-- `list_pages` with mixed results → blocked pages absent from response
-- `list_pages` with all-blocked results → empty array returned, no error
-- `search_pages` with mixed results → blocked pages absent from response
-- `search_pages` where all results blocked → empty array returned, no error
+Uses the same `createMcpServer` + `getToolHandler` pattern from v2.5 tests.
 
-### No changes to existing tests
+**Test cases to cover:**
 
-Existing `api.test.ts` tests `WikiJsApi` in isolation — those test paths never trigger `isBlocked()`. Existing smoke and route protection tests use the shared `mockWikiJsApi` which returns `path: "test/page"` — not a Clients path. No existing tests break.
+1. `get_page` with content containing GDPR markers -- markers and content between them removed from response
+2. `get_page` with content containing no markers -- content unchanged
+3. `get_page` with malformed marker -- content redacted to end, malformed warning logged
+4. `get_page` response contains `url` field with correct format
+5. `get_page` response `url` uses page's `locale` field
+6. `get_page` response `url` defaults locale to `"en"` when locale is missing
+7. `list_pages` returns ALL pages (no GDPR filtering)
+8. `search_pages` returns ALL results (no GDPR filtering)
+
+### Removed Tests
+
+All v2.5 `isBlocked()`-based tests are removed or replaced:
+- `src/__tests__/gdpr.test.ts` -- completely rewritten for `redactContent()`
+- `src/__tests__/mcp-tools-gdpr.test.ts` -- completely rewritten for redaction + URL injection
 
 ---
 
 ## Suggested Build Order
 
 ```
-Step 1: src/gdpr.ts + unit tests
-  Files: src/gdpr.ts, src/gdpr/__tests__/gdpr.test.ts
+Phase 1: Core redaction function + unit tests
+  Files: src/gdpr.ts (rewrite), src/__tests__/gdpr.test.ts (rewrite), src/types.ts (add locale)
   Dependencies: none
-  Rationale: Pure function with no deps. Zero-risk foundation. All downstream changes depend on it.
+  Rationale: Pure function with no deps. Zero-risk foundation. All downstream changes
+             depend on redactContent(). Types change is trivial and needed early.
 
-Step 2: Modify mcp-tools.ts handlers
-  Files: src/mcp-tools.ts (3 handler edits, 1 import)
-  Dependencies: Step 1 (isBlocked import)
-  Rationale: Each tool change is a 2-4 line addition. All three share the same import.
+Phase 2: Remove path blocking, wire redaction + URL injection
+  Files: src/mcp-tools.ts, src/api.ts, src/server.ts, src/routes/mcp-routes.ts
+  Dependencies: Phase 1 (redactContent import, locale in WikiJsPage)
+  Rationale: Core integration. Touches the most files but each change is small.
+             api.ts gets locale field. mcp-tools.ts gets redaction + URL. server.ts
+             and mcp-routes.ts thread the baseUrl config.
 
-Step 3: Integration tests
-  Files: tests/gdpr-filter.test.ts
-  Dependencies: Steps 1-2
-  Rationale: Tests the full stack end-to-end. Confirms correct MCP response structure.
+Phase 3: Integration tests
+  Files: src/__tests__/mcp-tools-gdpr.test.ts (rewrite)
+  Dependencies: Phases 1-2
+  Rationale: Tests the full tool handler behavior with mock API. Confirms
+             redaction, URL injection, and malformed-marker logging all work together.
 ```
 
-Build order is linear — no parallelism needed. Total scope: 1 new file, 1 modified file, 1 new test file.
+Build order is linear -- 3 phases, matching the 3-phase pattern established in v2.5.
 
 ---
 
 ## Architectural Patterns Applied
 
-### Pattern: Thin Filter Between Fetch and Serialize
+### Pattern: Content Transformation Between Fetch and Serialize
 
-After fetching structured data and before serializing to JSON, apply a declarative filter. The data remains typed (`WikiJsPage`) through the filter, ensuring field access is compile-checked.
+After fetching the `WikiJsPage` with its raw `content` string and before serializing to JSON, apply a pure transformation function. The data remains typed through the transformation, ensuring field access is compile-checked.
 
-This is preferable to post-serialization regex matching on JSON strings because:
-- Type-safe access to `.path`
-- No JSON parse/stringify overhead
-- Filter logic is readable and testable independently
+This is the same "Thin Filter Between Fetch and Serialize" pattern from v2.5, adapted from filtering (removing pages) to transforming (modifying content).
 
-### Pattern: Generic Error Text for Blocked Resources
+### Pattern: Fail-Safe Redaction
 
-`get_page` returns `"Page not found."` — not `"Access denied"` or `"GDPR restricted"`. This is the standard privacy pattern for existence protection: the server must not confirm that the resource exists or that access is restricted. The caller sees the same response whether the page ID does not exist in WikiJS at all, or whether it is GDPR-blocked.
+When a `<!-- gdpr-start -->` marker has no matching `<!-- gdpr-end -->`, the safe default is to redact everything from the start marker to the end of content. This ensures that incomplete markup caused by editing errors never leaks GDPR-sensitive content. The principle: **when in doubt, redact more, not less**.
 
-This matches how WikiJS itself would respond if the page did not exist (an API error is caught and returned as `isError: true`).
+The `malformed` flag allows the caller to log a warning, enabling wiki editors to be notified and fix the markup. But the content is never exposed.
 
-### Pattern: Silent Omission for Filtered Lists
+### Pattern: Config Threading via Function Parameters
 
-`list_pages` and `search_pages` silently remove blocked pages without indicating that omission occurred. This is the correct pattern for filtered result sets: the client sees a smaller list, not a list with gaps or error markers. This prevents the client from discovering the existence of Clients pages through absence signals.
+Rather than importing the global `config` singleton in `mcp-tools.ts`, the `wikijsBaseUrl` value is threaded through function parameters: `config` -> `buildApp()` -> `protectedRoutes` options -> `createMcpServer()`. This matches the existing pattern for `instructions` and keeps modules decoupled from the config singleton for testability.
+
+### Pattern: Optional Field with Default
+
+The `locale` field on `WikiJsPage` is optional (`locale?: string`). When constructing the URL, the handler uses `page.locale ?? "en"` as a fallback. This handles the case where the GraphQL response omits the field (it shouldn't, but defensive coding prevents runtime errors).
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Filtering in `WikiJsApi`
+### Anti-Pattern 1: Redacting in `WikiJsApi`
 
-**What:** Adding `isBlocked()` checks inside `getPageById`, `listPages`, or `searchPages` in `api.ts`.
-**Why bad:** The API layer becomes a policy layer. If a future admin tool needs unfiltered access, the filter cannot be bypassed without duplicating or refactoring `WikiJsApi`.
-**Instead:** Keep `api.ts` as a pure data access layer. Apply filters in the consumers (tool handlers).
+**What:** Adding `redactContent()` calls inside `getPageById()` in `api.ts`.
+**Why bad:** The API layer becomes a policy layer. If a future admin tool needs unredacted content (e.g., for wiki editing), the redaction cannot be bypassed.
+**Instead:** Keep `api.ts` as a pure data access layer. Apply redaction in the consumers.
 
-### Anti-Pattern 2: Returning `isError: true` from List and Search
+### Anti-Pattern 2: Adding a New Env Var for Page URL Base
 
-**What:** Returning a "some results were filtered" error from `list_pages` or `search_pages` when blocked pages are removed.
-**Why bad:** Reveals that blocked content exists. Leaks existence. Breaks MCP client expectations (list/search should return a list, not errors).
-**Instead:** Silently filter — return a shorter list with no error flag.
+**What:** Creating `WIKIJS_PUBLIC_URL` or `WIKIJS_PAGE_BASE_URL` separate from `WIKIJS_BASE_URL`.
+**Why bad:** Adds configuration complexity. Deployers must now set two URLs that in practice are the same value. Creates a new failure mode (mismatched URLs).
+**Instead:** Reuse `WIKIJS_BASE_URL`. Add a separate var only when a concrete deployment needs different internal/external URLs.
 
-### Anti-Pattern 3: Case-Sensitive Path Matching
+### Anti-Pattern 3: Regex-Only Without Malformed Handling
 
-**What:** Only blocking `Clients/AcmeCorp` but not `clients/AcmeCorp` or `CLIENTS/AcmeCorp`.
-**Why bad:** WikiJS paths are case-sensitive in the DB but users may enter paths inconsistently. A case-sensitive filter can be bypassed by manipulating case.
-**Instead:** Normalize to lowercase before comparing the first segment.
+**What:** Using `content.replace(/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g, '')` and calling it done.
+**Why bad:** An orphaned `<!-- gdpr-start -->` with no end marker leaves GDPR-sensitive content in the response. Wiki editors make mistakes; the server must be fail-safe.
+**Instead:** After regex replacement, scan for remaining `<!-- gdpr-start -->` markers and redact to end of content.
 
-### Anti-Pattern 4: Blocking Sub-pages
+### Anti-Pattern 4: Adding URL to `list_pages` and `search_pages` Responses
 
-**What:** Blocking `Clients/AcmeCorp/meeting-notes` because it starts with `Clients/`.
-**Why bad:** The requirement specifically targets direct client directory pages (`Clients/<CompanyName>` — exactly 2 segments). Sub-pages are pages about client work, not the client identity directory. Over-blocking is harmful.
-**Instead:** Enforce the 2-segment rule strictly. Only block `Clients/<CompanyName>` (exactly).
+**What:** Injecting a `url` field into every page in list and search results.
+**Why bad:** The requirement specifies "Inject page URL into get_page responses." Over-delivering bloats list/search responses and changes their shape without a stated need.
+**Instead:** Only add `url` to `get_page` responses.
 
-### Anti-Pattern 5: Logging Blocked Requests
+### Anti-Pattern 5: Using Fastify `onSend` Hook for Redaction
 
-**What:** Adding a `ctx?.log.info({ path: page.path }, "GDPR path blocked")` when a blocked page is accessed.
-**Why bad:** Creates an audit log of which clients were queried, which is itself a GDPR concern. Logs could be observed by unauthorized parties.
-**Instead:** Apply the filter silently. If security audit logging is needed, it belongs in a dedicated audit log with access controls — not the application log.
+**What:** Registering a Fastify `onSend` hook that intercepts MCP responses and redacts content.
+**Why bad:** The MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's reply pipeline. The hook physically cannot intercept the response. Even if it could, parsing JSON-RPC envelopes in a hook is fragile.
+**Instead:** Apply redaction in the tool handler, where data is still structured.
+
+### Anti-Pattern 6: Preserving `isBlocked()` Alongside `redactContent()`
+
+**What:** Keeping `isBlocked()` as a "belt and suspenders" measure alongside content redaction.
+**Why bad:** The requirement explicitly states "Remove path-based GDPR filtering from all MCP tools." Keeping both creates confusion about which mechanism is authoritative and adds dead code paths that need testing.
+**Instead:** Remove `isBlocked()` entirely. `redactContent()` is the single GDPR mechanism.
+
+---
+
+## Data Flow Diagram: `get_page` Response Construction
+
+```
+WikiJsApi.getPageById(id)
+    |
+    | Returns WikiJsPage:
+    | {
+    |   id: 42,
+    |   path: "Clients/AcmeCorp",
+    |   locale: "en",
+    |   title: "AcmeCorp",
+    |   content: "Public info\n<!-- gdpr-start -->\nContract: EUR 500K\n<!-- gdpr-end -->\nMore public info",
+    |   ...
+    | }
+    v
+redactContent(page.content)
+    |
+    | Returns RedactionResult:
+    | {
+    |   content: "Public info\n\nMore public info",
+    |   redacted: true,
+    |   malformed: false,
+    | }
+    v
+URL Construction
+    |
+    | url = `${wikijsBaseUrl}/${page.locale}/${page.path}`
+    |     = "http://wikijs.example.com/en/Clients/AcmeCorp"
+    v
+Response Assembly
+    |
+    | pageWithUrl = {
+    |   id: 42,
+    |   path: "Clients/AcmeCorp",
+    |   locale: "en",
+    |   title: "AcmeCorp",
+    |   content: "Public info\n\nMore public info",   <-- redacted
+    |   url: "http://wikijs.example.com/en/Clients/AcmeCorp",  <-- injected
+    |   isPublished: true,
+    |   ...
+    | }
+    v
+JSON.stringify(pageWithUrl, null, 2)
+    |
+    v
+MCP Response: { content: [{ type: "text", text: "..." }] }
+```
 
 ---
 
@@ -370,14 +729,24 @@ This matches how WikiJS itself would respond if the page did not exist (an API e
 
 | Concern | At current scale | Notes |
 |---------|-----------------|-------|
-| Filter performance | O(1) for get_page, O(n) for list/search | n is bounded — list max 100, search max 50 |
-| Memory | No additional state | Pure function, no caching needed |
-| Rule changes | Code change + redeploy | Hardcoded rule is intentional; no config surface |
-| Multiple filter rules | Extend `isBlocked()` | Currently 1 rule; function is the extension point |
+| Redaction performance | O(n) where n is content length | Single regex pass + one indexOf check. Content is typically < 100KB. |
+| Memory | No additional state | Pure function, no caching. Input and output strings. |
+| URL construction | O(1) per get_page call | String concatenation. Negligible. |
+| Multiple markers per page | Handled by global regex flag | No performance concern at typical marker counts (< 10 per page). |
+| Config threading | 1 extra string param | No performance impact. |
 
-The filter adds microseconds of latency per tool call — negligible at any scale this server will encounter.
+The redaction adds microseconds of latency per `get_page` call -- negligible at any scale this server encounters.
 
 ---
 
-*Architecture research for: GDPR Path Filter — wikijs-mcp-server v2.5*
+## Sources
+
+- Direct code analysis of `src/mcp-tools.ts`, `src/gdpr.ts`, `src/api.ts`, `src/types.ts`, `src/config.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` (current codebase)
+- v2.5 ARCHITECTURE.md research (`.planning/research/ARCHITECTURE.md`) for architectural precedent
+- PROJECT.md v2.6 requirements for feature specification
+- Wiki.js URL format: `{baseUrl}/{locale}/{path}` (observed in `api.ts` `RawSearchResult` locale field and Wiki.js documentation)
+
+---
+
+*Architecture research for: Marker-Based Content Redaction and Page URL Injection -- wikijs-mcp-server v2.6*
 *Researched: 2026-03-27*

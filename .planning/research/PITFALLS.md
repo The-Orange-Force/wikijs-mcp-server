@@ -1,215 +1,439 @@
-# Domain Pitfalls: GDPR Path Filtering on an Existing MCP/API Server
+# Domain Pitfalls: Marker-Based Content Redaction and Page URL Injection
 
-**Domain:** Adding path-based access control (GDPR client directory blocking) to an existing MCP server
+**Domain:** Replacing path-based GDPR filtering with `<!-- gdpr-start/end -->` marker-based content redaction on an existing MCP server, plus injecting page URLs into `get_page` responses
 **Researched:** 2026-03-27
-**Confidence:** HIGH (path normalization bypass patterns verified via security CVEs and PortSwigger research; GDPR personal-data scope verified via ICO/gdpr-info.eu official sources; existence-oracle pattern verified via Authress and LockMeDown guidance; Wiki.js path format verified via GitHub discussions)
+**Confidence:** HIGH (regex backtracking patterns verified via javascript.info and regular-expressions.info; HTML comment parsing pitfalls verified via markedjs/marked issues and multiple regex security sources; Wiki.js path/URL format verified via official docs and GitHub discussions; transition safety analysis based on direct codebase inspection of src/mcp-tools.ts, src/gdpr.ts, and 371 existing tests)
 
-**Context:** The wikijs-mcp-server already has 3 read-only tools (get_page, list_pages, search_pages) backed by Wiki.js GraphQL. This research covers pitfalls specific to ADDING a shared `isBlocked()` filter that silently blocks access to `Clients/<CompanyName>` paths (exactly 2 path segments where the first is "Clients"). No OAuth changes. Filter applies post-fetch.
+**Context:** The wikijs-mcp-server (v2.5) currently uses path-based filtering via `isBlocked()` to block entire `Clients/<CompanyName>` pages. v2.6 replaces this with surgical marker-based content redaction: wiki authors wrap GDPR-sensitive content in `<!-- gdpr-start -->` / `<!-- gdpr-end -->` HTML comment markers, and the MCP server strips those sections before returning content. Additionally, `get_page` responses will include the page's browser-accessible URL, constructed from a configurable base URL plus the page path.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Existence Oracle via Asymmetric Error Responses
+### Pitfall 1: Transition Window Where PII Is Exposed (Old Filter Removed Before New Redaction Works)
 
 **What goes wrong:**
-`get_page` returns different responses for "blocked page that exists" vs "page that does not exist at all":
-- Blocked: `{ isError: true, "Page not found." }`
-- Not found: `{ isError: true, "Error in get_page: <GraphQL error message>." }`
+Between the commit that removes `isBlocked()` and the commit that adds working marker-based redaction, all previously-blocked `Clients/<CompanyName>` pages are fully exposed. If the server is deployed in this intermediate state, or if the implementation is done in the wrong order across multiple pull requests, every client page becomes accessible with full PII content until the new redaction is complete AND wiki authors have added markers to all sensitive sections.
 
-A caller (AI or human) can enumerate which client company names exist in the wiki by probing IDs and comparing error messages. If `id=42` returns a generic "not found" error but `id=43` returns the same "not found" phrasing, both might be non-existent — OR 42 is a blocked client page. With enough probes and side-channel timing differences, the enumeration succeeds.
+This is the single most dangerous pitfall because it combines a code change (removing the old filter) with a content change (adding markers to wiki pages). Even if the code is shipped atomically, the wiki pages themselves may not have markers yet.
 
 **Why it happens:**
-Developers think "return not found" is sufficient. They do not realise the original API error for a truly absent page and the GDPR "not found" sentinel must be textually identical — and that latency can also differ (blocked path = no upstream call, absent path = upstream call that returns an error).
+Three root causes converge:
+1. The old filter (`isBlocked()`) operates on the path and blocks the entire page. The new redaction operates on the content and strips marked sections. These are fundamentally different mechanisms with no overlap period.
+2. Marker-based redaction only works on content that HAS markers. If a wiki author has not yet added `<!-- gdpr-start -->` / `<!-- gdpr-end -->` around sensitive content, that content passes through unredacted.
+3. Developers naturally think "remove old, add new" -- but the correct order is "add new AND verify markers exist, THEN remove old."
 
 **How to avoid:**
-1. `get_page` MUST call `getPageById()` first, then check `isBlocked()` on the returned `page.path`. This ensures both the blocked and the absent case go through the same upstream call and both produce identical timing.
-2. Return the EXACT same error message string for blocked and truly-absent: `"Page not found."` — no mention of blocking, no GDPR language, no field names.
-3. Do NOT short-circuit the upstream call by checking the numeric ID against a known list. IDs are opaque; paths are what reveal client names.
+1. Deploy marker-based redaction code FIRST, alongside the existing `isBlocked()` filter. Both mechanisms must run in parallel during the transition.
+2. Add markers to ALL sensitive wiki pages BEFORE removing path-based blocking.
+3. Only remove `isBlocked()` and its tests after verifying that every previously-blocked page has appropriate markers AND the redaction code is confirmed working in production.
+4. Consider a phased deployment:
+   - Phase A: Ship redaction function + integration into `get_page` content pipeline. `isBlocked()` still runs. Redaction is additive safety.
+   - Phase B: Wiki authors add `<!-- gdpr-start/end -->` markers to all sensitive content sections.
+   - Phase C: Verify via audit that all client pages have markers. Then remove `isBlocked()`.
 
 **Warning signs:**
-- Blocked path returns faster (no upstream call) while absent path returns slower (upstream call fails)
-- Error messages differ between the two cases
-- Logs show blocked page access attempts with the page title or path in the message
+- PR that removes `isBlocked()` in the same commit as adding redaction code
+- No integration test that verifies "content without markers passes through unmodified" (because this means unmarked PII passes through)
+- No documented procedure for auditing wiki pages for marker coverage before the old filter is removed
 
-**Phase to address:** `isBlocked()` utility + `get_page` integration (first implementation phase)
+**Phase to address:** The redaction implementation phase MUST keep `isBlocked()` intact. Removal of `isBlocked()` should be a separate, later phase with an explicit prerequisite gate.
 
 ---
 
-### Pitfall 2: Path Normalization Bypasses — Case, Trailing Slash, URL Encoding, Double Slash
+### Pitfall 2: Unclosed `<!-- gdpr-start -->` Marker Causes Silent PII Leak (No Matching End Tag)
 
 **What goes wrong:**
-Wiki.js stores paths without a leading slash and (per community discussion) folds path case — i.e., `clients/acme` and `Clients/ACME` resolve to the same page. If `isBlocked()` does a case-sensitive string comparison against `"Clients"`, the filter is bypassed by any variant casing. Additional bypass vectors:
+A wiki author writes `<!-- gdpr-start -->` but forgets `<!-- gdpr-end -->`. If the redaction function only strips content between matched start/end pairs, the entire GDPR-sensitive section remains in the output because there is no valid pair to match. This is a silent failure -- no error, no warning, full PII exposure.
 
-| Input path | `isBlocked()` naively returns | Reality |
-|---|---|---|
-| `clients/acme` | `false` (wrong — lower-c) | Same page as `Clients/acme` |
-| `Clients/acme/` | `false` (trailing slash) | Same page (Wiki.js ignores trailing slash) |
-| `Clients//acme` | `false` (double slash) | Wiki.js normalises to `Clients/acme` |
-| `Clients/acme/../acme` | `false` (dot-dot) | Wiki.js normalises |
+Alternatively, someone accidentally deletes or corrupts the end marker during a wiki edit. The next time the page is fetched via the MCP server, all content after `<!-- gdpr-start -->` is returned unredacted.
 
 **Why it happens:**
-`"Clients" === segments[0]` is exact-match. The filter is implemented for the happy path, not adversarial inputs. Search results and list results return paths as Wiki.js stores them (normalised, lowercase-first-letter), so direct testing with clean data passes — but the MCP tool accepts arbitrary user input for `get_page` by ID, and the path comes back from the API. Path normalisation issues only bite if `isBlocked()` is also used on user-supplied path strings elsewhere.
+The naive regex approach `<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->` only matches when both markers are present. An unclosed start marker matches nothing and the original content is returned unchanged.
 
 **How to avoid:**
-1. `isBlocked()` MUST normalise its input before comparison:
-   ```typescript
-   export function isBlocked(path: string): boolean {
-     // Strip leading slash, collapse double slashes, strip trailing slash
-     const normalised = path
-       .replace(/^\/+/, '')
-       .replace(/\/+/g, '/')
-       .replace(/\/+$/, '');
-     const segments = normalised.split('/');
-     return segments.length === 2 && segments[0].toLowerCase() === 'clients';
-   }
-   ```
-2. Case fold only the first segment — do not alter the company name segment (it is only used for the count check, not displayed).
-3. Add a unit test suite covering every normalisation variant listed above.
-4. For `list_pages` and `search_pages` the path comes from Wiki.js GraphQL responses (already normalised), so the risk is lower — but the utility should be defensive regardless.
+The PROJECT.md requirement already specifies the correct behavior: "Malformed-marker fail-safe (redact to end of content + warning log)." Implement it:
+
+1. After processing all matched `<!-- gdpr-start -->...<!-- gdpr-end -->` pairs, scan for any remaining unmatched `<!-- gdpr-start -->` markers.
+2. If an unmatched start marker exists, redact from that marker to the END of the content. This is fail-safe -- it over-redacts rather than under-redacting.
+3. Log a warning with the page ID (NOT the content): `log.warn({ pageId, tool }, "Unclosed gdpr-start marker, redacted to end of content")`.
+4. This must be a separate step from the paired-marker regex. Process pairs first, then scan remainder for orphaned starts.
 
 **Warning signs:**
-- Unit tests only cover `Clients/acme` (the happy path)
-- `isBlocked()` does not call `.toLowerCase()` on the first segment
-- No test for empty path, single-segment path, or path with leading slash
+- Redaction function uses only a single regex with no orphan-marker check
+- No test case for "start marker without end marker"
+- Test suite only covers the happy path (matched pairs)
 
-**Phase to address:** `isBlocked()` utility implementation — address before integration into any tool
+**Phase to address:** Core redaction function implementation. The fail-safe MUST be implemented in the same phase as the basic redaction, not deferred.
 
 ---
 
-### Pitfall 3: Search Results Leak Client Names in `description` and `title` Fields
+### Pitfall 3: Regex Catastrophic Backtracking on Large Wiki Pages
 
 **What goes wrong:**
-`search_pages` filters blocked pages from results by checking `isBlocked(page.path)`. However, the search results also include a `description` field and a `title` field. A client page `Clients/Acme` might have the title "Acme — Client Overview" and description "All information about Acme Corp (GDPR-sensitive client)." Even if the page itself is removed from results, if ANY other non-blocked page contains a hyperlink or mention of the Acme client page in its content, `search_pages` will return that unblocked page with a content excerpt that mentions "Acme." This is an indirect leakage via search excerpt, not a path filter bypass.
+A naive regex like `/<!-- gdpr-start -->([\s\S]*?)<!-- gdpr-end -->/g` uses a lazy quantifier `[\s\S]*?` which is safe in most cases. However, if the regex is more complex (e.g., attempting to handle whitespace variations in the marker itself, or using alternation within the quantifier group), it can trigger catastrophic backtracking on large pages (50KB+ of content). The Node.js event loop blocks for seconds or minutes, causing the MCP server to become unresponsive to ALL requests.
 
 **Why it happens:**
-Path filtering only removes the direct client pages. It does not scrub mentions of client names from content on other pages. A wiki structure where other pages link to or discuss client pages is common.
+Catastrophic backtracking occurs when a regex engine explores exponentially many paths due to nested quantifiers or overlapping alternatives. Common triggers:
+- `<!--\s*gdpr-start\s*-->([\s\S]*?)<!--\s*gdpr-end\s*-->` -- the `\s*` inside the markers combined with `[\s\S]*?` in the body can interact badly if the markers are partially matched mid-content.
+- Using `(.|\n)*?` instead of `[\s\S]*?` -- the alternation group `(.|\n)` creates backtracking risk.
+- Attempting to match markers with flexible whitespace AND flexible content: `<!--\s*gdpr-start\s*-->(.*)<!--\s*gdpr-end\s*-->/s` with the `s` (dotAll) flag -- the `.*` is greedy and backtracks when `<!--` appears in content without being a valid end marker.
+
+For a wiki page with 50KB of markdown content and multiple partial `<!--` sequences (common in documentation that discusses HTML comments), the regex engine may backtrack billions of times.
 
 **How to avoid:**
-This is a **scope boundary decision** that must be made explicitly:
-1. Accept that indirect mentions in non-blocked pages are out of scope — document this explicitly in code comments and the design doc.
-2. Do not attempt content scrubbing (it would require semantic understanding and is out of scope for a path-filter implementation).
-3. The GDPR requirement (per PROJECT.md) is to block "direct client directory pages" — indirect mentions in other pages are not the target.
-
-Ensure this scope decision is documented so a future reviewer does not try to "fix" the intentional gap.
+1. Use the simplest possible regex with exact marker strings: `/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g`. Do NOT add flexibility for whitespace variations inside the markers.
+2. Standardize the exact marker format: `<!-- gdpr-start -->` with exactly one space after `<!--` and before `-->`. Document this. Reject non-conforming markers by design.
+3. AVOID these dangerous patterns:
+   - `(.|\n)*?` -- use `[\s\S]*?` instead (single character class, no alternation)
+   - Nested quantifiers like `(<!--\s*gdpr-start\s*-->)+`
+   - Optional groups around the markers: `(<!-- gdpr-start -->)?`
+4. For defense in depth, consider a non-regex approach: use `indexOf('<!-- gdpr-start -->')` and `indexOf('<!-- gdpr-end -->')` to find marker positions, then use `string.slice()` to extract and reconstruct the content. This approach has O(n) time complexity with no backtracking risk.
+5. Add a performance test: redaction on a 100KB string with no markers must complete in under 5ms.
 
 **Warning signs:**
-- A reviewer or auditor flags that search for a client name returns excerpts mentioning that client
-- The requirement scope is ambiguous about "indirect references"
+- Regex uses `(.|\n)` instead of `[\s\S]`
+- Regex attempts to handle whitespace variations inside the markers themselves
+- No performance test for large content
+- Content with many `<!--` substrings (e.g., HTML documentation pages) causes observable slowdowns
 
-**Phase to address:** Design phase / implementation phase — write an explicit comment in `isBlocked()` stating scope
+**Phase to address:** Core redaction function implementation. The regex pattern choice is a first-commit decision.
 
 ---
 
-### Pitfall 4: `list_pages` Leaks Blocked-Page Existence via `totalHits` Count or Page Count Discrepancy
+### Pitfall 4: Markers Inside Fenced Code Blocks Cause False Positive Redaction
 
 **What goes wrong:**
-`list_pages` silently filters blocked pages. The response is a JSON array of pages. If a caller knows "there are 47 pages in the wiki" (e.g., from a previous call before the filter was deployed), and after deployment `list_pages` returns 45 pages, they can infer 2 client pages exist. This is a low-severity existence oracle through count discrepancy.
+A wiki page about GDPR implementation contains a code example:
 
-For `search_pages`, the `totalHits` field from Wiki.js GraphQL reflects the unfiltered index count. After filtering `results`, the caller sees `results.length < totalHits`, which reveals that some pages were filtered.
+````markdown
+## How to Add GDPR Markers
+
+To protect sensitive content, wrap it like this:
+
+```html
+<!-- gdpr-start -->
+Sensitive content here
+<!-- gdpr-end -->
+```
+````
+
+The regex redaction does not understand markdown structure. It sees `<!-- gdpr-start -->` and `<!-- gdpr-end -->` inside the fenced code block and redacts the content between them -- destroying the documentation example. Worse, if only the start marker is in the code block and the end marker is elsewhere in the document, the redaction spans across the code block boundary and destroys a large section of the page.
 
 **Why it happens:**
-`totalHits` is returned as-is from the upstream GraphQL response. Filtering happens post-fetch in application code. The count is not adjusted.
+Regex operates on raw text. It has no concept of markdown fenced code blocks (`` ``` ``), inline code (`` ` ``), or HTML `<pre>`/`<code>` elements. Any occurrence of the marker string is treated as a real marker.
 
 **How to avoid:**
-1. `search_pages` MUST NOT return `totalHits` to the caller (do not expose it in the MCP tool response), OR recalculate `totalHits` as `results.length` after filtering. The current `mcp-tools.ts` returns only `result.results` (not `result.totalHits`) — verify this is preserved after the filter integration.
-2. `list_pages` returns an array; the count is implicit in the array length. This is acceptable — array length leakage is a low-severity residual risk that matches accepted scope.
-3. Document the `totalHits` decision explicitly.
+
+**Option A (recommended for v2.6 -- accept the limitation, document it):**
+This is an edge case that affects only pages documenting the marker syntax itself. For v2.6:
+1. Document that `<!-- gdpr-start/end -->` markers in code blocks WILL be processed as real markers.
+2. Wiki authors who need to document the marker syntax should use a variation that breaks the pattern, e.g., `<!-- gdpr-start -- >` (extra space before `>`) or use HTML entities.
+3. Add a code comment in the redaction function explaining this known limitation.
+
+**Option B (more robust, higher complexity):**
+Strip fenced code blocks before processing markers, then restore them:
+1. Extract fenced code blocks using `/```[\s\S]*?```/g` and replace with placeholders.
+2. Run marker-based redaction on the remaining content.
+3. Restore code block placeholders.
+
+This adds complexity and introduces its own edge cases (nested code blocks, code blocks with more than 3 backticks). For a wiki where marker documentation pages are rare, Option A is pragmatic.
 
 **Warning signs:**
-- `searchPages()` in `api.ts` returns `{ results, totalHits }` and `mcp-tools.ts` passes the whole object to the caller
-- Integration test that checks `totalHits` in the search response
+- No test case for markers appearing inside fenced code blocks
+- No documentation warning about this limitation
+- Someone reports "my documentation page got mangled by the MCP server"
 
-**Phase to address:** `search_pages` integration — check `mcp-tools.ts` line 181 which currently returns `result.results` (correct — do not change this)
+**Phase to address:** Core redaction function -- document the limitation in code comments. Add a test that demonstrates the behavior (markers in code blocks ARE processed).
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 5: GDPR Scope Overreach — Blocking Sub-Pages (`Clients/Acme/Projects`)
+### Pitfall 5: Page URL Construction With Special Characters and Locale Prefix
 
 **What goes wrong:**
-The filter rule is "exactly 2 segments where first is `Clients`." A path `Clients/Acme/Projects` has 3 segments and is NOT blocked by the current rule. This is correct per PROJECT.md scope. However, if sub-pages contain personal data (GDPR-sensitive contacts, contract details), the 2-segment rule creates a false sense of coverage.
+The page URL is constructed as `${WIKIJS_BASE_URL}/${locale}/${page.path}`. Several issues arise:
+
+1. **Double slashes:** If `WIKIJS_BASE_URL` ends with `/` and the path construction adds another, the URL becomes `https://wiki.example.com//en/some-page`.
+2. **Locale prefix mismatch:** Wiki.js reserves two-letter paths for locale prefixes. If locale prefixing is enabled, URLs must include the locale (e.g., `/en/page-path`). If disabled, they must not. The server currently has `WIKIJS_LOCALE` (default `en-US`) but this is a search locale, not necessarily the URL prefix locale.
+3. **Spaces in paths:** Wiki.js allows spaces in paths (despite documentation saying to use dashes). The GraphQL API returns the path as-is. A path `Clients/Acme Corp` produces `https://wiki.example.com/en/Clients/Acme Corp` -- which is not a valid URL without encoding.
+4. **Non-ASCII characters:** Wiki.js allows Unicode in paths (e.g., `Clients/Uenited`). These require percent-encoding in URLs.
+5. **Path with hash or query characters:** A path containing `#` or `?` would break URL parsing if not encoded.
 
 **Why it happens:**
-The filter rule is written to block exactly `Clients/<CompanyName>` (the directory index page). Sub-pages under a client were not assessed for GDPR sensitivity.
+Developers concatenate strings to build URLs without considering edge cases. The Wiki.js GraphQL API returns raw paths without URL encoding.
 
 **How to avoid:**
-1. The current scope is explicitly "exactly 2 segments" — preserve this.
-2. Add a code comment stating: "Sub-pages (`Clients/Acme/Projects`) are out of scope for this filter. If those pages contain personal data, the rule must be extended or WikiJS permissions must be used."
-3. Do not silently expand the rule to 3+ segments without an explicit decision.
+1. Use Node.js `URL` constructor or `encodeURIComponent` for the path segments:
+   ```typescript
+   function buildPageUrl(baseUrl: string, path: string): string {
+     // Ensure no double slash between base and path
+     const base = baseUrl.replace(/\/+$/, '');
+     // Encode each path segment individually (preserve slash separators)
+     const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+     return `${base}/${encodedPath}`;
+   }
+   ```
+2. Make the locale prefix inclusion configurable or omit it by default. Wiki.js pages are accessible without locale prefix when visiting the base locale. The safest approach for v2.6: do not include locale prefix in URLs. The base URL alone plus the path is sufficient for the base locale.
+3. Add the `WIKIJS_PAGE_BASE_URL` (or similar) as a separate env var distinct from `WIKIJS_BASE_URL` (which points to the API endpoint). The browser-accessible URL and the GraphQL API URL may differ.
+4. Validate with test cases: path with spaces, path with Unicode, path with trailing slash, path with `#` character.
 
 **Warning signs:**
-- `isBlocked()` implementation uses `segments.length >= 2` instead of `=== 2`
-- No test explicitly covering 3-segment Clients paths
+- URL construction uses string concatenation without encoding
+- No test for paths containing spaces, Unicode, or special characters
+- `WIKIJS_BASE_URL` is reused for both API calls and page URLs (they may differ)
 
-**Phase to address:** `isBlocked()` utility — add explicit boundary test
+**Phase to address:** Page URL injection implementation phase.
 
 ---
 
-### Pitfall 6: Filter Applied Only to Tool Responses, Not to Intermediate Logging
+### Pitfall 6: Redaction Applied Inconsistently Across Tools (get_page vs search_pages vs list_pages)
 
 **What goes wrong:**
-`tool-wrapper.ts` uses `wrapToolHandler()` which logs timing and structured events. If the wrapper logs the full tool input or response payload at DEBUG level, a blocked page's path or content appears in server logs — which are stored and may be accessible to more people than the wiki itself.
+`get_page` returns full page content and must redact markers. `search_pages` returns content excerpts. `list_pages` returns metadata only (no content). If redaction is applied only in `get_page` but `search_pages` returns unredacted excerpts containing GDPR-sensitive text between markers, PII leaks through the search tool.
+
+More subtly: the `description` field on all three tools contains wiki page descriptions. If a wiki author puts GDPR-sensitive information in the page description (which is metadata, not content), no amount of content-based marker redaction will catch it.
 
 **Why it happens:**
-Logging is added for observability without considering that some payloads contain GDPR-sensitive identifiers (the client company name embedded in the path).
+The content field in `WikiJsPage` is optional -- `list_pages` and `search_pages` results from `resolvePageByPath` and `resolveViaPagesList` do not include `content`. But `search_pages` results from the raw search API may include content excerpts in a separate field.
+
+Looking at the current code: `api.ts` `searchPages()` returns results with `id`, `path`, `title`, `description`, `locale` from the search query -- no `content` field. `resolvePageByPath` and `resolveViaPagesList` also do not fetch `content`. So `search_pages` results currently do NOT include page content, making content redaction inapplicable.
+
+However: `get_page` via `getPageById()` DOES fetch `content`. Redaction must be applied here.
 
 **How to avoid:**
-1. Do not log the `path` field of blocked pages in the filter logic.
-2. Log a generic event: `{ blocked: true }` — do not log `{ blocked: true, path: "Clients/Acme" }`.
-3. Review `tool-wrapper.ts` to confirm it does not log full response bodies at any log level.
-4. Confirm that pino's default serializers do not deep-serialize tool responses.
+1. Apply content redaction ONLY where `content` is present -- which is `get_page` (via `getPageById`).
+2. Do NOT attempt to redact `description` or `title` fields with markers. These are short metadata strings unlikely to contain markers. If GDPR content is in descriptions, that is a wiki author mistake -- the redaction system should not attempt to fix metadata.
+3. Document explicitly: "Redaction applies to `content` field only. Page titles and descriptions are not redacted."
+4. If `search_pages` or `list_pages` ever starts returning content (e.g., search excerpts), redaction must be added at that point.
 
 **Warning signs:**
-- `isBlocked()` returns early and logs the path it blocked
-- `wrapToolHandler` has a `log.debug({ result })` that serializes the full tool response
+- Redaction function is applied to the full `WikiJsPage` object (all string fields) instead of just `content`
+- Someone applies redaction to `title` or `description` and the regex corrupts short strings
 
-**Phase to address:** `isBlocked()` utility + `tool-wrapper.ts` audit
+**Phase to address:** Integration phase -- apply redaction at the `get_page` handler level, not at the API layer.
 
 ---
 
-### Pitfall 7: MCP Instructions Field Hints at the Filter Existence
+### Pitfall 7: Multiple GDPR Marker Pairs on a Single Page -- Greedy Match Consumes Too Much
 
 **What goes wrong:**
-The `instructions.txt` file (loaded at startup and returned in the MCP `initialize` response) might contain guidance like "Note: client directory pages are blocked for GDPR compliance." An AI assistant reading the instructions learns that a `Clients/` path structure exists and that pages are blocked. This is an information disclosure via the protocol's own metadata.
+A page has two separate GDPR-sensitive sections:
+
+```markdown
+## Section 1
+Public content here.
+
+<!-- gdpr-start -->
+Client A contact info
+<!-- gdpr-end -->
+
+## Section 2
+More public content.
+
+<!-- gdpr-start -->
+Client B contract details
+<!-- gdpr-end -->
+
+## Section 3
+More public content.
+```
+
+A greedy regex `/<!-- gdpr-start -->[\s\S]*<!-- gdpr-end -->/g` (note: `*` not `*?`) matches from the FIRST `<!-- gdpr-start -->` to the LAST `<!-- gdpr-end -->`, consuming "Section 2: More public content" along with both sensitive sections. The entire middle of the page is removed.
 
 **Why it happens:**
-Instructions are helpful for guiding the AI, but they are also visible to any authenticated caller inspecting the `initialize` response.
+Using `*` (greedy) instead of `*?` (lazy) in the regex. The greedy quantifier matches as much as possible, then backtracks only as needed. With the `g` flag and `[\s\S]*` (greedy), the first match consumes everything up to the LAST end marker.
 
 **How to avoid:**
-1. Do NOT mention the path filter or its structure in `instructions.txt`.
-2. Do NOT name the blocked path pattern in any user-facing documentation or tool descriptions.
-3. If guidance is needed for the AI, phrase it as a general capability description without naming the blocked domain.
+1. Use the lazy quantifier: `[\s\S]*?` -- this matches the minimum content between each start/end pair.
+2. Verify with a test: two separate marker pairs on one page, with public content between them. Assert the public content between the pairs is preserved.
+3. Consider the indexOf-based approach (non-regex) which makes the matching logic explicit and easier to reason about:
+   ```typescript
+   function redactMarkers(content: string): string {
+     const START = '<!-- gdpr-start -->';
+     const END = '<!-- gdpr-end -->';
+     let result = '';
+     let cursor = 0;
+     while (cursor < content.length) {
+       const startIdx = content.indexOf(START, cursor);
+       if (startIdx === -1) {
+         result += content.slice(cursor);
+         break;
+       }
+       result += content.slice(cursor, startIdx);
+       const endIdx = content.indexOf(END, startIdx + START.length);
+       if (endIdx === -1) {
+         // Fail-safe: no end marker, redact to end of content
+         break;
+       }
+       cursor = endIdx + END.length;
+     }
+     return result;
+   }
+   ```
 
 **Warning signs:**
-- `instructions.txt` contains the word "Clients" or "GDPR" or "blocked"
-- Tool descriptions in `mcp-tools.ts` mention filtering or GDPR
+- Regex uses `[\s\S]*` (greedy) instead of `[\s\S]*?` (lazy)
+- Only one test case with a single marker pair
+- No test with two marker pairs and public content between them
 
-**Phase to address:** Instructions file review — verify after filter implementation
+**Phase to address:** Core redaction function -- test suite must include multi-pair scenario.
 
 ---
 
-### Pitfall 8: GDPR Audit Log Gap — No Record of Blocked Access Attempts
+### Pitfall 8: Nested or Overlapping Markers (`gdpr-start` Inside Another `gdpr-start`)
 
 **What goes wrong:**
-GDPR Article 30 and accountability principle require demonstrating that access controls are working. If a blocked access attempt produces no log entry (because the filter is silent), there is no audit trail showing the GDPR control was exercised. A DPA audit or internal security review cannot verify the filter is protecting data.
+A wiki author accidentally nests markers:
+
+```markdown
+<!-- gdpr-start -->
+Outer sensitive content
+<!-- gdpr-start -->
+Inner sensitive content
+<!-- gdpr-end -->
+More outer sensitive content
+<!-- gdpr-end -->
+```
+
+With the lazy regex `/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g`:
+- First match: from first `<!-- gdpr-start -->` to first `<!-- gdpr-end -->` (correct -- strips outer start through inner end)
+- Remaining text: `\nMore outer sensitive content\n<!-- gdpr-end -->\n`
+- Second match: no start marker before the remaining end marker -- the orphaned `<!-- gdpr-end -->` remains as literal text in the output
+- Result: "More outer sensitive content" LEAKS plus a visible `<!-- gdpr-end -->` artifact
 
 **Why it happens:**
-"Silent filtering" is correct for the tool response (to prevent existence oracle), but it should still produce an internal log event that is NOT surfaced to the caller.
+HTML comments are not nestable. Regex has no concept of nesting depth. The lazy quantifier pairs the first start with the nearest end, leaving orphaned markers.
 
 **How to avoid:**
-1. Log blocked access attempts at `INFO` or `WARN` level server-side: `log.info({ tool: "get_page", blocked: true, userId: ctx.user.oid }, "GDPR path filter blocked access")`.
-2. Do NOT include the company name (the sensitive part of the path) in the log — log that a block occurred for a "Clients/* path" without naming the specific company.
-3. Use the existing `requestContext` (AsyncLocalStorage) to include correlation ID and user identity in the log entry, supporting GDPR audit requirements for "who tried to access what, when."
-4. Verify that pino log level in production is `INFO` or lower (not `ERROR` only) so these events are captured.
+1. Document that markers MUST NOT be nested. This is an authoring constraint, not a code constraint.
+2. The fail-safe behavior (orphaned start redacts to end) partially covers this -- but in the nested case, the orphaned element is an END marker (not a start), so the fail-safe does not trigger.
+3. After all paired redaction is complete, scan the result for any remaining `<!-- gdpr-start -->` OR `<!-- gdpr-end -->` literals. If any exist:
+   - An orphaned `<!-- gdpr-start -->` triggers fail-safe (redact to end)
+   - An orphaned `<!-- gdpr-end -->` should be stripped (it is an artifact, not content)
+   - Log a warning: malformed markers detected
+4. Add a test for the nested scenario.
 
 **Warning signs:**
-- `isBlocked()` returns `true` and the caller site does nothing except silently omit the page
-- No test verifying that a blocked access attempt produces a log entry
-- Production log level is `ERROR` (blocks at `INFO` are lost)
+- No handling of orphaned `<!-- gdpr-end -->` markers in the output
+- Only orphaned start markers are handled by the fail-safe
+- No test for nested markers
 
-**Phase to address:** `isBlocked()` integration at each tool call site
+**Phase to address:** Core redaction function -- handle orphaned end markers as a cleanup step after paired redaction.
+
+---
+
+### Pitfall 9: Test Coverage Gap During Security Mechanism Replacement
+
+**What goes wrong:**
+The v2.5 test suite has 371 tests including specific GDPR filter tests across 3 files:
+- `src/__tests__/gdpr.test.ts` (16 tests for `isBlocked()`)
+- `src/__tests__/mcp-tools-gdpr.test.ts` (12 tests for tool-level filtering)
+- `tests/gdpr-filter.test.ts` (10 integration tests)
+
+When removing path-based filtering and adding marker-based redaction, there is a risk of:
+1. Deleting the old GDPR tests before the new redaction tests are in place -- creating a window where GDPR behavior is untested.
+2. Not covering equivalent scenarios in the new test suite: malformed input, empty content, null content, multiple pages with mixed redacted/unredacted content.
+3. Missing the `search_pages` totalHits adjustment (currently tested) -- the new approach may not need it, but the decision must be explicit.
+4. Breaking the SEC-03 instructions audit tests that check for GDPR-revealing keywords. The word "redact" or "gdpr" might appear in new code comments that get surfaced.
+
+**Why it happens:**
+"Replace" feels like "delete old, write new." In security-sensitive code, the correct approach is "write new tests, verify they pass, then delete old tests."
+
+**How to avoid:**
+1. Write the new redaction unit tests FIRST (before modifying `mcp-tools.ts`):
+   - `redact()` with matched pairs
+   - `redact()` with orphaned start (fail-safe)
+   - `redact()` with orphaned end (cleanup)
+   - `redact()` with nested markers
+   - `redact()` with no markers (passthrough)
+   - `redact()` with empty string
+   - `redact()` with null/undefined input
+   - `redact()` on large content (performance)
+   - `redact()` with multiple pairs and public content between
+   - `redact()` with markers adjacent (no content between)
+2. Write tool-level integration tests for the new behavior BEFORE removing old filter code.
+3. Only delete `isBlocked()` and its tests after the new redaction tests pass and cover equivalent scenarios.
+4. Maintain the SEC-03 instructions audit test -- it should continue to pass.
+
+**Warning signs:**
+- Old GDPR test files deleted in the same commit as new ones added
+- New test count is significantly lower than old test count for GDPR behavior
+- No test for the "no markers present" case (passthrough)
+- No performance test
+
+**Phase to address:** Test-first approach in the redaction implementation phase. Old tests removed only in the `isBlocked()` removal phase.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 10: Redaction Modifies Content Length, Breaks JSON Position Expectations
+
+**What goes wrong:**
+If the `get_page` response currently includes fields like content length or byte offsets (it does not, based on current code review), redaction would invalidate them. More practically: the AI assistant receiving the response sees content that "jumps" between sections with no indication that content was removed. The AI may hallucinate that the page is complete when sections were redacted.
+
+**How to avoid:**
+1. Optionally insert a redaction placeholder: replace redacted sections with `[Content redacted]` or an empty string. The placeholder approach is more transparent.
+2. However: inserting a placeholder like `[GDPR content redacted]` reveals that GDPR-sensitive content exists on this page, which is mild information disclosure. For v2.6, use an empty string (no placeholder) to match the existing behavior where blocked pages simply return "not found."
+3. Document the design decision: redacted content is silently removed, not replaced with placeholders.
+
+**Phase to address:** Core redaction function -- design decision on placeholder vs silent removal.
+
+---
+
+### Pitfall 11: `WIKIJS_BASE_URL` Used for Both API and Page URLs
+
+**What goes wrong:**
+`WIKIJS_BASE_URL` currently points to the Wiki.js instance (e.g., `http://wikijs:3000` in Docker). This is used to construct the GraphQL endpoint: `${baseUrl}/graphql`. If the same URL is used for page URLs in `get_page` responses, the URLs will point to the internal Docker hostname, not the public-facing URL that users can open in a browser.
+
+**Why it happens:**
+Reusing the existing env var seems simpler than adding a new one.
+
+**How to avoid:**
+1. Add a separate env var (e.g., `WIKIJS_PAGE_URL` or `WIKIJS_PUBLIC_URL`) for the browser-accessible base URL.
+2. Make it optional with a sensible default: fall back to `WIKIJS_BASE_URL` if not set (works for non-Docker deployments where the API URL and browser URL are the same).
+3. Add Zod validation: must be a valid URL, no trailing slash.
+4. Add to `example.env` with a comment explaining when to set it.
+
+**Warning signs:**
+- Page URLs in MCP responses contain `http://wikijs:3000/` (Docker internal hostname)
+- No separate env var for public wiki URL
+- `config.ts` schema unchanged
+
+**Phase to address:** URL injection implementation phase -- config.ts schema update.
+
+---
+
+### Pitfall 12: Whitespace Sensitivity in Marker Matching
+
+**What goes wrong:**
+Wiki.js markdown editors may insert slightly different whitespace around markers. A WYSIWYG editor might produce `<!--gdpr-start-->` (no spaces) or `<!-- gdpr-start  -->` (extra space). If the regex requires exactly `<!-- gdpr-start -->`, these variants are silently ignored, leaving GDPR content unredacted.
+
+**Why it happens:**
+Different editors and manual editing produce whitespace variations. Copy-pasting from different sources may include non-breaking spaces or other Unicode whitespace.
+
+**How to avoid:**
+1. **Strict matching (recommended for v2.6):** Require exactly `<!-- gdpr-start -->` and `<!-- gdpr-end -->`. Document the exact format. Reject variations by design. This is safer than flexible matching because:
+   - Flexible matching risks catastrophic backtracking (Pitfall 3)
+   - Strict matching is predictable and testable
+   - Wiki authors can be trained on the exact format
+   - A linting check can validate wiki content
+2. If flexibility is needed later, use the indexOf approach (not regex) to handle whitespace:
+   ```typescript
+   // Find any HTML comment containing "gdpr-start" (case-insensitive)
+   const startPattern = /<!--\s*gdpr-start\s*-->/gi;
+   ```
+   But this introduces backtracking risk with `\s*` -- validate with a performance test.
+3. Add tests for the exact marker format only. Document that variations are NOT supported.
+
+**Warning signs:**
+- Regex uses `\s*` or `\s+` inside the marker pattern without a performance test
+- No documentation specifying the exact marker format
+- Wiki authors report "markers don't work" because they used a slightly different format
+
+**Phase to address:** Core redaction function -- marker format decision is a first-commit decision. Document in code and wiki.
 
 ---
 
@@ -217,11 +441,13 @@ GDPR Article 30 and accountability principle require demonstrating that access c
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Apply `isBlocked()` only in `mcp-tools.ts`, not in `api.ts` | Simpler — filter at the layer you control | If `api.ts` methods are reused by future tools or scripts, new code bypasses the filter silently | Acceptable for v2.5 if `api.ts` methods are tool-handler-only |
-| Case-sensitive `"Clients"` comparison | Simple, explicit | Bypassed if Wiki.js ever stores `clients/acme` | Never — always case-fold the first segment |
-| Blocking by path prefix (`startsWith("Clients/")`) instead of exact-segment count | Covers sub-pages without extra logic | Silently grows scope; breaks pages like `ClientsGuide/intro` | Never — use exact segment count |
-| Returning `403 Forbidden` for blocked pages | Honest HTTP semantics | Existence oracle — reveals the page exists | Never in MCP tool context where callers are AI assistants |
-| Logging full path in block events | Easier debugging | Logs become a secondary data store for GDPR-sensitive info | Never |
+| Remove `isBlocked()` in same PR as adding redaction | Fewer PRs, cleaner diff | Transition window risk; if redaction has a bug, no safety net | Never -- keep `isBlocked()` until markers are verified on all pages |
+| Use complex regex with whitespace flexibility | Handles editor variations | Catastrophic backtracking risk; harder to test | Never for v2.6 -- strict matching only |
+| Apply redaction in `api.ts` instead of `mcp-tools.ts` | Single place for all content processing | `api.ts` is shared infrastructure; redaction is MCP-presentation-layer concern; violates separation of concerns | Never -- redaction belongs in the tool handler layer |
+| Reuse `WIKIJS_BASE_URL` for page URLs | No new env var | URLs point to internal Docker hostname; breaks in production | Only in dev; production needs separate public URL |
+| Skip orphaned-marker handling | Simpler implementation | Unclosed markers silently leak PII | Never -- fail-safe is a core requirement |
+| Insert `[REDACTED]` placeholder | Transparent to AI | Reveals that GDPR content exists on the page | Acceptable if information disclosure is deemed low-risk |
+| Regex-only approach (no indexOf fallback) | Simpler code | Harder to reason about edge cases; backtracking risk | Acceptable if regex is simple and performance-tested |
 
 ---
 
@@ -229,11 +455,14 @@ GDPR Article 30 and accountability principle require demonstrating that access c
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Wiki.js GraphQL `pages.list` (used in `resolveViaPagesList`) | Filtering after the 500-page bulk fetch is correct, but the bulk fetch itself exposes all paths to in-process memory | Acceptable — process memory is not a GDPR disclosure risk; filter before returning to caller |
-| Wiki.js GraphQL `pages.search` | Search index `totalHits` is unfiltered count | Do not surface `totalHits` in tool response (current code already omits it) |
-| Wiki.js GraphQL `pages.singleByPath` | Used in `resolvePageByPath` during search resolution — returns full page including path | Check `isBlocked()` on resolved pages before adding to final results |
-| MCP `wrapToolHandler` | Timing differences between blocked and not-found responses | Ensure both paths call the upstream API to equalise latency |
-| Pino structured logging | Default serialisers may deep-clone objects including paths | Avoid passing full `WikiJsPage` objects to log calls at `isBlocked()` sites |
+| `get_page` content pipeline | Redacting after JSON.stringify (operates on escaped content) | Redact the raw `content` string BEFORE serialization |
+| `get_page` URL injection | Constructing URL after redaction (both modify the response) | Inject URL and redact content as separate steps; order does not matter since URL comes from path, not content |
+| `search_pages` content excerpts | Assuming search results contain content (they do not in current API) | Verify `search_pages` response shape; content redaction not needed for metadata-only results |
+| `list_pages` | Applying redaction to pages that have no `content` field | `list_pages` returns metadata only; redaction is a no-op; do not call redaction function unnecessarily |
+| Config validation | Adding new env var (`WIKIJS_PAGE_URL`) without Zod schema | Add to `envSchema` in `config.ts` with URL validation and `.optional()` |
+| Wiki.js page path with locale | Constructing URL as `${base}/${locale}/${path}` when locale prefixing is disabled | Check whether locale prefix is needed; safest default is `${base}/${path}` (works for base locale) |
+| Existing `totalHits` adjustment in `search_pages` | Keeping the path-filter totalHits adjustment after removing `isBlocked()` | When `isBlocked()` is removed, the totalHits adjustment logic must also be removed |
+| `wrapToolHandler` debug logging | New redacted content still logged at DEBUG level by the wrapper | Verify `wrapToolHandler` does not log tool response bodies (current code logs `args` at debug but not results -- keep this) |
 
 ---
 
@@ -241,27 +470,33 @@ GDPR Article 30 and accountability principle require demonstrating that access c
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Returning `403` instead of a "not found" equivalent | Existence oracle — attacker learns `Clients/Acme` exists | Always return same response as "page not found" |
-| Checking `isBlocked()` before calling upstream API in `get_page` | Timing side-channel — blocked returns faster | Fetch first, then check path on returned object |
-| Including company name in block log entry | Logs become secondary personal data store | Log `{ blocked: true }` without the specific company name |
-| Filtering only in `list_pages` and `search_pages` but not `get_page` | Direct ID lookup bypasses the filter entirely | All three tools MUST apply `isBlocked()` |
-| Applying `isBlocked()` to the INPUT path string (before API call) in `get_page` | `get_page` takes an ID, not a path — no input path to check | Retrieve by ID first, then check the returned `page.path` |
-| Omitting `isBlocked()` from the `resolveViaPagesList` fallback path in `searchPages` | Fallback path bypasses filter on one code path | Apply filter after both the primary and fallback resolution in `searchPages` |
+| Removing `isBlocked()` before markers are on all wiki pages | Full PII exposure of all client pages | Keep both mechanisms running in parallel during transition |
+| Fail-safe not implemented (orphaned start marker silently ignored) | PII leak on any page with malformed markers | Orphaned start marker must redact to end of content |
+| Redacting then logging the original content | Unredacted PII in server logs | Always log page ID, never log content |
+| Using `WIKIJS_BASE_URL` for page URLs in production | URLs contain Docker-internal hostnames (not a data leak but reveals infrastructure) | Separate env var for public wiki URL |
+| Regex with whitespace flexibility but no performance bound | ReDoS vulnerability; server becomes unresponsive on crafted content | Strict marker format; or add regex timeout via performance test |
+| Markers in page title/description not handled | PII in metadata passes through unredacted | Document: redaction applies to `content` only; metadata is wiki author's responsibility |
+| Redaction function throws on null/undefined content | Unhandled exception crashes the tool handler; error message may leak info | Guard: `if (!content) return content;` at top of redaction function |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **`get_page` filter:** Only adds `isBlocked()` call — verify the error message is IDENTICAL to the genuine-not-found error message, and that upstream is still called before the path check
-- [ ] **`search_pages` filter:** Only filters `rawResults` — verify the `resolveViaPagesList` fallback path (Step 3 in `searchPages`) also has `isBlocked()` applied to its results before they are added to `resolved`
-- [ ] **`list_pages` filter:** Verify the filter runs AFTER `pages.filter(p => p.isPublished)` to avoid double-filtering and ordering dependency
-- [ ] **`totalHits` not exposed:** Verify `mcp-tools.ts` returns `result.results` (not the full `PageSearchResult` object including `totalHits`) — this is already correct in the current codebase; do not regress it
-- [ ] **Logging:** Verify a blocked `get_page` call produces a server-side log entry (not just a silent return)
-- [ ] **Case normalisation:** Verify `isBlocked("clients/acme")` returns `true` (lowercase first segment)
-- [ ] **Trailing slash:** Verify `isBlocked("Clients/acme/")` returns `true`
-- [ ] **3-segment path:** Verify `isBlocked("Clients/Acme/Projects")` returns `false` (out of scope)
-- [ ] **Non-Clients path:** Verify `isBlocked("docs/getting-started")` returns `false`
-- [ ] **Instructions file:** Verify `instructions.txt` does not mention the filter, blocked paths, or GDPR
+- [ ] **Transition safety:** `isBlocked()` still runs alongside new redaction code; both mechanisms active
+- [ ] **Fail-safe:** Orphaned `<!-- gdpr-start -->` causes redaction to end of content (not silent passthrough)
+- [ ] **Orphaned end cleanup:** Remaining `<!-- gdpr-end -->` markers stripped from output after paired redaction
+- [ ] **Multiple pairs:** Two marker pairs on one page with public content between them; public content preserved
+- [ ] **No markers:** Content without any markers passes through completely unchanged
+- [ ] **Null/undefined guard:** Redaction function handles null, undefined, empty string without throwing
+- [ ] **Performance:** Redaction on 100KB content completes in under 10ms
+- [ ] **URL encoding:** Page URLs with spaces, Unicode, and special characters are properly encoded
+- [ ] **URL base:** Page URL uses public wiki URL, not Docker-internal API URL
+- [ ] **No double slash:** URL construction does not produce `//` between base URL and path
+- [ ] **Config schema:** New env var added to Zod schema in `config.ts` with URL validation
+- [ ] **Test parity:** New GDPR test count >= old GDPR test count; equivalent scenarios covered
+- [ ] **SEC-03 preserved:** Instructions audit test still passes (no "redact", "gdpr", "blocked" in instructions)
+- [ ] **Logging safe:** Redaction warning logs contain page ID only, never content
+- [ ] **tool-wrapper safe:** `wrapToolHandler` does not log tool response bodies at any level
 
 ---
 
@@ -269,12 +504,13 @@ GDPR Article 30 and accountability principle require demonstrating that access c
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Existence oracle via error message mismatch | LOW | Change error string in `get_page` handler to match not-found string; deploy |
-| Case-sensitive bypass discovered in production | LOW | Fix `isBlocked()` to use `.toLowerCase()` on segment[0]; add test; deploy |
-| Timing side-channel (blocked returns faster) | MEDIUM | Refactor `get_page` to always call upstream first; adds one GraphQL call per blocked probe |
-| `totalHits` leaking in search response | LOW | Remove from tool response (current code already omits it — prevent regression) |
-| Blocked path logged with company name | MEDIUM | Redact logs retroactively; update logging; treat as personal data breach under GDPR Art. 33 (72-hour notification window) |
-| Filter missing from `resolveViaPagesList` fallback | LOW | Add `isBlocked()` check in fallback results; add regression test |
+| Transition window PII exposure | HIGH | Re-deploy `isBlocked()` immediately; treat as data breach (GDPR Art. 33, 72-hour DPA notification); audit access logs for the exposure window |
+| Orphaned marker PII leak | MEDIUM | Hotfix fail-safe in redaction function; audit pages for malformed markers; notify wiki authors |
+| Catastrophic backtracking (ReDoS) | LOW-MEDIUM | Deploy fixed regex or indexOf approach; restart server; no data breach but availability impact |
+| Greedy regex consuming too much content | LOW | Fix regex to use lazy quantifier; no PII risk (over-redaction, not under-redaction) |
+| Nested markers leaking content | MEDIUM | Add orphaned-end-marker cleanup; audit affected pages; the nested case leaks content between inner end and outer end markers |
+| URL construction with internal hostname | LOW | Add public URL env var; redeploy; no security impact, just broken links |
+| Whitespace variation not matching | MEDIUM | Fix marker format on wiki pages OR widen regex (with performance test); PII exposed until fixed |
 
 ---
 
@@ -282,35 +518,39 @@ GDPR Article 30 and accountability principle require demonstrating that access c
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Existence oracle (Pitfall 1) | `isBlocked()` utility + `get_page` integration | Test: blocked ID returns same string as non-existent ID |
-| Path normalisation bypass (Pitfall 2) | `isBlocked()` utility | Unit test suite: case variants, trailing slash, double slash, leading slash |
-| Indirect search leak (Pitfall 3) | Design decision, document in code | Code comment in `isBlocked()` states indirect mentions are out of scope |
-| `totalHits` leakage (Pitfall 4) | `search_pages` integration | Verify `mcp-tools.ts` does not expose `totalHits` field |
-| Sub-page scope overreach (Pitfall 5) | `isBlocked()` utility | Unit test: 3-segment Clients path returns `false` |
-| Filter gap in `resolveViaPagesList` (Pitfall 6, secondary) | `search_pages` integration | Unit test: blocked page in fallback path is excluded from results |
-| Logging GDPR-sensitive path (Pitfall 6) | `isBlocked()` call sites | Code review: no `page.path` in log calls at blocked sites |
-| Instructions file disclosure (Pitfall 7) | Post-implementation review | Manual: read `instructions.txt` for filter mentions |
-| No audit log of blocked attempts (Pitfall 8) | `isBlocked()` call sites | Test: blocked access produces a log entry without company name |
+| Transition window (Pitfall 1) | Architecture decision: keep `isBlocked()` until explicit removal phase | PR review: `isBlocked()` import still present in `mcp-tools.ts` |
+| Unclosed marker fail-safe (Pitfall 2) | Core redaction function | Test: content with orphaned start returns truncated content + warning log |
+| Regex backtracking (Pitfall 3) | Core redaction function | Performance test: 100KB content < 10ms; regex uses `[\s\S]*?` not `(.|\n)*?` |
+| Code block false positives (Pitfall 4) | Design decision, document | Code comment + test demonstrating the behavior |
+| URL encoding (Pitfall 5) | URL injection implementation | Tests: space in path, Unicode in path, trailing slash in base URL |
+| Inconsistent tool coverage (Pitfall 6) | Integration phase | Code review: redaction applied only where `content` is present |
+| Greedy match (Pitfall 7) | Core redaction function | Test: two marker pairs with public content between |
+| Nested markers (Pitfall 8) | Core redaction function | Test: nested markers do not leak intermediate content |
+| Test coverage gap (Pitfall 9) | Test-first development | New GDPR tests written before old ones removed; test count >= 38 |
+| Content length (Pitfall 10) | Design decision | Document: no placeholder, silent removal |
+| `WIKIJS_BASE_URL` reuse (Pitfall 11) | Config phase | New optional env var in `config.ts` Zod schema |
+| Whitespace sensitivity (Pitfall 12) | Design decision, document | Exact format documented; strict matching only |
 
 ---
 
 ## Sources
 
-- [PortSwigger: Access control vulnerabilities](https://portswigger.net/web-security/access-control) — existence oracle via 403 vs 404 distinction
-- [Authress: Choosing 401/403/404](https://authress.io/knowledge-base/articles/choosing-the-right-http-error-code-401-403-404) — when to return 404 to prevent resource enumeration
-- [LockMeDown: Return 404 instead of 403](https://lockmedown.com/when-should-you-return-404-instead-of-403-http-status-code/) — detailed guidance on existence oracle prevention
-- [DailyCVE: Gateway auth bypass via path canonicalization mismatch (CWE-288)](https://dailycve.com/gateway-authentication-bypass-via-path-canonicalization-mismatch-cwe-288-moderate/) — real CVE for case/trailing-slash bypass
-- [Medium: Path normalisation story (API gateway bypass)](https://medium.com/@dipanshuchhanikar/bypassing-authentication-in-a-major-api-gateway-a-path-normalization-story-5f1bea6d3f08) — practical path-canonicalization bypass examples
-- [ICO: What is personal data?](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/personal-information-what-is-it/what-is-personal-data/what-is-personal-data/) — GDPR personal data definition; company names are not personal data but client contact info within client pages is
-- [GDPR.eu: What is considered personal data?](https://gdpr.eu/eu-gdpr-personal-data/) — indirect identifiers; client directory pages may contain personal data about contact persons
-- [Exabeam: GDPR audit logging requirements](https://www.exabeam.com/explainers/gdpr-compliance/how-does-gdpr-comply-with-log-management/) — audit trail requirements under GDPR Article 30
-- [Mezmo: GDPR logging best practices](https://www.mezmo.com/blog/best-practices-for-gdpr-logging) — what to capture in access logs for GDPR accountability
-- [Hoop.dev: What GDPR really expects from audit logs](https://hoop.dev/blog/what-gdpr-really-expects-from-audit-logs/) — log what is needed, not more (data minimisation in logs)
-- [Wiki.js GitHub Discussion #6672: singleByPath path format](https://github.com/requarks/wiki/discussions/6672) — path format without leading slash
-- [Wiki.js GitHub Discussion #5606: Two-char paths reserved for locale](https://github.com/requarks/wiki/discussions/5606) — locale prefix path behaviour
-- [Red Hat: MCP security risks and controls](https://www.redhat.com/en/blog/model-context-protocol-mcp-understanding-security-risks-and-controls) — MCP-specific information leakage via tool responses
-- [MCPcat: Error handling in MCP servers](https://mcpcat.io/guides/error-handling-custom-mcp-servers/) — sanitising MCP tool error responses
+- [Catastrophic Backtracking in JavaScript](https://javascript.info/regexp-catastrophic-backtracking) -- nested quantifiers and ReDoS patterns in JavaScript regex engine
+- [Runaway Regular Expressions: Catastrophic Backtracking](https://www.regular-expressions.info/catastrophic.html) -- comprehensive guide to backtracking-prone regex patterns
+- [Sonar: Dangers of Regular Expressions in JavaScript](https://www.sonarsource.com/blog/vulnerable-regular-expressions-javascript/) -- security analysis of regex vulnerabilities in JS
+- [Snyk: ReDoS and Catastrophic Backtracking](https://snyk.io/blog/redos-and-catastrophic-backtracking/) -- practical ReDoS examples and prevention
+- [Do NOT try parsing with regular expressions](https://kore-nordmann.de/blog/do_NOT_parse_using_regexp.html) -- why regex cannot handle nested structures (Chomsky level 3 limitation)
+- [markedjs/marked PR #1135: HTML comments compliance](https://github.com/markedjs/marked/pull/1135) -- HTML comment parsing edge cases in markdown
+- [Wiki.js Pages Documentation](https://docs.requarks.io/guide/pages) -- path format requirements, URL-safe characters
+- [Wiki.js Locales Documentation](https://docs.requarks.io/locales) -- locale prefix behavior in URLs
+- [Wiki.js GitHub Discussion #3578: Illegal characters in paths](https://github.com/requarks/wiki/discussions/3578) -- special character handling in Wiki.js paths
+- [Wiki.js GitHub Discussion #5606: Two-char path reservation](https://github.com/requarks/wiki/discussions/5606) -- locale prefix URL conflicts
+- [Wiki.js Feedback: Replace spaces in paths](https://feedback.js.wiki/wiki/p/replace-spaces-and-special-characters-in-path-with-underscores) -- spaces in Wiki.js paths
+- [ArjanCodes: Regex Performance and Security Best Practices](https://arjancodes.com/blog/regex-performance-optimization-and-security-best-practices/) -- timeout and validation strategies for regex
+- [Finding Unclosed Tags with Regex](https://concepts.waetech.com/unclosed_tags/) -- challenges of detecting unclosed HTML structures
+- [MDN: String.prototype.replaceAll()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replaceAll) -- performance characteristics of string replacement methods
+- [Redactable: Complete Guide to PII Redaction](https://www.redactable.com/blog/the-complete-guide-to-pii-redaction) -- proper vs improper redaction approaches and transition risks
 
 ---
-*Pitfalls research for: GDPR path filtering on MCP/API server*
+*Pitfalls research for: Marker-based GDPR content redaction and page URL injection on MCP server (wikijs-mcp-server v2.6)*
 *Researched: 2026-03-27*
