@@ -18,6 +18,7 @@ export const envSchema = z
       .string()
       .url("MCP_RESOURCE_DOCS_URL must be a valid URL")
       .optional(),
+    MCP_INSTRUCTIONS_PATH: z.string().optional(),
   })
   .transform((env) => ({
     port: env.PORT,
@@ -33,6 +34,7 @@ export const envSchema = z
       jwksUri: `https://login.microsoftonline.com/${env.AZURE_TENANT_ID}/discovery/v2.0/keys`,
       issuer: `https://login.microsoftonline.com/${env.AZURE_TENANT_ID}/v2.0`,
     },
+    instructionsPath: env.MCP_INSTRUCTIONS_PATH,
   }));
 
 export type AppConfig = z.output<typeof envSchema>;
