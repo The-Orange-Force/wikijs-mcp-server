@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: idle
-stopped_at: v2.6 milestone archived
+milestone: v2.7
+milestone_name: Metadata Search Fallback
+status: defining_requirements
+stopped_at: null
 last_updated: "2026-03-27"
-last_activity: 2026-03-27 -- v2.6 milestone archived
+last_activity: 2026-03-27 -- Milestone v2.7 started
 progress:
   total_phases: 0
   completed_phases: 0
@@ -21,11 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Planning next milestone
+**Current focus:** v2.7 Metadata Search Fallback
 
 ## Current Position
 
-No active milestone. v2.6 GDPR Content Redaction shipped 2026-03-27.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-27 — Milestone v2.7 started
 
 ## Completed Milestones
 
@@ -50,5 +53,5 @@ No active milestone. v2.6 GDPR Content Redaction shipped 2026-03-27.
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: v2.6 milestone archived
+Stopped at: Milestone v2.7 started
 Resume file: None

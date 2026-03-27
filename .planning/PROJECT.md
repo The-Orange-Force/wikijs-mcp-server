@@ -11,6 +11,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 ## Current State
 
 **Latest shipped:** v2.6 GDPR Content Redaction (2026-03-27)
+**Current milestone:** v2.7 Metadata Search Fallback
 
 The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only tools, marker-based GDPR content redaction, page URL injection, and Docker deployment support. All path-based blocking has been replaced with surgical content redaction.
 
@@ -51,7 +52,16 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 
 <!-- Current scope. Building toward these. -->
 
-(No active milestone — use `/gsd:new-milestone` to start next.)
+## Current Milestone: v2.7 Metadata Search Fallback
+
+**Goal:** Supplement the GraphQL search with a metadata fallback that matches queries against page paths, titles, and descriptions — so acronyms, path segments, and short tokens always surface results.
+
+**Target features:**
+- Metadata search fallback when GraphQL search returns insufficient results
+- Case-insensitive substring matching on path, title, and description
+- Deduplication, unpublished-page filtering, and limit enforcement
+- Updated tool description reflecting the fallback capability
+- Structured logging for fallback activity
 
 ### Out of Scope
 
@@ -143,4 +153,4 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 - Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
 
 ---
-*Last updated: 2026-03-27 after v2.6 milestone shipped*
+*Last updated: 2026-03-27 after v2.7 milestone started*
