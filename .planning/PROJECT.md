@@ -8,15 +8,11 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current Milestone: v2.6 GDPR Content Redaction
+## Current State
 
-**Goal:** Replace path-based page blocking with surgical marker-based content redaction, and inject page URLs into responses.
+**Latest shipped:** v2.6 GDPR Content Redaction (2026-03-27)
 
-**Target features:**
-- Remove path-based filtering (isBlocked() and all path-check logic)
-- Marker-based content redaction using `<!-- gdpr-start/end -->` HTML comment tags
-- Malformed-marker fail-safe (redact to end of content + warning log)
-- Inject page URL into get_page responses with configurable base URL
+The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only tools, marker-based GDPR content redaction, page URL injection, and Docker deployment support. All path-based blocking has been replaced with surgical content redaction.
 
 ## Requirements
 
@@ -55,7 +51,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 
 <!-- Current scope. Building toward these. -->
 
-(All v2.6 requirements shipped -- see Validated section above.)
+(No active milestone — use `/gsd:new-milestone` to start next.)
 
 ### Out of Scope
 
@@ -92,7 +88,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope
 - **v2.4 instructions:** MCP initialize response includes instructions field, file-based customization via MCP_INSTRUCTIONS_PATH, Docker volume mount
 - **v2.5->v2.6 GDPR:** Marker-based content redaction replaces path-blocking; all published pages accessible with PII surgically redacted
-- **Codebase:** 7,663 LOC TypeScript, 371 tests across 25 files
+- **Codebase:** 7,700 LOC TypeScript, 366 tests across 25 files
 - **Tech stack:** TypeScript, Fastify, @modelcontextprotocol/sdk, graphql-request, jose, Zod, Vitest
 
 ## Constraints
@@ -147,4 +143,4 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
 
 ---
-*Last updated: 2026-03-27 after v2.6 milestone complete*
+*Last updated: 2026-03-27 after v2.6 milestone shipped*

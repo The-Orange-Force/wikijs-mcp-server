@@ -2,6 +2,48 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.6 — GDPR Content Redaction
+
+**Shipped:** 2026-03-27
+**Phases:** 3 | **Plans:** 4
+
+### What Was Built
+- `redactContent()` pure function with two-pass regex for `<!-- gdpr-start/end -->` marker-based content redaction (26 unit tests)
+- `buildPageUrl()` helper injecting direct wiki page URLs into get_page responses with per-segment encoding
+- Config extension: `WIKIJS_LOCALE` with Zod default, `WIKIJS_BASE_URL` trailing slash normalization
+- Complete removal of `isBlocked()` path-based filtering from all 3 MCP tool handlers
+- 6-test E2E verification suite covering full redaction + URL + filter removal stack
+- Version bump to 2.6.0
+
+### What Worked
+- **Pure function first, then wire** — Phase 25 delivered a fully tested `redactContent()` before any integration work. Phase 26 wired it in with confidence.
+- **Three-phase dependency chain was clean** — 25 (function) → 26 (wiring) → 27 (removal) had zero circular deps or rework
+- **Plan deviation handling** — Phase 27 executor correctly identified that plan research incorrectly characterized file contents (gdpr.ts and gdpr.test.ts had dual-purpose content) and surgically adapted
+- **16 minutes total execution** — fastest 3-phase milestone; average 4 min/plan
+
+### What Was Inefficient
+- **Plan research underestimated file scope** — Phase 27 plan said to delete `src/gdpr.ts` and `src/__tests__/gdpr.test.ts` entirely, not knowing Phase 25 had added `redactContent()` to the same files. Auto-fixed at execution time but avoidable with better research.
+- **Version string split** — `mcp-tools.ts` bumped to 2.6.0 but `public-routes.ts` and `package.json` left at 2.4.0; should have been caught during Phase 27 execution
+- **Smoke test signature drift** — `createMcpServer` gained a 3rd parameter in Phase 26 but `smoke.test.ts` wasn't updated (latent defect)
+
+### Patterns Established
+- **Two-pass regex for marker-based redaction** — non-greedy pair matching, then greedy unclosed-start fail-closed
+- **Structured return value with warnings** — `RedactionResult { content, count, warnings }` over side-effect logging
+- **Per-segment URL encoding** — split on `/`, encode each, rejoin; preserves path separators while encoding special chars
+- **Config propagation through Fastify plugin chain** — AppConfig flows buildApp → protectedRoutes → createMcpServer → handler closures
+
+### Key Lessons
+1. **Plan research must verify file contents, not assume** — Phase 27's plan incorrectly described file scope based on v2.5 state. Research should read current files, not rely on prior knowledge.
+2. **Version bumps should be coordinated across all version strings** — a single-file bump creates confusing divergence; all version references should be updated atomically.
+3. **Smoke tests must track signature changes** — when a shared function gains parameters, all callers need updating, including test utilities.
+
+### Cost Observations
+- Model mix: ~50% sonnet (execution), ~40% opus (planning/audit/completion), ~10% haiku (research)
+- Sessions: ~3 (planning/research, execution, audit/completion)
+- Notable: 16 minutes total execution across 4 plans; fastest per-plan average (4 min)
+
+---
+
 ## Milestone: v2.5 — GDPR Path Filter
 
 **Shipped:** 2026-03-27
@@ -179,6 +221,7 @@
 | v2.3 | 4 | 8 | Aggressive consolidation (17→3 tools, 3→1 scopes), fastest milestone |
 | v2.4 | 3 | 4 | Audit-driven gap closure, smallest milestone, zero-config Docker deploys |
 | v2.5 | 3 | 3 | GDPR compliance, security-first design, integration tests catch error format mismatch |
+| v2.6 | 3 | 4 | Marker-based redaction replaces path blocking, URL injection, fastest per-plan average |
 
 ### Cumulative Quality
 
@@ -190,6 +233,7 @@
 | v2.3 | 304 | 6,305 | None (removed msal-node) |
 | v2.4 | 321 | 3,225 (src/) | None |
 | v2.5 | 371 | 7,663 | None |
+| v2.6 | 366 | 7,700 | None |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -199,3 +243,4 @@
 4. **Aggressive simplification pays dividends** — v2.3 removal of 14 tools and 2 scopes reduced maintenance without losing value
 5. **Milestone audits catch real gaps** — v2.4 audit identified Docker flow gap that led to Phase 21; validates the audit step as non-ceremonial
 6. **Integration tests catch what unit tests miss** — v2.5 byte-identical comparison caught error format divergence between blocked and genuine not-found paths that passed all unit tests
+7. **Plan research must verify current file contents** — v2.6 Phase 27 plan incorrectly assumed file scope from prior milestone state; always read current files during research

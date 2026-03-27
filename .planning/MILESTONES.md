@@ -1,5 +1,34 @@
 # Milestones
 
+## v2.6 GDPR Content Redaction (Shipped: 2026-03-27)
+
+**Phases:** 25-27 (3 phases, 4 plans, 7 tasks)
+**Tests:** 366 passing across 25 files
+**LOC:** 7,700 TypeScript
+**Timeline:** 1 day (2026-03-27)
+**Commits:** 24 | **Lines changed:** +1,062 / -1,021
+**Requirements:** 10/10 satisfied
+**Audit:** tech_debt (v2.6-MILESTONE-AUDIT.md) — 0 blockers, 4 minor items
+
+**Delivered:** Marker-based GDPR content redaction replacing path-based page blocking, with page URL injection in get_page responses.
+
+**Key accomplishments:**
+1. `redactContent()` pure function with two-pass regex for `<!-- gdpr-start/end -->` marker-based content redaction (26 unit tests)
+2. `buildPageUrl()` helper injecting direct wiki page URLs into get_page responses with configurable locale
+3. Removed `isBlocked()` path-based filtering from all 3 MCP tool handlers — all published pages now accessible
+4. Fail-closed safety: unclosed GDPR markers redact to end of content with structured warning logging
+5. 6-test E2E verification suite covering full redaction + URL + filter removal stack
+
+**Known Tech Debt:**
+- smoke.test.ts calls createMcpServer with 2 args instead of 3 (latent TypeError if get_page invoked)
+- TypeScript compile errors in mcp-tools-phase26.test.ts (missing msgPrefix on mock)
+- Version string split: public-routes.ts and package.json at 2.4.0, mcp-tools.ts at 2.6.0
+- Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
+
+**Archives:** [ROADMAP](milestones/v2.6-ROADMAP.md) | [REQUIREMENTS](milestones/v2.6-REQUIREMENTS.md) | [AUDIT](milestones/v2.6-MILESTONE-AUDIT.md)
+
+---
+
 ## v2.5 GDPR Path Filter (Shipped: 2026-03-27)
 
 **Phases:** 22-24 (3 phases, 3 plans)
