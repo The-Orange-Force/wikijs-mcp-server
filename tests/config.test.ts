@@ -129,3 +129,33 @@ describe("envSchema", () => {
     expect(fieldErrors.WIKIJS_TOKEN).toBeDefined();
   });
 });
+
+describe("envSchema — MCP_INSTRUCTIONS_PATH", () => {
+  it("is accepted as an optional env var and mapped to instructionsPath", () => {
+    const result = envSchema.safeParse({
+      ...validEnv,
+      MCP_INSTRUCTIONS_PATH: "/app/instructions.txt",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.instructionsPath).toBe("/app/instructions.txt");
+  });
+
+  it("is undefined in parsed config when MCP_INSTRUCTIONS_PATH is not provided", () => {
+    const result = envSchema.safeParse(validEnv);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.instructionsPath).toBeUndefined();
+  });
+
+  it("passes through any non-empty string path value", () => {
+    const customPath = "/custom/path/to/instructions.txt";
+    const result = envSchema.safeParse({
+      ...validEnv,
+      MCP_INSTRUCTIONS_PATH: customPath,
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.instructionsPath).toBe(customPath);
+  });
+});
