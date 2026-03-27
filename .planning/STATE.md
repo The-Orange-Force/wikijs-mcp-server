@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: GDPR Content Redaction
 status: completed
-stopped_at: Completed 25-01-PLAN.md
-last_updated: "2026-03-27T20:28:57.818Z"
-last_activity: 2026-03-27 -- Phase 25 Plan 01 executed (redactContent TDD)
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-03-27T20:40:43.077Z"
+last_activity: 2026-03-27 -- Phase 26 Plan 01 executed (config + buildPageUrl TDD)
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 1
+  total_plans: 4
+  completed_plans: 2
   percent: 96
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 26 of 27 (Redaction Wiring and URL Injection)
-Plan: 01 of 1 (Phase 25 complete)
-Status: Phase 25 complete, Phase 26 ready
-Last activity: 2026-03-27 -- Phase 25 Plan 01 executed (redactContent TDD)
+Plan: 02 of 2 (next: handler wiring)
+Status: Phase 26 Plan 01 complete, Plan 02 ready
+Last activity: 2026-03-27 -- Phase 26 Plan 01 executed (config + buildPageUrl TDD)
 
 Progress: [██████████] 96%
 
@@ -44,6 +44,7 @@ Progress: [██████████] 96%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 25 | 1 | 3min | 3min |
+| Phase 26 P01 | 2min | 1 tasks | 5 files |
 
 ## Completed Milestones
 
@@ -61,6 +62,8 @@ Progress: [██████████] 96%
 - [Phase 25] Two-pass regex approach for GDPR content redaction: non-greedy pair matching then greedy unclosed-start fail-closed
 - [Phase 25] Orphaned end markers left in output content (warning only, no stripping)
 - [Phase 25] Regex objects created inside function body to prevent lastIndex state bugs
+- [Phase 26]: buildPageUrl uses per-segment encodeURIComponent to preserve / separators while encoding special chars and non-ASCII
+- [Phase 26]: WIKIJS_LOCALE defaults to 'en' in Zod schema, trailing slash normalization in transform step
 
 ### Blockers/Concerns
 
@@ -68,6 +71,6 @@ Progress: [██████████] 96%
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:26:37.039Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-03-27T20:40:43.075Z
+Stopped at: Completed 26-01-PLAN.md
 Resume file: None

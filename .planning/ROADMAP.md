@@ -153,7 +153,7 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25. Core Redaction Function | 1/1 | Complete    | 2026-03-27 | - |
-| 26. Redaction Wiring and URL Injection | v2.6 | 0/2 | Not started | - |
+| 26. Redaction Wiring and URL Injection | 1/2 | In Progress|  | - |
 | 27. Path Filter Removal and E2E Verification | v2.6 | 0/1 | Not started | - |
 
 ---
