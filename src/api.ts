@@ -127,7 +127,7 @@ export class WikiJsApi {
   // Batch-resolve unresolved search results via a single pages.list call
   private async resolveViaPagesList(
     unresolved: UnresolvedItem[]
-  ): Promise<{ resolved: WikiJsPage[]; dropped: UnresolvedItem[] }> {
+  ): Promise<{ resolved: WikiJsPage[]; dropped: UnresolvedItem[]; allPages: WikiJsPage[] }> {
     const query = `
       {
         pages {
@@ -164,7 +164,58 @@ export class WikiJsApi {
       }
     }
 
-    return { resolved, dropped };
+    return { resolved, dropped, allPages };
+  }
+
+  // Supplement search results by matching query against page titles and paths
+  private async searchPagesByMetadata(
+    query: string,
+    limit: number,
+    existingIds: Set<number>,
+    allPages?: WikiJsPage[]
+  ): Promise<WikiJsPage[]> {
+    // Fetch pages if not provided (zero-result path)
+    if (!allPages) {
+      try {
+        const pagesQuery = `
+          {
+            pages {
+              list (limit: 500, orderBy: UPDATED) {
+                id path title description isPublished createdAt updatedAt
+              }
+            }
+          }
+        `;
+        const response: any = await this.client.request(pagesQuery);
+        allPages = response.pages.list;
+      } catch {
+        return [];
+      }
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const titleMatches: WikiJsPage[] = [];
+    const pathOnlyMatches: WikiJsPage[] = [];
+
+    for (const page of allPages) {
+      // Exclude unpublished pages
+      if (page.isPublished !== true) continue;
+      // Deduplicate against existing results
+      if (existingIds.has(page.id)) continue;
+
+      const lowerTitle = page.title.toLowerCase();
+      const lowerPath = page.path.toLowerCase();
+
+      if (lowerTitle.includes(lowerQuery)) {
+        titleMatches.push(page);
+      } else if (lowerPath.includes(lowerQuery)) {
+        pathOnlyMatches.push(page);
+      }
+    }
+
+    // Title matches first, then path-only matches
+    // Within each tier, UPDATED order preserved from pages.list
+    return [...titleMatches, ...pathOnlyMatches];
   }
 
   // Search pages by keyword query, resolving search index IDs to real database page IDs
@@ -189,10 +240,16 @@ export class WikiJsApi {
     `;
     const response: any = await this.client.request(gqlQuery);
     const rawResults: RawSearchResult[] = (response.pages.search.results ?? []).slice(0, limit);
-    const totalHits: number = response.pages.search.totalHits ?? 0;
+    let totalHits: number = response.pages.search.totalHits ?? 0;
 
     if (rawResults.length === 0) {
-      return { results: [], totalHits };
+      const existingIds = new Set<number>();
+      const metadataResults = await this.searchPagesByMetadata(query, limit, existingIds);
+      const finalResults = metadataResults.slice(0, limit);
+      return {
+        results: finalResults,
+        totalHits: Math.max(totalHits, finalResults.length),
+      };
     }
 
     // Step 2: Resolve each result via singleByPath in parallel
@@ -217,11 +274,13 @@ export class WikiJsApi {
     }
 
     // Step 3: Fallback to pages.list for unresolved results
+    let allPages: WikiJsPage[] | undefined;
     if (unresolved.length > 0) {
       const fallback = await this.resolveViaPagesList(unresolved);
       resolved.push(...fallback.resolved);
+      allPages = fallback.allPages;
 
-      // Step 4: Log warnings for still-dropped results
+      // Log warnings for still-dropped results
       const ctx = requestContext.getStore();
       for (const dropped of fallback.dropped) {
         ctx?.log.warn(
@@ -237,6 +296,15 @@ export class WikiJsApi {
           "All singleByPath calls failed; check API token has manage:pages + delete:pages permissions"
         );
       }
+    }
+
+    // Step 4: Metadata fallback if still under limit
+    if (resolved.length < limit) {
+      const existingIds = new Set(resolved.map(r => r.id));
+      const metadataResults = await this.searchPagesByMetadata(query, limit, existingIds, allPages);
+      const remainingSlots = limit - resolved.length;
+      resolved.push(...metadataResults.slice(0, remainingSlots));
+      totalHits = Math.max(totalHits, resolved.length);
     }
 
     return { results: resolved, totalHits };
