@@ -23,7 +23,7 @@ Requirements for GDPR Content Redaction milestone. Each maps to roadmap phases.
 
 ### URL Injection
 
-- [ ] **URL-01**: get_page response includes a `url` field with direct link to the wiki page
+- [x] **URL-01**: get_page response includes a `url` field with direct link to the wiki page
 - [x] **URL-02**: Wiki page base URL is a server configuration constant, not hardcoded inline
 
 ## Future Requirements
@@ -62,7 +62,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REDACT-04 | Phase 25 | Complete |
 | REDACT-05 | Phase 25 | Complete |
 | REDACT-06 | Phase 25 | Complete |
-| URL-01 | Phase 26 | Pending |
+| URL-01 | Phase 26 | Complete |
 | URL-02 | Phase 26 | Complete |
 | FILTER-01 | Phase 27 | Pending |
 | FILTER-02 | Phase 27 | Pending |
