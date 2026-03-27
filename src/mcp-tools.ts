@@ -72,13 +72,19 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
         // Redact GDPR-marked content (no-op when no markers present)
         const redactionResult = redactContent(page.content ?? "", page.id, page.path);
 
-        // Log redaction warnings if any
-        if (redactionResult.warnings.length > 0) {
+        // Log redaction activity
+        if (redactionResult.redactionCount > 0) {
           const ctx = requestContext.getStore();
-          ctx?.log.warn(
-            { pageId: page.id, path: page.path, warnings: redactionResult.warnings },
-            "GDPR redaction warnings",
+          ctx?.log.info(
+            { pageId: page.id, path: page.path, redactionCount: redactionResult.redactionCount },
+            "GDPR content redacted",
           );
+          if (redactionResult.warnings.length > 0) {
+            ctx?.log.warn(
+              { pageId: page.id, path: page.path, warnings: redactionResult.warnings },
+              "GDPR redaction warnings",
+            );
+          }
         }
 
         // Build response with explicit field ordering and URL

@@ -227,6 +227,7 @@ describe("Gap 4: redaction warnings are logged via ctx.log.warn", () => {
         child: vi.fn(),
         level: "info",
         silent: vi.fn(),
+        msgPrefix: "",
       },
     };
 
@@ -270,6 +271,7 @@ describe("Gap 4: redaction warnings are logged via ctx.log.warn", () => {
         child: vi.fn(),
         level: "info",
         silent: vi.fn(),
+        msgPrefix: "",
       },
     };
 
