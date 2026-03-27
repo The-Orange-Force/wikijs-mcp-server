@@ -117,10 +117,10 @@ Phase 27: Path Filter Removal and E2E Verification -- isBlocked() removal, 6-tes
   3. A page that appears in both GraphQL results and metadata fallback appears only once in the response (no duplicates)
   4. Unpublished pages never appear in fallback results, even when they match the query
   5. Total results never exceed the requested limit, regardless of how many metadata matches exist
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 28-01: TBD
+- [ ] 28-01-PLAN.md -- Implement searchPagesByMetadata() method, extend resolveViaPagesList() return type, wire into searchPages() pipeline, and add unit tests
 
 ### Phase 29: Test Coverage, Observability, and Tool Description
 **Goal**: All fallback correctness requirements are verified by automated tests, fallback activity is observable in logs, and AI assistants know the search tool handles acronyms and path queries
@@ -149,8 +149,8 @@ Phases execute in numeric order: 28 -> 29
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25-27. GDPR Content Redaction | v2.6 | 4/4 | Complete | 2026-03-27 |
-| 28. Metadata Fallback Implementation | v2.7 | 0/? | Not started | - |
+| 28. Metadata Fallback Implementation | v2.7 | 0/1 | Not started | - |
 | 29. Test Coverage, Observability, and Tool Description | v2.7 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after v2.7 roadmap created*
+*Last updated: 2026-03-28 after Phase 28 planning completed*
