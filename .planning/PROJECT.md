@@ -8,9 +8,15 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current State
+## Current Milestone: v2.6 GDPR Content Redaction
 
-v2.5 shipped 2026-03-27. Planning next milestone.
+**Goal:** Replace path-based page blocking with surgical marker-based content redaction, and inject page URLs into responses.
+
+**Target features:**
+- Remove path-based filtering (isBlocked() and all path-check logic)
+- Marker-based content redaction using `<!-- gdpr-start/end -->` HTML comment tags
+- Malformed-marker fail-safe (redact to end of content + warning log)
+- Inject page URL into get_page responses with configurable base URL
 
 ## Requirements
 
@@ -50,7 +56,10 @@ v2.5 shipped 2026-03-27. Planning next milestone.
 
 <!-- Current scope. Building toward these. -->
 
-(None — planning next milestone)
+- [ ] Remove path-based GDPR filtering from all MCP tools
+- [ ] Add marker-based content redaction (`<!-- gdpr-start/end -->`)
+- [ ] Handle malformed markers (fail-safe redact to end + warning log)
+- [ ] Inject page URL into get_page responses (configurable base URL)
 
 ### Out of Scope
 
@@ -142,4 +151,4 @@ v2.5 shipped 2026-03-27. Planning next milestone.
 - Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
 
 ---
-*Last updated: 2026-03-27 after v2.5 milestone*
+*Last updated: 2026-03-27 after v2.6 milestone start*
