@@ -108,10 +108,10 @@ Plans:
   3. `search_pages` results never include blocked pages, regardless of which search resolution path (primary GraphQL, metadata, HTTP content, or `resolveViaPagesList` fallback) produced them
   4. `list_pages` results never include blocked pages
   5. Blocked access attempts produce a structured server-side log entry containing tool name, user identity, and correlation ID -- but never the company name segment of the path
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 23-01: TBD
+- [ ] 23-01-PLAN.md -- TDD GDPR filtering in all 3 tool handlers with audit logging
 
 ### Phase 24: Integration Tests and Security Hygiene
 **Goal**: End-to-end verification confirms that GDPR filtering works correctly from the MCP client perspective, and no information about the filter leaks through side channels
@@ -139,8 +139,8 @@ Phases execute in numeric order: 22 -> 23 -> 24
 | 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22. Core GDPR Predicate | v2.5 | 0/1 | Planning | - |
-| 23. Tool Handler Integration | v2.5 | 0/0 | Not started | - |
+| 23. Tool Handler Integration | v2.5 | 0/1 | Planning | - |
 | 24. Integration Tests and Security Hygiene | v2.5 | 0/0 | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after Phase 22 planning*
+*Last updated: 2026-03-27 after Phase 23 planning*
