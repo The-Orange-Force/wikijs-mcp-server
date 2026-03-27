@@ -106,10 +106,10 @@ Phase 24: Integration Tests and Security Hygiene -- E2E MCP response verificatio
   3. An unclosed `<!-- gdpr-start -->` without matching end marker causes everything from that marker to end of content to be redacted (fail-closed)
   4. Malformed markers produce a warning log entry containing page ID and path
   5. Markers with varying case and whitespace around the tag name are matched correctly
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 25-01: TBD
+- [ ] 25-01-PLAN.md -- TDD: redactContent() function with two-pass regex redaction and comprehensive unit tests
 
 ### Phase 26: Redaction Wiring and URL Injection
 **Goal**: The get_page tool returns redacted content and a clickable page URL, with the wiki base URL driven by configuration
@@ -151,9 +151,9 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
-| 25. Core Redaction Function | v2.6 | 0/? | Not started | - |
+| 25. Core Redaction Function | v2.6 | 0/1 | Not started | - |
 | 26. Redaction Wiring and URL Injection | v2.6 | 0/? | Not started | - |
 | 27. Path Filter Removal and E2E Verification | v2.6 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after Phase 27 planning*
+*Last updated: 2026-03-27 after Phase 25 planning*
