@@ -19,7 +19,7 @@ Requirements for GDPR Path Filter milestone. Each maps to roadmap phases.
 
 - [x] **SEC-01**: `get_page` always completes upstream WikiJS API call before path check (prevents timing oracle)
 - [x] **SEC-02**: Blocked access attempts are logged with tool name, user identity, and correlation ID (no company name in logs)
-- [ ] **SEC-03**: MCP instructions file does not reveal filter structure or blocked path patterns
+- [x] **SEC-03**: MCP instructions file does not reveal filter structure or blocked path patterns
 
 ## Future Requirements
 
@@ -49,7 +49,7 @@ Requirements for GDPR Path Filter milestone. Each maps to roadmap phases.
 | FILT-05 | Phase 23 | Complete |
 | SEC-01 | Phase 23 | Complete |
 | SEC-02 | Phase 23 | Complete |
-| SEC-03 | Phase 24 | Pending |
+| SEC-03 | Phase 24 | Complete |
 
 **Coverage:**
 - v2.5 requirements: 8 total

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: GDPR Path Filter
 status: completed
-stopped_at: Completed 23-01-PLAN.md
-last_updated: "2026-03-27T14:49:48.889Z"
-last_activity: 2026-03-27 -- Phase 23 Plan 01 executed (GDPR tool handler filtering)
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-27T14:57:29.015Z"
+last_activity: 2026-03-27 -- Phase 24 Plan 01 executed (GDPR integration tests and security hygiene)
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 3
-  completed_plans: 2
-  percent: 96
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.5 GDPR Path Filter -- Phase 23 (Tool Handler Integration)
+**Current focus:** v2.5 GDPR Path Filter -- Phase 24 (Integration Tests and Security Hygiene) -- COMPLETE
 
 ## Current Position
 
-Phase: 23 of 24 (Tool Handler Integration) -- second of 3 phases in v2.5
+Phase: 24 of 24 (Integration Tests and Security Hygiene) -- third of 3 phases in v2.5
 Plan: 01 of 01 complete
-Status: Phase 23 complete -- ready for Phase 24
-Last activity: 2026-03-27 -- Phase 23 Plan 01 executed (GDPR tool handler filtering)
+Status: v2.5 milestone complete -- all 3 phases done
+Last activity: 2026-03-27 -- Phase 24 Plan 01 executed (GDPR integration tests and security hygiene)
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Completed Milestones
 
@@ -53,6 +53,8 @@ Progress: [██████████] 96%
 - [Phase 23]: logBlockedAccess helper placed at module level (outside createMcpServer) since it only needs requestContext
 - [Phase 23]: Used real isBlocked predicate in tests rather than mocking for more realistic coverage
 - [Phase 23]: McpServer handler testing via _registeredTools[toolName].handler direct invocation
+- [Phase 24]: Fixed blocked get_page to throw (not hardcode text) for byte-identical match with genuine not-found
+- [Phase 24]: search_pages response content is filtered results array; totalHits adjustment verified indirectly via array length
 
 ### Blockers/Concerns
 
@@ -60,6 +62,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T14:45:48.677Z
-Stopped at: Completed 23-01-PLAN.md
+Last session: 2026-03-27T14:57:16.165Z
+Stopped at: Completed 24-01-PLAN.md
 Resume file: None
