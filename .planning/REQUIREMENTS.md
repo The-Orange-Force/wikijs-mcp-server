@@ -11,14 +11,14 @@ Requirements for GDPR Path Filter milestone. Each maps to roadmap phases.
 
 - [x] **FILT-01**: `isBlocked()` utility blocks paths with exactly 2 segments where first is "Clients" (case-insensitive)
 - [x] **FILT-02**: `isBlocked()` normalizes paths (leading/trailing slashes, double slashes, case folding) before checking
-- [ ] **FILT-03**: `get_page` returns generic "Page not found" error for blocked pages (indistinguishable from absent page)
-- [ ] **FILT-04**: `search_pages` silently excludes blocked pages from results
-- [ ] **FILT-05**: `list_pages` silently excludes blocked pages from results
+- [x] **FILT-03**: `get_page` returns generic "Page not found" error for blocked pages (indistinguishable from absent page)
+- [x] **FILT-04**: `search_pages` silently excludes blocked pages from results
+- [x] **FILT-05**: `list_pages` silently excludes blocked pages from results
 
 ### Security
 
-- [ ] **SEC-01**: `get_page` always completes upstream WikiJS API call before path check (prevents timing oracle)
-- [ ] **SEC-02**: Blocked access attempts are logged with tool name, user identity, and correlation ID (no company name in logs)
+- [x] **SEC-01**: `get_page` always completes upstream WikiJS API call before path check (prevents timing oracle)
+- [x] **SEC-02**: Blocked access attempts are logged with tool name, user identity, and correlation ID (no company name in logs)
 - [ ] **SEC-03**: MCP instructions file does not reveal filter structure or blocked path patterns
 
 ## Future Requirements
@@ -44,11 +44,11 @@ Requirements for GDPR Path Filter milestone. Each maps to roadmap phases.
 |-------------|-------|--------|
 | FILT-01 | Phase 22 | Complete |
 | FILT-02 | Phase 22 | Complete |
-| FILT-03 | Phase 23 | Pending |
-| FILT-04 | Phase 23 | Pending |
-| FILT-05 | Phase 23 | Pending |
-| SEC-01 | Phase 23 | Pending |
-| SEC-02 | Phase 23 | Pending |
+| FILT-03 | Phase 23 | Complete |
+| FILT-04 | Phase 23 | Complete |
+| FILT-05 | Phase 23 | Complete |
+| SEC-01 | Phase 23 | Complete |
+| SEC-02 | Phase 23 | Complete |
 | SEC-03 | Phase 24 | Pending |
 
 **Coverage:**

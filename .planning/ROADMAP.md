@@ -79,7 +79,7 @@ Phase 21: Docker Instructions Path Default -- Zod default for MCP_INSTRUCTIONS_P
 ### Phases
 
 - [x] **Phase 22: Core GDPR Predicate** - `isBlocked()` utility with path normalization and full unit test coverage (completed 2026-03-27)
-- [ ] **Phase 23: Tool Handler Integration** - Apply GDPR filter in all 3 tool handlers with timing-safe error responses and audit logging
+- [x] **Phase 23: Tool Handler Integration** - Apply GDPR filter in all 3 tool handlers with timing-safe error responses and audit logging (completed 2026-03-27)
 - [ ] **Phase 24: Integration Tests and Security Hygiene** - End-to-end MCP response verification and instructions file compliance audit
 
 ## Phase Details
@@ -108,7 +108,7 @@ Plans:
   3. `search_pages` results never include blocked pages, regardless of which search resolution path (primary GraphQL, metadata, HTTP content, or `resolveViaPagesList` fallback) produced them
   4. `list_pages` results never include blocked pages
   5. Blocked access attempts produce a structured server-side log entry containing tool name, user identity, and correlation ID -- but never the company name segment of the path
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 23-01-PLAN.md -- TDD GDPR filtering in all 3 tool handlers with audit logging
@@ -139,7 +139,7 @@ Phases execute in numeric order: 22 -> 23 -> 24
 | 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22. Core GDPR Predicate | v2.5 | Complete    | 2026-03-27 | 2026-03-27 |
-| 23. Tool Handler Integration | v2.5 | 0/1 | Planning | - |
+| 23. Tool Handler Integration | 1/1 | Complete   | 2026-03-27 | - |
 | 24. Integration Tests and Security Hygiene | v2.5 | 0/1 | Planning | - |
 
 ---
