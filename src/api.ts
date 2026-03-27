@@ -191,6 +191,9 @@ export class WikiJsApi {
       } catch {
         return [];
       }
+      if (!allPages) {
+        return [];
+      }
     }
 
     const lowerQuery = query.toLowerCase();
