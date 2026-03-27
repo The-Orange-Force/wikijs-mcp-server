@@ -78,7 +78,7 @@ Phase 21: Docker Instructions Path Default -- Zod default for MCP_INSTRUCTIONS_P
 
 ### Phases
 
-- [ ] **Phase 22: Core GDPR Predicate** - `isBlocked()` utility with path normalization and full unit test coverage
+- [x] **Phase 22: Core GDPR Predicate** - `isBlocked()` utility with path normalization and full unit test coverage (completed 2026-03-27)
 - [ ] **Phase 23: Tool Handler Integration** - Apply GDPR filter in all 3 tool handlers with timing-safe error responses and audit logging
 - [ ] **Phase 24: Integration Tests and Security Hygiene** - End-to-end MCP response verification and instructions file compliance audit
 
@@ -93,10 +93,10 @@ Phase 21: Docker Instructions Path Default -- Zod default for MCP_INSTRUCTIONS_P
   2. `isBlocked()` correctly handles all normalization variants (leading/trailing slashes, double slashes, case folding of first segment) and returns the same result regardless of path format
   3. `isBlocked("Clients")` returns false for 1-segment paths, and `isBlocked("Clients/Acme/SubPage")` returns false for 3+ segment paths
   4. Unit tests cover all edge cases with full branch coverage, following the existing `scope-mapper.test.ts` pattern
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 22-01-PLAN.md -- TDD isBlocked() predicate with full edge-case unit tests
+- [x] 22-01-PLAN.md -- TDD isBlocked() predicate with full edge-case unit tests
 
 ### Phase 23: Tool Handler Integration
 **Goal**: All three MCP tools enforce GDPR path filtering so that blocked client pages are invisible to MCP clients
@@ -138,9 +138,9 @@ Phases execute in numeric order: 22 -> 23 -> 24
 | 10-14. OAuth Proxy | v2.2 | 5/5 | Complete | 2026-03-26 |
 | 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
-| 22. Core GDPR Predicate | v2.5 | 0/1 | Planning | - |
+| 22. Core GDPR Predicate | v2.5 | 1/1 | Complete | 2026-03-27 |
 | 23. Tool Handler Integration | v2.5 | 0/1 | Planning | - |
 | 24. Integration Tests and Security Hygiene | v2.5 | 0/1 | Planning | - |
 
 ---
-*Last updated: 2026-03-27 after Phase 24 planning*
+*Last updated: 2026-03-27 after Phase 22 execution*

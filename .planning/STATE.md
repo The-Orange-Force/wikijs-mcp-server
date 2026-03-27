@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: GDPR Path Filter
-status: planning
-stopped_at: Phase 24 context gathered
-last_updated: "2026-03-27T13:53:29.297Z"
-last_activity: 2026-03-27 -- v2.5 roadmap created
+status: completed
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-03-27T14:35:59.535Z"
+last_activity: 2026-03-27 -- Phase 22 Plan 01 executed (isBlocked predicate)
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 1
+  percent: 92
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 22 of 24 (Core GDPR Predicate) -- first of 3 phases in v2.5
-Plan: --
-Status: Ready to plan
-Last activity: 2026-03-27 -- v2.5 roadmap created
+Plan: 01 of 01 complete
+Status: Phase 22 complete -- ready for Phase 23
+Last activity: 2026-03-27 -- Phase 22 Plan 01 executed (isBlocked predicate)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████████░] 92%
 
 ## Completed Milestones
 
@@ -47,6 +47,9 @@ Progress: [░░░░░░░░░░] 0%
 - Research recommends case-insensitive matching (`.toLowerCase()`) for first path segment -- ARCHITECTURE.md/PITFALLS.md govern over FEATURES.md strict-case guidance
 - Filter applies post-fetch in `mcp-tools.ts`; `api.ts` stays policy-neutral
 - Zero new npm dependencies -- pure TypeScript built-ins only
+- isBlocked() is the only export from src/gdpr.ts -- normalizePath not exposed
+- "clients" literal hardcoded inside function body, not a module constant
+- Path traversal segments (.. and .) treated as literal -- no resolution needed
 
 ### Blockers/Concerns
 
@@ -54,6 +57,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T13:53:29.295Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-integration-tests-and-security-hygiene/24-CONTEXT.md
+Last session: 2026-03-27T14:35:59.533Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: None
