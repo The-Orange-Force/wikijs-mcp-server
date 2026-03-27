@@ -83,6 +83,7 @@ Copy `example.env` to `.env`. Required vars:
 | `AZURE_CLIENT_ID` | Yes | Azure AD client (UUID) | `550e8400-e29b-41d4-a716-446655440001` |
 | `MCP_RESOURCE_URL` | Yes | Public URL of this MCP server | `http://localhost:3200` |
 | `MCP_RESOURCE_DOCS_URL` | No | Documentation URL for MCP server | `https://docs.example.com` |
+| `MCP_INSTRUCTIONS_PATH` | No | Path to custom MCP instructions file (default: /app/instructions.txt) | `/app/instructions.txt` |
 
 Optional: `PORT` (default 3200), `DEBUG`, `WIKIJS_LOCALE` (default: `en-US`)
 
