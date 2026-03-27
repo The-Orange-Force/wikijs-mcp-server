@@ -98,6 +98,7 @@ export function makeTestConfig(
       issuer: TEST_CONFIG.issuer,
       ...overrides,
     },
+    instructionsPath: '/app/instructions.txt',
   };
 }
 

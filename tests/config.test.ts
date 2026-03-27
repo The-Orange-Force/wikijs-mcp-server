@@ -141,11 +141,11 @@ describe("envSchema — MCP_INSTRUCTIONS_PATH", () => {
     expect(result.data.instructionsPath).toBe("/app/instructions.txt");
   });
 
-  it("is undefined in parsed config when MCP_INSTRUCTIONS_PATH is not provided", () => {
+  it("defaults to /app/instructions.txt when MCP_INSTRUCTIONS_PATH is not provided", () => {
     const result = envSchema.safeParse(validEnv);
     expect(result.success).toBe(true);
     if (!result.success) return;
-    expect(result.data.instructionsPath).toBeUndefined();
+    expect(result.data.instructionsPath).toBe('/app/instructions.txt');
   });
 
   it("passes through any non-empty string path value", () => {

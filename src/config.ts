@@ -18,7 +18,7 @@ export const envSchema = z
       .string()
       .url("MCP_RESOURCE_DOCS_URL must be a valid URL")
       .optional(),
-    MCP_INSTRUCTIONS_PATH: z.string().optional(),
+    MCP_INSTRUCTIONS_PATH: z.string().default('/app/instructions.txt'),
   })
   .transform((env) => ({
     port: env.PORT,
