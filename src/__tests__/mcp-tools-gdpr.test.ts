@@ -5,12 +5,16 @@
  * correctly filter blocked client directory pages and produce structured
  * audit log entries.
  *
- * Requirements covered: FILT-03, FILT-04, FILT-05, SEC-01, SEC-02
+ * Also covers URL injection, content redaction wiring, and tool description
+ * verification.
+ *
+ * Requirements covered: FILT-03, FILT-04, FILT-05, SEC-01, SEC-02, URL-01, URL-02
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMcpServer } from "../mcp-tools.js";
-import { isBlocked } from "../gdpr.js";
+import { isBlocked, REDACTION_PLACEHOLDER } from "../gdpr.js";
+import type { AppConfig } from "../config.js";
 import type { WikiJsApi } from "../api.js";
 import type { WikiJsPage, PageSearchResult } from "../types.js";
 
@@ -61,6 +65,25 @@ const SAFE_PAGE_2 = makePage({
  *  When `throw new Error("Page not found")` is caught, String(error) = "Error: Page not found". */
 const ABSENT_PAGE_ERROR =
   "Error in get_page: Error: Page not found. Verify the page ID using search_pages or list_pages.";
+
+/** Test AppConfig for createMcpServer calls */
+const testConfig: AppConfig = {
+  port: 0,
+  wikijs: {
+    baseUrl: "http://localhost:3000",
+    token: "test-token",
+    locale: "en",
+  },
+  azure: {
+    tenantId: "550e8400-e29b-41d4-a716-446655440000",
+    clientId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    resourceUrl: "https://mcp.example.com",
+    resourceDocsUrl: undefined,
+    jwksUri: "https://login.microsoftonline.com/550e8400-e29b-41d4-a716-446655440000/discovery/v2.0/keys",
+    issuer: "https://login.microsoftonline.com/550e8400-e29b-41d4-a716-446655440000/v2.0",
+  },
+  instructionsPath: "/app/instructions.txt",
+};
 
 /**
  * Capture warn-level log entries from the logBlockedAccess helper.
@@ -155,7 +178,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => BLOCKED_PAGE),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       const result = await handler({ id: 42 });
@@ -170,7 +193,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => BLOCKED_PAGE),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       const result = await handler({ id: 42 });
@@ -184,7 +207,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => SAFE_PAGE),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       const result = await handler({ id: 10 });
@@ -194,20 +217,22 @@ describe("MCP Tools GDPR Filtering", () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe(10);
       expect(parsed.path).toBe("docs/getting-started");
+      expect(parsed.url).toBe("http://localhost:3000/en/docs/getting-started");
+      expect(parsed.content).toBe("Hello world");
     });
 
-    it("skips isBlocked check when getPageById returns null", async () => {
+    it("returns isError:true when getPageById returns null", async () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => null as any),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       const result = await handler({ id: 999 });
 
-      // Should return the null data as-is (JSON.stringify(null) = "null")
-      expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toBe("null");
+      // Null page causes error when accessing page.id in redactContent
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Error in get_page:");
     });
   });
 
@@ -225,7 +250,7 @@ describe("MCP Tools GDPR Filtering", () => {
       });
 
       const api = createMockApi({ getPageById: getPageByIdMock });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       await handler({ id: 42 });
@@ -239,7 +264,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const getPageByIdMock = vi.fn(async () => BLOCKED_PAGE);
 
       const api = createMockApi({ getPageById: getPageByIdMock });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       const result = await handler({ id: 42 });
@@ -263,7 +288,7 @@ describe("MCP Tools GDPR Filtering", () => {
           totalHits: 3,
         })),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "search_pages");
 
       const result = await handler({ query: "test" });
@@ -280,7 +305,7 @@ describe("MCP Tools GDPR Filtering", () => {
           totalHits: 2,
         })),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "search_pages");
 
       const result = await handler({ query: "test" });
@@ -301,7 +326,7 @@ describe("MCP Tools GDPR Filtering", () => {
           totalHits: 2,
         })),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "search_pages");
 
       const result = await handler({ query: "clients" });
@@ -331,7 +356,7 @@ describe("MCP Tools GDPR Filtering", () => {
           totalHits: 5,
         })),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "search_pages");
 
       const result = await handler({ query: "test" });
@@ -354,7 +379,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         listPages: vi.fn(async () => [SAFE_PAGE, BLOCKED_PAGE, SAFE_PAGE_2]),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "list_pages");
 
       const result = await handler({});
@@ -368,7 +393,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         listPages: vi.fn(async () => [SAFE_PAGE, SAFE_PAGE_2]),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "list_pages");
 
       const result = await handler({});
@@ -387,7 +412,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => BLOCKED_PAGE),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       await handler({ id: 42 });
@@ -415,7 +440,7 @@ describe("MCP Tools GDPR Filtering", () => {
           totalHits: 3,
         })),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "search_pages");
 
       await handler({ query: "test" });
@@ -435,7 +460,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         listPages: vi.fn(async () => [SAFE_PAGE, BLOCKED_PAGE]),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "list_pages");
 
       await handler({});
@@ -451,7 +476,7 @@ describe("MCP Tools GDPR Filtering", () => {
       const api = createMockApi({
         getPageById: vi.fn(async () => BLOCKED_PAGE),
       });
-      const server = createMcpServer(api, "test instructions");
+      const server = createMcpServer(api, "test instructions", testConfig);
       const handler = getToolHandler(server, "get_page");
 
       await handler({ id: 42 });
@@ -472,6 +497,189 @@ describe("MCP Tools GDPR Filtering", () => {
         expect(call[1]).toBe("GDPR path blocked");
         expect(call[1]).not.toContain("AcmeCorp");
       }
+    });
+  });
+
+  // =========================================================================
+  // URL injection
+  // =========================================================================
+
+  describe("URL injection", () => {
+    it("get_page response includes url field with correct format", async () => {
+      const api = createMockApi({
+        getPageById: vi.fn(async () => SAFE_PAGE),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 10 });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.url).toBe("http://localhost:3000/en/docs/getting-started");
+    });
+
+    it("url field appears in correct position (after path, before title)", async () => {
+      const api = createMockApi({
+        getPageById: vi.fn(async () => SAFE_PAGE),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 10 });
+
+      const parsed = JSON.parse(result.content[0].text);
+      const keys = Object.keys(parsed);
+      const pathIdx = keys.indexOf("path");
+      const urlIdx = keys.indexOf("url");
+      const titleIdx = keys.indexOf("title");
+      expect(urlIdx).toBe(pathIdx + 1);
+      expect(titleIdx).toBe(urlIdx + 1);
+    });
+
+    it("url field uses config baseUrl and locale, not hardcoded values", async () => {
+      const customConfig: AppConfig = {
+        ...testConfig,
+        wikijs: {
+          baseUrl: "https://wiki.custom.com",
+          token: "test-token",
+          locale: "nl",
+        },
+      };
+      const api = createMockApi({
+        getPageById: vi.fn(async () => SAFE_PAGE),
+      });
+      const server = createMcpServer(api, "test instructions", customConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 10 });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.url).toBe("https://wiki.custom.com/nl/docs/getting-started");
+    });
+  });
+
+  // =========================================================================
+  // Redaction wiring
+  // =========================================================================
+
+  describe("Redaction wiring", () => {
+    it("content with GDPR markers is redacted in get_page response", async () => {
+      const page = makePage({
+        content: "Public <!-- gdpr-start -->Secret<!-- gdpr-end --> Rest",
+      });
+      const api = createMockApi({
+        getPageById: vi.fn(async () => page),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 1 });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.content).toContain(REDACTION_PLACEHOLDER);
+      expect(parsed.content).toContain("Public");
+      expect(parsed.content).toContain("Rest");
+      expect(parsed.content).not.toContain("Secret");
+    });
+
+    it("content without markers passes through unchanged", async () => {
+      const page = makePage({
+        content: "Normal content with no markers",
+      });
+      const api = createMockApi({
+        getPageById: vi.fn(async () => page),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 1 });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.content).toBe("Normal content with no markers");
+    });
+
+    it("redaction warnings are logged when markers are malformed", async () => {
+      const page = makePage({
+        content: "Start <!-- gdpr-start -->no end marker",
+      });
+      const api = createMockApi({
+        getPageById: vi.fn(async () => page),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      await handler({ id: 1 });
+
+      expect(mockWarnLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pageId: page.id,
+          warnings: expect.arrayContaining([
+            expect.objectContaining({
+              message: expect.stringContaining("Unclosed gdpr-start marker"),
+            }),
+          ]),
+        }),
+        "GDPR redaction warnings",
+      );
+    });
+  });
+
+  // =========================================================================
+  // No URL on error/blocked responses
+  // =========================================================================
+
+  describe("No URL on error/blocked responses", () => {
+    it("blocked page error response does not contain url field", async () => {
+      const api = createMockApi({
+        getPageById: vi.fn(async () => BLOCKED_PAGE),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 42 });
+
+      expect(result.isError).toBe(true);
+      // Error text is a plain string, not JSON -- should not contain "url"
+      expect(result.content[0].text).not.toContain('"url"');
+    });
+
+    it("error response does not contain url field", async () => {
+      const api = createMockApi({
+        getPageById: vi.fn(async () => {
+          throw new Error("API failure");
+        }),
+      });
+      const server = createMcpServer(api, "test instructions", testConfig);
+      const handler = getToolHandler(server, "get_page");
+
+      const result = await handler({ id: 1 });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).not.toContain('"url"');
+    });
+  });
+
+  // =========================================================================
+  // Tool description
+  // =========================================================================
+
+  describe("Tool description", () => {
+    it("get_page tool description mentions url field", () => {
+      const api = createMockApi();
+      const server = createMcpServer(api, "test instructions", testConfig);
+
+      const tools = (server as any)._registeredTools;
+      const getPageTool = tools.get_page;
+      expect(getPageTool.description).toContain("url");
+    });
+
+    it("get_page tool description does NOT mention redaction", () => {
+      const api = createMockApi();
+      const server = createMcpServer(api, "test instructions", testConfig);
+
+      const tools = (server as any)._registeredTools;
+      const getPageTool = tools.get_page;
+      expect(getPageTool.description.toLowerCase()).not.toContain("redact");
     });
   });
 });
