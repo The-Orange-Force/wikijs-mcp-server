@@ -119,10 +119,11 @@ Plans:
   1. get_page response includes a `url` field containing a direct link to the wiki page
   2. The wiki page base URL used for URL construction is a server configuration value, not hardcoded inline
   3. get_page content passes through redactContent() before being returned to the client
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 26-01: TBD
+- [ ] 26-01-PLAN.md -- Config extension (WIKIJS_LOCALE, trailing slash normalization) and buildPageUrl() helper with unit tests
+- [ ] 26-02-PLAN.md -- Wire redaction and URL into get_page handler, update createMcpServer call chain, integration tests
 
 ### Phase 27: Path Filter Removal and End-to-End Verification
 **Goal**: All path-based GDPR filtering is removed and every published wiki page is accessible, with marker-based redaction as the sole GDPR mechanism
@@ -152,8 +153,8 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25. Core Redaction Function | 1/1 | Complete    | 2026-03-27 | - |
-| 26. Redaction Wiring and URL Injection | v2.6 | 0/? | Not started | - |
+| 26. Redaction Wiring and URL Injection | v2.6 | 0/2 | Not started | - |
 | 27. Path Filter Removal and E2E Verification | v2.6 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after Phase 25 planning*
+*Last updated: 2026-03-27 after Phase 26 planning*
