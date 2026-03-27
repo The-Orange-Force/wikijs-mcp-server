@@ -9,12 +9,12 @@ Requirements for GDPR Content Redaction milestone. Each maps to roadmap phases.
 
 ### Content Redaction
 
-- [ ] **REDACT-01**: get_page redacts content between `<!-- gdpr-start -->` and `<!-- gdpr-end -->` markers before returning
-- [ ] **REDACT-02**: Multiple marker pairs per page are each independently redacted
-- [ ] **REDACT-03**: Each redacted block is replaced with `[🔒 PII redacted — consult the wiki directly for contact details]`
-- [ ] **REDACT-04**: Unclosed `<!-- gdpr-start -->` without matching end redacts from marker to end of content (fail-safe)
-- [ ] **REDACT-05**: Malformed markers generate a warning log with page ID and path
-- [ ] **REDACT-06**: Markers are matched case-insensitively and with whitespace tolerance around tag names
+- [x] **REDACT-01**: get_page redacts content between `<!-- gdpr-start -->` and `<!-- gdpr-end -->` markers before returning
+- [x] **REDACT-02**: Multiple marker pairs per page are each independently redacted
+- [x] **REDACT-03**: Each redacted block is replaced with `[🔒 PII redacted — consult the wiki directly for contact details]`
+- [x] **REDACT-04**: Unclosed `<!-- gdpr-start -->` without matching end redacts from marker to end of content (fail-safe)
+- [x] **REDACT-05**: Malformed markers generate a warning log with page ID and path
+- [x] **REDACT-06**: Markers are matched case-insensitively and with whitespace tolerance around tag names
 
 ### Path Filter Removal
 
@@ -56,12 +56,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REDACT-01 | Phase 25 | Pending |
-| REDACT-02 | Phase 25 | Pending |
-| REDACT-03 | Phase 25 | Pending |
-| REDACT-04 | Phase 25 | Pending |
-| REDACT-05 | Phase 25 | Pending |
-| REDACT-06 | Phase 25 | Pending |
+| REDACT-01 | Phase 25 | Complete |
+| REDACT-02 | Phase 25 | Complete |
+| REDACT-03 | Phase 25 | Complete |
+| REDACT-04 | Phase 25 | Complete |
+| REDACT-05 | Phase 25 | Complete |
+| REDACT-06 | Phase 25 | Complete |
 | URL-01 | Phase 26 | Pending |
 | URL-02 | Phase 26 | Pending |
 | FILTER-01 | Phase 27 | Pending |
