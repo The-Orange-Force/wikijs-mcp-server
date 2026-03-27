@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: GDPR Path Filter
-status: defining_requirements
-stopped_at: Defining requirements
-last_updated: "2026-03-27T14:00:00.000Z"
-last_activity: 2026-03-27 -- Milestone v2.5 started
+status: ready_to_plan
+stopped_at: Roadmap created, ready to plan Phase 22
+last_updated: "2026-03-27T15:00:00.000Z"
+last_activity: 2026-03-27 -- v2.5 roadmap created (3 phases, 8 requirements mapped)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.5 GDPR Path Filter
+**Current focus:** v2.5 GDPR Path Filter -- Phase 22 (Core GDPR Predicate)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-27 — Milestone v2.5 started
+Phase: 22 of 24 (Core GDPR Predicate) -- first of 3 phases in v2.5
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-27 -- v2.5 roadmap created
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -44,7 +44,9 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Decisions
 
-(None yet)
+- Research recommends case-insensitive matching (`.toLowerCase()`) for first path segment -- ARCHITECTURE.md/PITFALLS.md govern over FEATURES.md strict-case guidance
+- Filter applies post-fetch in `mcp-tools.ts`; `api.ts` stays policy-neutral
+- Zero new npm dependencies -- pure TypeScript built-ins only
 
 ### Blockers/Concerns
 
@@ -53,5 +55,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Defining requirements
+Stopped at: Roadmap created, ready to plan Phase 22
 Resume file: None
