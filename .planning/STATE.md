@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: MCP Instructions Field
 status: completed
-stopped_at: Phase 21 context gathered
-last_updated: "2026-03-27T11:00:14.224Z"
+stopped_at: Completed 21-01 (Docker Instructions Path Default)
+last_updated: "2026-03-27T11:23:15.029Z"
 last_activity: 2026-03-27 -- Completed 20-01 (Docker Integration and Default Instructions)
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
   percent: 100
 ---
 
@@ -44,6 +44,7 @@ Progress: [██████████] 100%
 | 19 | 01 | 3min | 2 | 3 |
 | 19 | 02 | 3min | 2 | 7 |
 | 20 | 01 | 2min | 2 | 6 |
+| Phase 21-docker-instructions-path-default P01 | 2min | 2 tasks | 4 files |
 
 ## Completed Milestones
 
@@ -63,6 +64,9 @@ Progress: [██████████] 100%
 - [20-01] instructions.txt uses directive tone with [TOPIC] placeholders for easy deployer customization
 - [20-01] Volume mount is read-only (:ro) to prevent container from modifying host file
 - [20-01] instructions.txt excluded from Docker build context since it is mounted at runtime
+- [Phase 21-01]: Zod .default('/app/instructions.txt') closes Docker flow gap — mount exists but config silently ignored missing var
+- [Phase 21-01]: makeTestConfig() gets explicit instructionsPath field to satisfy AppConfig type after optional->default change
+- [Phase 21-01]: .env.example gains empty-value comment to document local dev workaround (MCP_INSTRUCTIONS_PATH= skips loading)
 
 ### Blockers/Concerns
 
@@ -70,6 +74,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27T11:00:14.222Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-docker-instructions-path-default/21-CONTEXT.md
+Last session: 2026-03-27T11:23:15.027Z
+Stopped at: Completed 21-01 (Docker Instructions Path Default)
+Resume file: None
