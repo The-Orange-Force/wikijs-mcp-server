@@ -11,6 +11,7 @@ export const envSchema = z
     PORT: z.string().default("8000").transform(Number),
     WIKIJS_BASE_URL: z.string().url("WIKIJS_BASE_URL must be a valid URL"),
     WIKIJS_TOKEN: z.string().min(1, "WIKIJS_TOKEN must not be empty"),
+    WIKIJS_LOCALE: z.string().default("en"),
     AZURE_TENANT_ID: z.string().uuid("AZURE_TENANT_ID must be a valid UUID"),
     AZURE_CLIENT_ID: z.string().uuid("AZURE_CLIENT_ID must be a valid UUID"),
     MCP_RESOURCE_URL: z.string().url("MCP_RESOURCE_URL must be a valid URL"),
@@ -23,8 +24,9 @@ export const envSchema = z
   .transform((env) => ({
     port: env.PORT,
     wikijs: {
-      baseUrl: env.WIKIJS_BASE_URL,
+      baseUrl: env.WIKIJS_BASE_URL.replace(/\/+$/, ""),
       token: env.WIKIJS_TOKEN,
+      locale: env.WIKIJS_LOCALE,
     },
     azure: {
       tenantId: env.AZURE_TENANT_ID,
@@ -53,6 +55,7 @@ export function logConfig(cfg: AppConfig): void {
   console.log(`  Port:             ${cfg.port}`);
   console.log(`  WikiJS URL:       ${cfg.wikijs.baseUrl}`);
   console.log(`  WikiJS Token:     ${maskValue(cfg.wikijs.token)}`);
+  console.log(`  WikiJS Locale:    ${cfg.wikijs.locale}`);
   console.log(`  Azure Tenant ID:  ${maskValue(cfg.azure.tenantId, 8)}`);
   console.log(`  Azure Client ID:  ${maskValue(cfg.azure.clientId, 8)}`);
   console.log(`  Resource URL:     ${cfg.azure.resourceUrl}`);
