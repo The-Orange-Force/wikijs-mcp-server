@@ -10,32 +10,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { WikiJsApi } from "./api.js";
 import type { AppConfig } from "./config.js";
-import { isBlocked, redactContent } from "./gdpr.js";
+import { redactContent } from "./gdpr.js";
 import { requestContext } from "./request-context.js";
 import { wrapToolHandler } from "./tool-wrapper.js";
 import { buildPageUrl } from "./url.js";
-
-/**
- * Logs a structured warn entry for a GDPR-blocked access attempt.
- * Does NOT include page path or any path-derived content -- the message
- * is intentionally generic to avoid leaking company names.
- *
- * correlationId is already bound to the pino child logger automatically
- * (via Fastify's requestIdLogLabel), so it appears in every log entry
- * without being explicitly added here.
- */
-function logBlockedAccess(toolName: string): void {
-  const ctx = requestContext.getStore();
-  ctx?.log.warn(
-    {
-      toolName,
-      userId: ctx.userId,
-      username: ctx.username,
-      gdprBlocked: true,
-    },
-    "GDPR path blocked",
-  );
-}
 
 /**
  * Creates and returns a fully configured McpServer instance with 3
@@ -49,7 +27,7 @@ function logBlockedAccess(toolName: string): void {
 export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, config: AppConfig): McpServer {
   const mcpServer = new McpServer({
     name: "wikijs-mcp",
-    version: "2.4.0",
+    version: "2.6.0",
   }, {
     instructions,
   });
@@ -90,13 +68,6 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
     wrapToolHandler(TOOL_GET_PAGE, async ({ id }) => {
       try {
         const page = await wikiJsApi.getPageById(id);
-        // GDPR: check after API call completes (SEC-01 timing safety)
-        if (page?.path && isBlocked(page.path)) {
-          logBlockedAccess(TOOL_GET_PAGE);
-          // Throw the same error as a genuine not-found to ensure
-          // blocked responses are byte-identical to missing pages.
-          throw new Error("Page not found");
-        }
 
         // Redact GDPR-marked content (no-op when no markers present)
         const redactionResult = redactContent(page.content ?? "", page.id, page.path);
@@ -185,17 +156,9 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
             orderBy,
             includeUnpublished,
           );
-          // GDPR: filter blocked pages before serialization
-          const filtered = pages.filter(p => {
-            if (isBlocked(p.path)) {
-              logBlockedAccess(TOOL_LIST_PAGES);
-              return false;
-            }
-            return true;
-          });
           return {
             content: [
-              { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
+              { type: "text" as const, text: JSON.stringify(pages, null, 2) },
             ],
           };
         } catch (error) {
@@ -244,19 +207,9 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
     wrapToolHandler(TOOL_SEARCH_PAGES, async ({ query, limit }) => {
       try {
         const result = await wikiJsApi.searchPages(query, limit);
-        // GDPR: filter blocked pages from results
-        const originalLength = result.results.length;
-        const filtered = result.results.filter(p => {
-          if (isBlocked(p.path)) {
-            logBlockedAccess(TOOL_SEARCH_PAGES);
-            return false;
-          }
-          return true;
-        });
-        result.totalHits -= (originalLength - filtered.length);
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
+            { type: "text" as const, text: JSON.stringify(result.results, null, 2) },
           ],
         };
       } catch (error) {

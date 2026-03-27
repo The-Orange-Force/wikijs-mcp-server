@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials. Returns contextual instructions in the MCP initialize response that guide Claude to auto-search the wiki for relevant topics. Enforces GDPR-compliant path filtering to block access to sensitive client directory pages.
+A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials. Returns contextual instructions in the MCP initialize response that guide Claude to auto-search the wiki for relevant topics. Enforces GDPR-compliant marker-based content redaction for sensitive data within wiki pages.
 
 ## Core Value
 
@@ -47,19 +47,15 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - ✓ Instructions loaded from file at startup with env-configurable path — v2.4
 - ✓ Fallback default when instructions file is missing — v2.4
 - ✓ Docker compose updated with volume mount for instructions file — v2.4
-- ✓ GDPR path filtering via isBlocked() predicate — v2.5
-- ✓ get_page blocks GDPR-sensitive pages with timing-safe "not found" — v2.5
-- ✓ search_pages silently excludes GDPR-sensitive pages — v2.5
-- ✓ list_pages silently excludes GDPR-sensitive pages — v2.5
+- ✓ Marker-based GDPR content redaction via <!-- gdpr-start/end --> markers — v2.6
+- ✓ Page URL injection in get_page responses — v2.6
+- ✓ Path-based filtering removed, all published pages accessible — v2.6
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] Remove path-based GDPR filtering from all MCP tools
-- [ ] Add marker-based content redaction (`<!-- gdpr-start/end -->`)
-- [ ] Handle malformed markers (fail-safe redact to end + warning log)
-- [ ] Inject page URL into get_page responses (configurable base URL)
+(All v2.6 requirements shipped -- see Validated section above.)
 
 ### Out of Scope
 
@@ -81,7 +77,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - STDIO transport — removed in v2.3; HTTP-only simplifies codebase
 - Dynamic instructions generation from wiki content at startup — static file sufficient for v2.4
 - Hot-reload of instructions without restart — startup-time loading is simpler and sufficient
-- Configurable GDPR block rules via runtime config — code change with tests is safer for compliance
+- Dynamic GDPR marker rules via runtime config — code change with tests is safer for compliance
 - Per-user path permissions for GDPR — shared API token model, no per-user mapping
 
 ## Context
@@ -95,7 +91,7 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Claude Desktop discovers auth via `/.well-known/oauth-protected-resource` → `/.well-known/openid-configuration` → registration → authorize → token
 - **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope
 - **v2.4 instructions:** MCP initialize response includes instructions field, file-based customization via MCP_INSTRUCTIONS_PATH, Docker volume mount
-- **v2.5 GDPR:** Server-level path filtering blocks `Clients/<CompanyName>` pages with timing-safe responses and audit logging
+- **v2.5->v2.6 GDPR:** Marker-based content redaction replaces path-blocking; all published pages accessible with PII surgically redacted
 - **Codebase:** 7,663 LOC TypeScript, 371 tests across 25 files
 - **Tech stack:** TypeScript, Fastify, @modelcontextprotocol/sdk, graphql-request, jose, Zod, Vitest
 
@@ -138,10 +134,10 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 | console.warn for instructions fallback (not pino) | Lightweight module, no pino dependency needed | ✓ Shipped v2.4 |
 | Zod default '/app/instructions.txt' | Docker volume mount works out-of-the-box without extra env var | ✓ Shipped v2.4 |
 | Read-only Docker volume mount for instructions | Prevent container from modifying host file | ✓ Shipped v2.4 |
-| isBlocked() as only export, normalizePath private | Minimal API surface for security-sensitive code | ✓ Shipped v2.5 |
-| "clients" literal hardcoded, not configurable | Code change with tests is safer than runtime config for GDPR compliance | ✓ Shipped v2.5 |
-| Post-fetch path check (timing-safe) | Prevents timing oracle that could reveal blocked page existence | ✓ Shipped v2.5 |
-| Structured audit logging without path content | GDPR compliance — log blocked access but never leak company names | ✓ Shipped v2.5 |
+| isBlocked() as only export, normalizePath private | Minimal API surface for security-sensitive code | Superseded by v2.6 marker-based redaction |
+| "clients" literal hardcoded, not configurable | Code change with tests is safer than runtime config for GDPR compliance | Superseded by v2.6 marker-based redaction |
+| Post-fetch path check (timing-safe) | Prevents timing oracle that could reveal blocked page existence | Superseded by v2.6 marker-based redaction |
+| Structured audit logging without path content | GDPR compliance — log blocked access but never leak company names | Superseded by v2.6 marker-based redaction |
 
 ## Known Issues
 
@@ -151,4 +147,4 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
 
 ---
-*Last updated: 2026-03-27 after v2.6 milestone start*
+*Last updated: 2026-03-27 after v2.6 milestone complete*
