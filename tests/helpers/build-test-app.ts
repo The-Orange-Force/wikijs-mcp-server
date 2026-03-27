@@ -89,6 +89,7 @@ export function makeTestConfig(
     wikijs: {
       baseUrl: "http://localhost:3000",
       token: "test-token",
+      locale: "en",
     },
     azure: {
       tenantId: TEST_CONFIG.tenantId,
@@ -149,6 +150,7 @@ export async function buildTestApp(
   server.register(protectedRoutes, {
     wikiJsApi,
     instructions: instructions ?? DEFAULT_INSTRUCTIONS,
+    config: appConfig,
     auth: {
       jwks,
       issuer: appConfig.azure.issuer,

@@ -9,9 +9,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { WikiJsApi } from "./api.js";
-import { isBlocked } from "./gdpr.js";
+import type { AppConfig } from "./config.js";
+import { isBlocked, redactContent } from "./gdpr.js";
 import { requestContext } from "./request-context.js";
 import { wrapToolHandler } from "./tool-wrapper.js";
+import { buildPageUrl } from "./url.js";
 
 /**
  * Logs a structured warn entry for a GDPR-blocked access attempt.
@@ -41,9 +43,10 @@ function logBlockedAccess(toolName: string): void {
  *
  * @param wikiJsApi - WikiJsApi instance used by tool handlers
  * @param instructions - MCP instructions text for the initialize response
+ * @param config - Application configuration for URL construction
  * @returns Configured McpServer ready for transport connection
  */
-export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string): McpServer {
+export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, config: AppConfig): McpServer {
   const mcpServer = new McpServer({
     name: "wikijs-mcp",
     version: "2.4.0",
@@ -72,7 +75,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string): Mcp
     TOOL_GET_PAGE,
     {
       description:
-        "Retrieve a Wiki.js page by its database ID. Returns the full page object including title, path, description, markdown content, publication status (isPublished), and timestamps (createdAt, updatedAt). Use this tool when you need the actual content of a specific page. Get page IDs from search_pages or list_pages results.",
+        "Retrieve a Wiki.js page by its database ID. Returns the full page object including title, path, url (direct link to the wiki page), description, markdown content, publication status (isPublished), and timestamps (createdAt, updatedAt). Use this tool when you need the actual content of a specific page. Get page IDs from search_pages or list_pages results.",
       inputSchema: {
         id: z
           .number()
@@ -94,9 +97,35 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string): Mcp
           // blocked responses are byte-identical to missing pages.
           throw new Error("Page not found");
         }
+
+        // Redact GDPR-marked content (no-op when no markers present)
+        const redactionResult = redactContent(page.content ?? "", page.id, page.path);
+
+        // Log redaction warnings if any
+        if (redactionResult.warnings.length > 0) {
+          const ctx = requestContext.getStore();
+          ctx?.log.warn(
+            { pageId: page.id, path: page.path, warnings: redactionResult.warnings },
+            "GDPR redaction warnings",
+          );
+        }
+
+        // Build response with explicit field ordering and URL
+        const responseObj = {
+          id: page.id,
+          path: page.path,
+          url: buildPageUrl(config.wikijs.baseUrl, config.wikijs.locale, page.path),
+          title: page.title,
+          description: page.description,
+          content: redactionResult.content,
+          isPublished: page.isPublished,
+          createdAt: page.createdAt,
+          updatedAt: page.updatedAt,
+        };
+
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(page, null, 2) },
+            { type: "text" as const, text: JSON.stringify(responseObj, null, 2) },
           ],
         };
       } catch (error) {

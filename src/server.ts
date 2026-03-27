@@ -58,6 +58,7 @@ export function buildApp(
   server.register(protectedRoutes, {
     wikiJsApi,
     instructions: effectiveInstructions,
+    config: appConfig,
     auth: {
       jwks,
       issuer: appConfig.azure.issuer,
