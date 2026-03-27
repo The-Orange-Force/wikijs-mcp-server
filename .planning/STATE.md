@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.7
 milestone_name: Metadata Search Fallback
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-27"
-last_activity: 2026-03-27 -- Milestone v2.7 started
+last_activity: 2026-03-27 -- Roadmap created for v2.7 (2 phases, 10 requirements)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.7 Metadata Search Fallback
+**Current focus:** v2.7 Metadata Search Fallback -- Phase 28
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-27 — Milestone v2.7 started
+Phase: 28 of 29 (Metadata Fallback Implementation)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-27 -- Roadmap created for v2.7
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: --
+- Total execution time: --
 
 ## Completed Milestones
 
@@ -44,14 +53,16 @@ Last activity: 2026-03-27 — Milestone v2.7 started
 
 ### Decisions
 
-(Cleared at milestone boundary — see .planning/milestones/v2.6-ROADMAP.md for v2.6 decisions)
+(None yet for v2.7)
 
 ### Blockers/Concerns
 
-(None)
+- Research identified fallback trigger threshold disagreement: ARCHITECTURE.md suggests `resolved.length < limit`, PITFALLS.md argues for `resolved.length === 0`. Resolve before Phase 28 implementation.
+- `pages.list` data sharing pattern between `resolveViaPagesList` and `searchPagesByMetadata` needs to be decided before Phase 28.
+- `totalHits` update strategy: option (a) `Math.max(originalTotalHits, mergedResults.length)` preferred over adding new type field.
 
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Milestone v2.7 started
+Stopped at: Roadmap created for v2.7
 Resume file: None

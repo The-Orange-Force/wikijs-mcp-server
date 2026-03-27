@@ -9,6 +9,7 @@
 - ✅ [v2.4 MCP Instructions Field](./milestones/v2.4-ROADMAP.md) -- Instructions in MCP initialize response for auto-guided Claude behavior (2026-03-27)
 - ✅ [v2.5 GDPR Path Filter](./milestones/v2.5-ROADMAP.md) -- GDPR-compliant path filtering for client directory pages (2026-03-27)
 - ✅ [v2.6 GDPR Content Redaction](./milestones/v2.6-ROADMAP.md) -- Marker-based content redaction replacing path-based blocking (2026-03-27)
+- 🚧 **v2.7 Metadata Search Fallback** -- Phases 28-29 (in progress)
 
 ## Completed Milestones
 
@@ -95,7 +96,49 @@ Phase 27: Path Filter Removal and E2E Verification -- isBlocked() removal, 6-tes
 
 </details>
 
+## v2.7 Metadata Search Fallback
+
+**Milestone Goal:** Supplement the GraphQL search with a metadata fallback that matches queries against page paths, titles, and descriptions -- so acronyms, path segments, and short tokens always surface results.
+
+## Phases
+
+- [ ] **Phase 28: Metadata Fallback Implementation** - Private searchPagesByMetadata() method wired into searchPages() pipeline with deduplication, unpublished filtering, and limit enforcement
+- [ ] **Phase 29: Test Coverage, Observability, and Tool Description** - Full test matrix for all fallback scenarios, structured logging, and updated search_pages description
+
+## Phase Details
+
+### Phase 28: Metadata Fallback Implementation
+**Goal**: Searching for acronyms, path segments, and short tokens that previously returned zero results now returns matching pages
+**Depends on**: Nothing (first phase in v2.7)
+**Requirements**: META-01, META-02, META-03, META-04, META-05, META-06, INTG-01, INTG-02
+**Success Criteria** (what must be TRUE):
+  1. Searching for a known acronym (e.g., "COA") that exists in page paths or titles returns matching pages instead of zero results
+  2. Metadata matching is case-insensitive -- searching "coa" and "COA" returns identical results
+  3. A page that appears in both GraphQL results and metadata fallback appears only once in the response (no duplicates)
+  4. Unpublished pages never appear in fallback results, even when they match the query
+  5. Total results never exceed the requested limit, regardless of how many metadata matches exist
+**Plans**: TBD
+
+Plans:
+- [ ] 28-01: TBD
+
+### Phase 29: Test Coverage, Observability, and Tool Description
+**Goal**: All fallback correctness requirements are verified by automated tests, fallback activity is observable in logs, and AI assistants know the search tool handles acronyms and path queries
+**Depends on**: Phase 28
+**Requirements**: OBSV-01, TOOL-01
+**Success Criteria** (what must be TRUE):
+  1. When the metadata fallback fires and adds results, an info-level log entry records the query, the number of metadata hits, and the total resolved count
+  2. The search_pages tool description mentions that searches match against page paths, titles, and descriptions
+  3. The existing 366-test suite remains green (no regressions from Phase 28 or 29 changes)
+**Plans**: TBD
+
+Plans:
+- [ ] 29-01: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 28 -> 29
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -106,6 +149,8 @@ Phase 27: Path Filter Removal and E2E Verification -- isBlocked() removal, 6-tes
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25-27. GDPR Content Redaction | v2.6 | 4/4 | Complete | 2026-03-27 |
+| 28. Metadata Fallback Implementation | v2.7 | 0/? | Not started | - |
+| 29. Test Coverage, Observability, and Tool Description | v2.7 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after v2.6 milestone complete*
+*Last updated: 2026-03-27 after v2.7 roadmap created*

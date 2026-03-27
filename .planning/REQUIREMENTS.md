@@ -42,7 +42,7 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 
 | Feature | Reason |
 |---------|--------|
-| Full content search in fallback | Requires N `getPageById` calls per search — impractical |
+| Full content search in fallback | Requires N `getPageById` calls per search -- impractical |
 | Fuzzy/Levenshtein matching | False positives for structured token search; GraphQL handles fuzzy for content |
 | Regex-based query syntax | ReDoS exposure from user-controlled pattern input |
 | Separate `search_metadata` MCP tool | Increases AI tool selection complexity; fallback must be automatic and transparent |
@@ -52,22 +52,22 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| META-01 | — | Pending |
-| META-02 | — | Pending |
-| META-03 | — | Pending |
-| META-04 | — | Pending |
-| META-05 | — | Pending |
-| META-06 | — | Pending |
-| INTG-01 | — | Pending |
-| INTG-02 | — | Pending |
-| OBSV-01 | — | Pending |
-| TOOL-01 | — | Pending |
+| META-01 | Phase 28 | Pending |
+| META-02 | Phase 28 | Pending |
+| META-03 | Phase 28 | Pending |
+| META-04 | Phase 28 | Pending |
+| META-05 | Phase 28 | Pending |
+| META-06 | Phase 28 | Pending |
+| INTG-01 | Phase 28 | Pending |
+| INTG-02 | Phase 28 | Pending |
+| OBSV-01 | Phase 29 | Pending |
+| TOOL-01 | Phase 29 | Pending |
 
 **Coverage:**
 - v2.7 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after roadmap created*
