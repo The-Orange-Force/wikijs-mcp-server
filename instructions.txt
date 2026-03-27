@@ -1,0 +1,9 @@
+# MCP Instructions Template
+# Customize this file to guide AI assistant behavior when using your wiki.
+# Replace [TOPIC] placeholders with your organization's actual topics.
+# Restart the container after editing for changes to take effect.
+
+When the user asks about [TOPIC: e.g., internal projects], search the wiki first before answering from general knowledge.
+Prioritize wiki content for questions related to [TOPIC: e.g., client accounts], [TOPIC: e.g., technology stack], or [TOPIC: e.g., internal processes].
+If wiki search returns no results, let the user know and offer to help with general knowledge instead.
+Always cite the wiki page title and path when referencing wiki content in your responses.

@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.*
 
+# Runtime-mounted files — mounted via docker-compose volumes, not built into image
+instructions.txt
+
 # Build output — generated inside builder stage, not needed from host
 dist/
 
