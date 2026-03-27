@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.6
 milestone_name: GDPR Content Redaction
 status: planning
-stopped_at: Phase 25 context gathered
-last_updated: "2026-03-27T20:11:52.956Z"
+stopped_at: Phase 26 context gathered
+last_updated: "2026-03-27T20:17:48.783Z"
 last_activity: 2026-03-27 -- Roadmap created for v2.6
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 1
   completed_plans: 0
   percent: 0
 ---
@@ -66,6 +66,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:11:52.954Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-core-redaction-function/25-CONTEXT.md
+Last session: 2026-03-27T20:17:48.781Z
+Stopped at: Phase 26 context gathered
+Resume file: .planning/phases/26-redaction-wiring-and-url-injection/26-CONTEXT.md
