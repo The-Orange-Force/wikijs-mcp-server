@@ -9,17 +9,17 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 
 ### Metadata Fallback
 
-- [ ] **META-01**: When GraphQL search returns fewer results than the requested limit, a metadata fallback supplements results by matching the query against page paths, titles, and descriptions
-- [ ] **META-02**: Metadata matching is case-insensitive substring matching (single string, no tokenization)
-- [ ] **META-03**: Fallback results are deduplicated against GraphQL results by page ID
-- [ ] **META-04**: Unpublished pages are excluded from metadata fallback results
-- [ ] **META-05**: Total results (GraphQL + metadata) never exceed the requested limit
-- [ ] **META-06**: `totalHits` is adjusted to reflect the actual merged result count when metadata adds results
+- [x] **META-01**: When GraphQL search returns fewer results than the requested limit, a metadata fallback supplements results by matching the query against page paths, titles, and descriptions
+- [x] **META-02**: Metadata matching is case-insensitive substring matching (single string, no tokenization)
+- [x] **META-03**: Fallback results are deduplicated against GraphQL results by page ID
+- [x] **META-04**: Unpublished pages are excluded from metadata fallback results
+- [x] **META-05**: Total results (GraphQL + metadata) never exceed the requested limit
+- [x] **META-06**: `totalHits` is adjusted to reflect the actual merged result count when metadata adds results
 
 ### Integration
 
-- [ ] **INTG-01**: Metadata fallback shares the `pages.list` data with the existing `resolveViaPagesList` fallback (no duplicate GraphQL call)
-- [ ] **INTG-02**: The existing `searchPages()` early-return path for zero results is replaced to route through the metadata fallback
+- [x] **INTG-01**: Metadata fallback shares the `pages.list` data with the existing `resolveViaPagesList` fallback (no duplicate GraphQL call)
+- [x] **INTG-02**: The existing `searchPages()` early-return path for zero results is replaced to route through the metadata fallback
 
 ### Observability
 
@@ -52,14 +52,14 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| META-01 | Phase 28 | Pending |
-| META-02 | Phase 28 | Pending |
-| META-03 | Phase 28 | Pending |
-| META-04 | Phase 28 | Pending |
-| META-05 | Phase 28 | Pending |
-| META-06 | Phase 28 | Pending |
-| INTG-01 | Phase 28 | Pending |
-| INTG-02 | Phase 28 | Pending |
+| META-01 | Phase 28 | Complete |
+| META-02 | Phase 28 | Complete |
+| META-03 | Phase 28 | Complete |
+| META-04 | Phase 28 | Complete |
+| META-05 | Phase 28 | Complete |
+| META-06 | Phase 28 | Complete |
+| INTG-01 | Phase 28 | Complete |
+| INTG-02 | Phase 28 | Complete |
 | OBSV-01 | Phase 29 | Pending |
 | TOOL-01 | Phase 29 | Pending |
 

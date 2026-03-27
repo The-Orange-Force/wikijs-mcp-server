@@ -102,7 +102,7 @@ Phase 27: Path Filter Removal and E2E Verification -- isBlocked() removal, 6-tes
 
 ## Phases
 
-- [ ] **Phase 28: Metadata Fallback Implementation** - Private searchPagesByMetadata() method wired into searchPages() pipeline with deduplication, unpublished filtering, and limit enforcement
+- [x] **Phase 28: Metadata Fallback Implementation** - Private searchPagesByMetadata() method wired into searchPages() pipeline with deduplication, unpublished filtering, and limit enforcement (completed 2026-03-27)
 - [ ] **Phase 29: Test Coverage, Observability, and Tool Description** - Full test matrix for all fallback scenarios, structured logging, and updated search_pages description
 
 ## Phase Details
@@ -149,7 +149,7 @@ Phases execute in numeric order: 28 -> 29
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25-27. GDPR Content Redaction | v2.6 | 4/4 | Complete | 2026-03-27 |
-| 28. Metadata Fallback Implementation | v2.7 | 0/1 | Not started | - |
+| 28. Metadata Fallback Implementation | 1/1 | Complete   | 2026-03-27 | - |
 | 29. Test Coverage, Observability, and Tool Description | v2.7 | 0/? | Not started | - |
 
 ---
