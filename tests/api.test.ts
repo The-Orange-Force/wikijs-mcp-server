@@ -335,11 +335,13 @@ describe("WikiJsApi", () => {
       mockRequest.mockResolvedValueOnce(makeSingleByPathResponse(resolvedPage(10, "docs/a", "A")));
       mockRequest.mockResolvedValueOnce(makeSingleByPathResponse(resolvedPage(20, "docs/b", "B")));
       mockRequest.mockResolvedValueOnce(makeSingleByPathResponse(resolvedPage(30, "docs/c", "C")));
+      // Metadata fallback fetches pages.list independently (no cached allPages since step 3 didn't run)
+      mockRequest.mockResolvedValueOnce(makePagesListResponse([]));
 
       const result = await api.searchPages("test");
 
-      // 1 search + 3 singleByPath = 4 total calls
-      expect(mockRequest).toHaveBeenCalledTimes(4);
+      // 1 search + 3 singleByPath + 1 pages.list (metadata fallback) = 5 total calls
+      expect(mockRequest).toHaveBeenCalledTimes(5);
       expect(result.results).toHaveLength(3);
       expect(result.results.map((r) => r.id)).toEqual([10, 20, 30]);
     });
@@ -348,13 +350,21 @@ describe("WikiJsApi", () => {
       mockRequest.mockResolvedValueOnce(
         makeSearchResponse([], 0),
       );
+      // After Phase 28: zero-result path triggers metadata fallback, fetching pages.list
+      // Pages do NOT match "nonexistent", so results remain empty
+      mockRequest.mockResolvedValueOnce(
+        makePagesListResponse([
+          resolvedPage(100, "docs/guide", "Guide"),
+          resolvedPage(200, "docs/faq", "FAQ"),
+        ]),
+      );
 
       const result = await api.searchPages("nonexistent");
 
       expect(result.results).toEqual([]);
       expect(result.totalHits).toBe(0);
-      // Only the search call, no singleByPath or pages.list
-      expect(mockRequest).toHaveBeenCalledTimes(1);
+      // 1 search + 1 pages.list (metadata fallback) = 2 total calls
+      expect(mockRequest).toHaveBeenCalledTimes(2);
     });
 
     it("only calls pages.list fallback once for multiple unresolved results", async () => {
@@ -401,6 +411,244 @@ describe("WikiJsApi", () => {
       const singleByPathQuery = mockRequest.mock.calls[1][0] as string;
       expect(singleByPathQuery).toContain("singleByPath");
       expect(singleByPathQuery).toContain('"fr"');
+    });
+
+    // -----------------------------------------------------------------------
+    // searchPages - metadata fallback (Phase 28)
+    // -----------------------------------------------------------------------
+    describe("searchPages - metadata fallback", () => {
+      it("returns title matches when GraphQL returns zero results (META-01, INTG-02)", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // Metadata fallback fetches pages.list -- has pages with matching titles
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "docs/coa-guidelines", "COA Guidelines"),
+            resolvedPage(20, "docs/other", "Other Page"),
+          ]),
+        );
+
+        const result = await api.searchPages("COA", 10);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].id).toBe(10);
+        expect(result.results[0].title).toBe("COA Guidelines");
+        expect(result.totalHits).toBe(1);
+      });
+
+      it("is case-insensitive (META-02)", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // pages.list has page with title "COA Guidelines"
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "docs/coa-guidelines", "COA Guidelines"),
+          ]),
+        );
+
+        // Query is lowercase "coa"
+        const result = await api.searchPages("coa", 10);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].id).toBe(10);
+      });
+
+      it("deduplicates against GraphQL results by page ID (META-03)", async () => {
+        // Search returns 1 result (page ID 42 after singleByPath resolution)
+        mockRequest.mockResolvedValueOnce(
+          makeSearchResponse([
+            { id: "abc-1", path: "docs/guide", title: "Guide", description: "A guide", locale: "en" },
+          ]),
+        );
+        // singleByPath succeeds for page ID 42
+        mockRequest.mockResolvedValueOnce(
+          makeSingleByPathResponse(resolvedPage(42, "docs/guide", "Guide")),
+        );
+        // Metadata fallback fetches pages.list (step 4, allPages not cached since step 3 didn't run)
+        // pages.list contains the same page (ID 42) plus a new metadata match
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(42, "docs/guide", "Guide"),
+            resolvedPage(99, "docs/guide-advanced", "Advanced Guide"),
+          ]),
+        );
+
+        const result = await api.searchPages("guide", 10);
+
+        // Page 42 appears only once (from GraphQL), page 99 appended via metadata
+        expect(result.results).toHaveLength(2);
+        expect(result.results[0].id).toBe(42);
+        expect(result.results[1].id).toBe(99);
+      });
+
+      it("excludes unpublished pages from metadata results (META-04)", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // pages.list has matching page but it's unpublished
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            {
+              id: 10,
+              path: "drafts/coa",
+              title: "COA Draft",
+              description: "Draft page",
+              isPublished: false,
+              createdAt: "2024-01-01T00:00:00Z",
+              updatedAt: "2024-06-01T00:00:00Z",
+            },
+          ]),
+        );
+
+        const result = await api.searchPages("COA", 10);
+
+        expect(result.results).toHaveLength(0);
+        expect(result.totalHits).toBe(0);
+      });
+
+      it("total results never exceed requested limit (META-05)", async () => {
+        // Search returns 2 results (limit=3)
+        mockRequest.mockResolvedValueOnce(
+          makeSearchResponse([
+            { id: "abc-1", path: "docs/mendix-a", title: "Mendix A", description: "Page A", locale: "en" },
+            { id: "abc-2", path: "docs/mendix-b", title: "Mendix B", description: "Page B", locale: "en" },
+          ], 2),
+        );
+        // Both singleByPath succeed
+        mockRequest.mockResolvedValueOnce(
+          makeSingleByPathResponse(resolvedPage(10, "docs/mendix-a", "Mendix A")),
+        );
+        mockRequest.mockResolvedValueOnce(
+          makeSingleByPathResponse(resolvedPage(20, "docs/mendix-b", "Mendix B")),
+        );
+        // Metadata fallback fetches pages.list -- has 5 matches
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(30, "docs/mendix-c", "Mendix C"),
+            resolvedPage(40, "docs/mendix-d", "Mendix D"),
+            resolvedPage(50, "docs/mendix-e", "Mendix E"),
+            resolvedPage(60, "docs/mendix-f", "Mendix F"),
+            resolvedPage(70, "docs/mendix-g", "Mendix G"),
+          ]),
+        );
+
+        const result = await api.searchPages("mendix", 3);
+
+        // 2 from GraphQL + 1 from metadata = 3 (capped at limit)
+        expect(result.results.length).toBeLessThanOrEqual(3);
+        expect(result.results).toHaveLength(3);
+      });
+
+      it("adjusts totalHits via Math.max when metadata adds results (META-06)", async () => {
+        // Search returns 0 results with totalHits=0
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // Metadata finds 3 matches
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "docs/coa-1", "COA Report 1"),
+            resolvedPage(20, "docs/coa-2", "COA Report 2"),
+            resolvedPage(30, "docs/coa-3", "COA Report 3"),
+          ]),
+        );
+
+        const result = await api.searchPages("COA", 10);
+
+        expect(result.results).toHaveLength(3);
+        expect(result.totalHits).toBe(3);
+      });
+
+      it("shares pages.list data from resolveViaPagesList without extra call (INTG-01)", async () => {
+        // Search returns 2 results, both singleByPath fail
+        mockRequest.mockResolvedValueOnce(
+          makeSearchResponse([
+            { id: "abc-1", path: "docs/mendix-a", title: "Mendix A", description: "Page A", locale: "en" },
+            { id: "abc-2", path: "docs/mendix-b", title: "Mendix B", description: "Page B", locale: "en" },
+          ], 2),
+        );
+        mockRequest.mockRejectedValueOnce(new Error("Forbidden"));
+        mockRequest.mockRejectedValueOnce(new Error("Forbidden"));
+        // pages.list resolves 1 of 2, plus has additional metadata match
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "docs/mendix-a", "Mendix A"),
+            resolvedPage(30, "docs/mendix-guide", "Mendix Guide"),
+          ]),
+        );
+
+        const result = await api.searchPages("mendix", 10);
+
+        // 1 search + 2 singleByPath + 1 pages.list = 4 calls (NOT 5 -- no second pages.list)
+        expect(mockRequest).toHaveBeenCalledTimes(4);
+        // resolveViaPagesList resolved mendix-a, metadata found mendix-guide
+        expect(result.results).toHaveLength(2);
+        expect(result.results.map((r) => r.id)).toEqual([10, 30]);
+      });
+
+      it("ranks title matches before path-only matches", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // pages.list: page A has title match, page B has path-only match
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(20, "docs/mendix/setup", "Setup Instructions"),
+            resolvedPage(10, "docs/other", "Mendix Best Practices"),
+          ]),
+        );
+
+        const result = await api.searchPages("mendix", 10);
+
+        expect(result.results).toHaveLength(2);
+        // Title match ("Mendix Best Practices") should come before path-only match ("docs/mendix/setup")
+        expect(result.results[0].id).toBe(10);
+        expect(result.results[1].id).toBe(20);
+      });
+
+      it("fetches pages.list independently on zero-result path", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // Metadata fallback fetches pages.list
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "docs/coa", "COA Overview"),
+          ]),
+        );
+
+        const result = await api.searchPages("COA", 10);
+
+        // 1 search + 1 pages.list = 2 calls total
+        expect(mockRequest).toHaveBeenCalledTimes(2);
+        expect(result.results).toHaveLength(1);
+      });
+
+      it("returns empty on pages.list failure (graceful degradation)", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // pages.list throws error
+        mockRequest.mockRejectedValueOnce(new Error("GraphQL Error"));
+
+        const result = await api.searchPages("COA", 10);
+
+        // Should not throw -- graceful degradation
+        expect(result.results).toHaveLength(0);
+        expect(result.totalHits).toBe(0);
+      });
+
+      it("returns path matches when query matches page paths (META-01)", async () => {
+        // Search returns 0 results
+        mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+        // pages.list has pages with matching paths
+        mockRequest.mockResolvedValueOnce(
+          makePagesListResponse([
+            resolvedPage(10, "clients/mendix/overview", "Overview"),
+            resolvedPage(20, "docs/other", "Other Page"),
+          ]),
+        );
+
+        const result = await api.searchPages("mendix", 10);
+
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].id).toBe(10);
+        expect(result.results[0].path).toBe("clients/mendix/overview");
+      });
     });
   });
 });
