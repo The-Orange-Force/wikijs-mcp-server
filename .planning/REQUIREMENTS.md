@@ -18,8 +18,8 @@ Requirements for GDPR Content Redaction milestone. Each maps to roadmap phases.
 
 ### Path Filter Removal
 
-- [ ] **FILTER-01**: isBlocked() path-based filtering is removed from all MCP tool handlers
-- [ ] **FILTER-02**: All published wiki pages are accessible via get_page, list_pages, and search_pages without path restrictions
+- [x] **FILTER-01**: isBlocked() path-based filtering is removed from all MCP tool handlers
+- [x] **FILTER-02**: All published wiki pages are accessible via get_page, list_pages, and search_pages without path restrictions
 
 ### URL Injection
 
@@ -64,8 +64,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REDACT-06 | Phase 25 | Complete |
 | URL-01 | Phase 26 | Complete |
 | URL-02 | Phase 26 | Complete |
-| FILTER-01 | Phase 27 | Pending |
-| FILTER-02 | Phase 27 | Pending |
+| FILTER-01 | Phase 27 | Complete |
+| FILTER-02 | Phase 27 | Complete |
 
 **Coverage:**
 - v2.6 requirements: 10 total

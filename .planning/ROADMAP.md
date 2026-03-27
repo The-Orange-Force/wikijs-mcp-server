@@ -92,7 +92,7 @@ Phase 24: Integration Tests and Security Hygiene -- E2E MCP response verificatio
 
 - [x] **Phase 25: Core Redaction Function** - Pure redactContent() function with marker-based content redaction and comprehensive test coverage (completed 2026-03-27)
 - [x] **Phase 26: Redaction Wiring and URL Injection** - Wire redaction into get_page handler and inject page URLs with configurable base URL (completed 2026-03-27)
-- [ ] **Phase 27: Path Filter Removal and End-to-End Verification** - Remove isBlocked() filtering and verify the complete system end-to-end
+- [x] **Phase 27: Path Filter Removal and End-to-End Verification** - Remove isBlocked() filtering and verify the complete system end-to-end (completed 2026-03-27)
 
 ## Phase Details
 
@@ -154,7 +154,7 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25. Core Redaction Function | 1/1 | Complete    | 2026-03-27 | - |
 | 26. Redaction Wiring and URL Injection | 2/2 | Complete    | 2026-03-27 | - |
-| 27. Path Filter Removal and E2E Verification | v2.6 | 0/1 | Not started | - |
+| 27. Path Filter Removal and E2E Verification | 1/1 | Complete   | 2026-03-27 | - |
 
 ---
 *Last updated: 2026-03-27 after Phase 26 planning*
