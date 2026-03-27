@@ -355,3 +355,71 @@ describe("search_pages GDPR filtering", () => {
     expect(pages.length).toBe(3); // 5 total - 2 blocked = 3
   });
 });
+
+// ---------------------------------------------------------------------------
+// Instructions security audit (SEC-03)
+// ---------------------------------------------------------------------------
+
+describe("Instructions security audit", () => {
+  /**
+   * Asserts that a given text does not contain any GDPR-revealing keywords.
+   * - "Clients" (capital C, plural) is checked case-sensitively to avoid
+   *   false positives on generic lowercase "client".
+   * - All other keywords use case-insensitive matching.
+   */
+  function assertNoForbiddenKeywords(text: string, label: string) {
+    for (const keyword of FORBIDDEN_KEYWORDS) {
+      if (keyword === "Clients") {
+        expect(
+          text,
+          `${label} should not contain case-sensitive "Clients"`,
+        ).not.toContain("Clients");
+      } else {
+        expect(
+          text.toLowerCase(),
+          `${label} should not contain "${keyword}" (case-insensitive)`,
+        ).not.toContain(keyword.toLowerCase());
+      }
+    }
+  }
+
+  it("SEC-03: DEFAULT_INSTRUCTIONS contains no GDPR-revealing keywords", () => {
+    assertNoForbiddenKeywords(DEFAULT_INSTRUCTIONS, "DEFAULT_INSTRUCTIONS");
+  });
+
+  it("SEC-03: instructions.txt.example contains no GDPR-revealing keywords", async () => {
+    const examplePath = resolve(import.meta.dirname, "..", "instructions.txt.example");
+    const content = await readFile(examplePath, "utf-8");
+    assertNoForbiddenKeywords(content, "instructions.txt.example");
+  });
+
+  it("SEC-03: MCP initialize response instructions contain no GDPR-revealing keywords", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: `Bearer ${validToken}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0.0" },
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const instructions = body.result.instructions;
+    expect(instructions).toBeDefined();
+    expect(typeof instructions).toBe("string");
+
+    assertNoForbiddenKeywords(instructions, "MCP initialize response instructions");
+  });
+});
