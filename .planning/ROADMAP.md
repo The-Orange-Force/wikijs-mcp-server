@@ -111,8 +111,10 @@ Plans:
   1. When `MCP_INSTRUCTIONS_PATH` env var is not set, the server defaults to `/app/instructions.txt`
   2. A deployer running `docker-compose up` with a customized `instructions.txt` sees their content in MCP initialize response without setting `MCP_INSTRUCTIONS_PATH`
   3. Existing behavior (explicit env var override) continues to work
+**Plans:** 1 plan
 
-Plans: (not yet planned)
+Plans:
+- [ ] 21-01-PLAN.md -- Add Zod default for MCP_INSTRUCTIONS_PATH, fix downstream type errors, update .env.example
 
 ## Progress
 
@@ -122,7 +124,7 @@ Plans: (not yet planned)
 |-------|----------------|--------|-----------|
 | 19. Instructions Loading and Initialize Response | 2/2 | Complete    | 2026-03-27 |
 | 20. Docker Integration and Default Instructions | 1/1 | Complete    | 2026-03-27 |
-| 21. Docker Instructions Path Default | 0/0 | Pending | — |
+| 21. Docker Instructions Path Default | 0/1 | Pending | — |
 
 ---
 *Last updated: 2026-03-27*
