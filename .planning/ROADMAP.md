@@ -8,6 +8,7 @@
 - ✅ [v2.3 Tool Consolidation](./milestones/v2.3-ROADMAP.md) -- Consolidate 17 tools to 3 read-only page tools (2026-03-26)
 - ✅ [v2.4 MCP Instructions Field](./milestones/v2.4-ROADMAP.md) -- Instructions in MCP initialize response for auto-guided Claude behavior (2026-03-27)
 - ✅ [v2.5 GDPR Path Filter](./milestones/v2.5-ROADMAP.md) -- GDPR-compliant path filtering for client directory pages (2026-03-27)
+- 🚧 **v2.6 GDPR Content Redaction** -- Phases 25-27 (in progress)
 
 ## Completed Milestones
 
@@ -83,7 +84,64 @@ Phase 24: Integration Tests and Security Hygiene -- E2E MCP response verificatio
 
 </details>
 
+## 🚧 v2.6 GDPR Content Redaction
+
+**Milestone Goal:** Replace path-based page blocking with surgical marker-based content redaction, and inject page URLs into get_page responses.
+
+## Phases
+
+- [ ] **Phase 25: Core Redaction Function** - Pure redactContent() function with marker-based content redaction and comprehensive test coverage
+- [ ] **Phase 26: Redaction Wiring and URL Injection** - Wire redaction into get_page handler and inject page URLs with configurable base URL
+- [ ] **Phase 27: Path Filter Removal and End-to-End Verification** - Remove isBlocked() filtering and verify the complete system end-to-end
+
+## Phase Details
+
+### Phase 25: Core Redaction Function
+**Goal**: Content between GDPR markers is correctly redacted by a pure, tested function before any integration work begins
+**Depends on**: Nothing (first phase of v2.6)
+**Requirements**: REDACT-01, REDACT-02, REDACT-03, REDACT-04, REDACT-05, REDACT-06
+**Success Criteria** (what must be TRUE):
+  1. Content between `<!-- gdpr-start -->` and `<!-- gdpr-end -->` markers is replaced with the redaction placeholder
+  2. Multiple separate marker pairs on a single page each produce independent redactions with public content between them preserved
+  3. An unclosed `<!-- gdpr-start -->` without matching end marker causes everything from that marker to end of content to be redacted (fail-closed)
+  4. Malformed markers produce a warning log entry containing page ID and path
+  5. Markers with varying case and whitespace around the tag name are matched correctly
+**Plans**: TBD
+
+Plans:
+- [ ] 25-01: TBD
+
+### Phase 26: Redaction Wiring and URL Injection
+**Goal**: The get_page tool returns redacted content and a clickable page URL, with the wiki base URL driven by configuration
+**Depends on**: Phase 25
+**Requirements**: URL-01, URL-02
+**Success Criteria** (what must be TRUE):
+  1. get_page response includes a `url` field containing a direct link to the wiki page
+  2. The wiki page base URL used for URL construction is a server configuration value, not hardcoded inline
+  3. get_page content passes through redactContent() before being returned to the client
+**Plans**: TBD
+
+Plans:
+- [ ] 26-01: TBD
+
+### Phase 27: Path Filter Removal and End-to-End Verification
+**Goal**: All path-based GDPR filtering is removed and every published wiki page is accessible, with marker-based redaction as the sole GDPR mechanism
+**Depends on**: Phase 26
+**Requirements**: FILTER-01, FILTER-02
+**Success Criteria** (what must be TRUE):
+  1. isBlocked() and all path-check logic are removed from the codebase
+  2. get_page, list_pages, and search_pages return results for all published pages without path restrictions
+  3. get_page for a page with GDPR markers returns redacted content and a URL (end-to-end verification of Phase 25 + 26 combined)
+  4. get_page for a page without GDPR markers returns full content unchanged
+**Plans**: TBD
+
+Plans:
+- [ ] 27-01: TBD
+
 ## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 25 -> 26 -> 27
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -93,6 +151,9 @@ Phase 24: Integration Tests and Security Hygiene -- E2E MCP response verificatio
 | 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
+| 25. Core Redaction Function | v2.6 | 0/? | Not started | - |
+| 26. Redaction Wiring and URL Injection | v2.6 | 0/? | Not started | - |
+| 27. Path Filter Removal and E2E Verification | v2.6 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after v2.5 milestone completion*
+*Last updated: 2026-03-27 after v2.6 roadmap creation*

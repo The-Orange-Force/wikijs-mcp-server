@@ -5,9 +5,9 @@ milestone_name: GDPR Content Redaction
 status: active
 stopped_at: null
 last_updated: "2026-03-27T00:00:00.000Z"
-last_activity: 2026-03-27 -- Milestone v2.6 started
+last_activity: 2026-03-27 -- Roadmap created (Phases 25-27)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.6 GDPR Content Redaction
+**Current focus:** v2.6 GDPR Content Redaction -- Phase 25 (Core Redaction Function)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-27 — Milestone v2.6 started
+Phase: 25 of 27 (Core Redaction Function)
+Plan: -- (phase not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-27 -- Roadmap created for v2.6
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: --
+- Total execution time: --
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
 
 ## Completed Milestones
 
@@ -47,10 +62,10 @@ Last activity: 2026-03-27 — Milestone v2.6 started
 
 ### Blockers/Concerns
 
-None.
+- Transition window risk: isBlocked() must not be removed until marker-based redaction is verified end-to-end (Phase 27 is ordered last for this reason)
 
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Milestone v2.5 archived
+Stopped at: Roadmap created for v2.6
 Resume file: None

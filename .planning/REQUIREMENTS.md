@@ -56,22 +56,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REDACT-01 | — | Pending |
-| REDACT-02 | — | Pending |
-| REDACT-03 | — | Pending |
-| REDACT-04 | — | Pending |
-| REDACT-05 | — | Pending |
-| REDACT-06 | — | Pending |
-| FILTER-01 | — | Pending |
-| FILTER-02 | — | Pending |
-| URL-01 | — | Pending |
-| URL-02 | — | Pending |
+| REDACT-01 | Phase 25 | Pending |
+| REDACT-02 | Phase 25 | Pending |
+| REDACT-03 | Phase 25 | Pending |
+| REDACT-04 | Phase 25 | Pending |
+| REDACT-05 | Phase 25 | Pending |
+| REDACT-06 | Phase 25 | Pending |
+| URL-01 | Phase 26 | Pending |
+| URL-02 | Phase 26 | Pending |
+| FILTER-01 | Phase 27 | Pending |
+| FILTER-02 | Phase 27 | Pending |
 
 **Coverage:**
 - v2.6 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after roadmap creation*
