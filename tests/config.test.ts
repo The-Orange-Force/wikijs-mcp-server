@@ -130,6 +130,60 @@ describe("envSchema", () => {
   });
 });
 
+describe("envSchema — WIKIJS_LOCALE", () => {
+  it("defaults to 'en' when not provided", () => {
+    const result = envSchema.safeParse(validEnv);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs.locale).toBe("en");
+  });
+
+  it("is accepted as a custom value", () => {
+    const result = envSchema.safeParse({ ...validEnv, WIKIJS_LOCALE: "nl" });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs.locale).toBe("nl");
+  });
+
+  it("appears in wikijs config group alongside baseUrl and token", () => {
+    const result = envSchema.safeParse(validEnv);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs).toHaveProperty("baseUrl");
+    expect(result.data.wikijs).toHaveProperty("token");
+    expect(result.data.wikijs).toHaveProperty("locale");
+  });
+});
+
+describe("envSchema — trailing slash normalization", () => {
+  it("strips trailing slash from WIKIJS_BASE_URL", () => {
+    const result = envSchema.safeParse({
+      ...validEnv,
+      WIKIJS_BASE_URL: "http://localhost:3000/",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs.baseUrl).toBe("http://localhost:3000");
+  });
+
+  it("strips multiple trailing slashes from WIKIJS_BASE_URL", () => {
+    const result = envSchema.safeParse({
+      ...validEnv,
+      WIKIJS_BASE_URL: "http://localhost:3000///",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs.baseUrl).toBe("http://localhost:3000");
+  });
+
+  it("leaves WIKIJS_BASE_URL without trailing slash unchanged", () => {
+    const result = envSchema.safeParse(validEnv);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.wikijs.baseUrl).toBe("http://localhost:3000");
+  });
+});
+
 describe("envSchema — MCP_INSTRUCTIONS_PATH", () => {
   it("is accepted as an optional env var and mapped to instructionsPath", () => {
     const result = envSchema.safeParse({
