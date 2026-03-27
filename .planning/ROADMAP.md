@@ -133,10 +133,10 @@ Plans:
   2. get_page, list_pages, and search_pages return results for all published pages without path restrictions
   3. get_page for a page with GDPR markers returns redacted content and a URL (end-to-end verification of Phase 25 + 26 combined)
   4. get_page for a page without GDPR markers returns full content unchanged
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 27-01: TBD
+- [ ] 27-01-PLAN.md -- Remove path-filtering code, create E2E verification tests, bump version to 2.6.0
 
 ## Progress
 
@@ -153,7 +153,7 @@ Phases execute in numeric order: 25 -> 26 -> 27
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25. Core Redaction Function | v2.6 | 0/? | Not started | - |
 | 26. Redaction Wiring and URL Injection | v2.6 | 0/? | Not started | - |
-| 27. Path Filter Removal and E2E Verification | v2.6 | 0/? | Not started | - |
+| 27. Path Filter Removal and E2E Verification | v2.6 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-27 after v2.6 roadmap creation*
+*Last updated: 2026-03-27 after Phase 27 planning*
