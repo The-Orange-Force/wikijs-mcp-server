@@ -14,9 +14,9 @@ Requirements for MCP Instructions Field milestone. Each maps to roadmap phases.
 
 ### File Loading
 
-- [ ] **FILE-01**: Server reads instructions from file path specified by `MCP_INSTRUCTIONS_PATH` env var
-- [ ] **FILE-02**: Server falls back to hardcoded default when file is missing or unreadable
-- [ ] **FILE-03**: Server logs a warning when falling back to default instructions
+- [x] **FILE-01**: Server reads instructions from file path specified by `MCP_INSTRUCTIONS_PATH` env var
+- [x] **FILE-02**: Server falls back to hardcoded default when file is missing or unreadable
+- [x] **FILE-03**: Server logs a warning when falling back to default instructions
 
 ### Docker Integration
 
@@ -46,9 +46,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | INIT-01 | Phase 19 | Pending |
 | INIT-02 | Phase 19 | Pending |
-| FILE-01 | Phase 19 | Pending |
-| FILE-02 | Phase 19 | Pending |
-| FILE-03 | Phase 19 | Pending |
+| FILE-01 | Phase 19 | Complete |
+| FILE-02 | Phase 19 | Complete |
+| FILE-03 | Phase 19 | Complete |
 | DOCK-01 | Phase 20 | Pending |
 | DOCK-02 | Phase 20 | Pending |
 
