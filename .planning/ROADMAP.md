@@ -95,10 +95,10 @@ Plans:
   1. A default `instructions.txt` file exists in the repository with meaningful content matching the hardcoded fallback
   2. `docker-compose.yml` mounts the instructions file into the container at the path the server expects
   3. A deployer can replace the instructions file on the host and restart the container to change Claude's behavior
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 20-01: TBD
+- [ ] 20-01-PLAN.md -- Ship default instructions.txt, wire docker-compose volume mount, update documentation
 
 ## Progress
 
@@ -107,7 +107,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 19. Instructions Loading and Initialize Response | 0/? | Not started | - |
-| 20. Docker Integration and Default Instructions | 0/? | Not started | - |
+| 20. Docker Integration and Default Instructions | 0/1 | Not started | - |
 
 ---
 *Last updated: 2026-03-27*
