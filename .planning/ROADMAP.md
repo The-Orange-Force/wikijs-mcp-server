@@ -130,10 +130,10 @@ Plans:
   1. When the metadata fallback fires and adds results, an info-level log entry records the query, the number of metadata hits, and the total resolved count
   2. The search_pages tool description mentions that searches match against page paths, titles, and descriptions
   3. The existing 366-test suite remains green (no regressions from Phase 28 or 29 changes)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 29-01: TBD
+- [ ] 29-01-PLAN.md -- Add metadata fallback logging, update search_pages tool description, bump version to 2.7.0, create dedicated test file with full fallback matrix
 
 ## Progress
 
@@ -150,7 +150,7 @@ Phases execute in numeric order: 28 -> 29
 | 22-24. GDPR Path Filter | v2.5 | 3/3 | Complete | 2026-03-27 |
 | 25-27. GDPR Content Redaction | v2.6 | 4/4 | Complete | 2026-03-27 |
 | 28. Metadata Fallback Implementation | 1/1 | Complete    | 2026-03-27 | - |
-| 29. Test Coverage, Observability, and Tool Description | v2.7 | 0/? | Not started | - |
+| 29. Test Coverage, Observability, and Tool Description | v2.7 | 0/1 | Not started | - |
 
 ---
-*Last updated: 2026-03-28 after Phase 28 planning completed*
+*Last updated: 2026-03-28 after Phase 29 planning completed*
