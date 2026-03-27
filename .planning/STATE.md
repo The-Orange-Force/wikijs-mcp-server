@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: MCP Instructions Field
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-27T00:00:00.000Z"
-last_activity: 2026-03-27 -- Milestone v2.4 started
+last_activity: 2026-03-27 -- Roadmap created (2 phases, 7 requirements mapped)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.4 MCP Instructions Field
+**Current focus:** v2.4 MCP Instructions Field -- Phase 19 ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-27 — Milestone v2.4 started
+Phase: 19 of 20 (Instructions Loading and Initialize Response)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-03-27 -- Roadmap created
+
+Progress: [░░░░░░░░░░] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: --
+- Total execution time: --
 
 ## Completed Milestones
 
@@ -37,6 +46,18 @@ Last activity: 2026-03-27 — Milestone v2.4 started
 - v2.2 OAuth Authorization Proxy (2026-03-26)
 - v2.3 Tool Consolidation (2026-03-26)
 
+## Accumulated Context
+
+### Decisions
+
+None yet for v2.4.
+
+### Blockers/Concerns
+
+None.
+
 ## Session Continuity
 
-Milestone v2.4 MCP Instructions Field — defining requirements
+Last session: 2026-03-27
+Stopped at: Roadmap created, Phase 19 ready to plan
+Resume file: None

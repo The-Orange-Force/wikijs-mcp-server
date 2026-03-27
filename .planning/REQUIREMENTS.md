@@ -44,19 +44,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INIT-01 | — | Pending |
-| INIT-02 | — | Pending |
-| FILE-01 | — | Pending |
-| FILE-02 | — | Pending |
-| FILE-03 | — | Pending |
-| DOCK-01 | — | Pending |
-| DOCK-02 | — | Pending |
+| INIT-01 | Phase 19 | Pending |
+| INIT-02 | Phase 19 | Pending |
+| FILE-01 | Phase 19 | Pending |
+| FILE-02 | Phase 19 | Pending |
+| FILE-03 | Phase 19 | Pending |
+| DOCK-01 | Phase 20 | Pending |
+| DOCK-02 | Phase 20 | Pending |
 
 **Coverage:**
 - v2.4 requirements: 7 total
-- Mapped to phases: 0
-- Unmapped: 7 ⚠️
+- Mapped to phases: 7
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 after roadmap creation*
