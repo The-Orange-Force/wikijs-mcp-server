@@ -1,347 +1,240 @@
-# Stack Research: OAuth Authorization Proxy
+# Stack Research: GDPR Path Filtering
 
-**Domain:** OAuth 2.1 authorization proxy endpoints for MCP server
-**Researched:** 2026-03-25
+**Domain:** Path-based access control utility for MCP tool layer
+**Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Context: What This Covers
 
-This research is scoped to the v2.2 OAuth Authorization Proxy milestone. The existing
+This research is scoped to the v2.5 GDPR Path Filter milestone. The existing
 application stack (TypeScript 5.3, Fastify 4, jose, Zod, Vitest, Docker) is validated
-and not re-researched. The question is: what NEW dependencies and patterns are needed
-to proxy OAuth authorize/token/registration/discovery requests to Azure AD?
+and not re-researched.
 
-**Existing stack (validated, not changed):**
+**The single question:** What is the right approach to implement `isBlocked()` —
+a predicate that returns `true` for paths matching the pattern `Clients/<CompanyName>`
+(exactly 2 segments, first segment is "Clients")?
+
+**Existing validated stack (unchanged):**
+- TypeScript 5.3 strict ESM, Node.js 20
 - Fastify 4 (HTTP server)
-- jose (JWT/JWKS validation -- continues to validate tokens from Azure AD)
-- Zod (input validation)
-- graphql-request (WikiJS API client)
-- @modelcontextprotocol/sdk (MCP protocol)
+- Zod (input validation — already used for all tool inputs)
+- Vitest (test runner — already used for all unit tests)
+- graphql-request, jose, @modelcontextprotocol/sdk
 
-**What we are adding:** OAuth proxy endpoints that sit between MCP clients (Claude
-Desktop) and Azure AD, transforming scope names and managing the authorization flow.
+**What we are adding:** A single utility function and its unit tests. No new
+infrastructure, no new framework integration.
+
+---
 
 ## Recommended Stack Additions
 
 ### New Dependencies
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| `@fastify/formbody` | `^7.0.0` | Parse `application/x-www-form-urlencoded` request bodies on the `/token` endpoint | Fastify 4 only parses `application/json` and `text/plain` by default. OAuth token requests (RFC 6749 Section 4.1.3) MUST use `application/x-www-form-urlencoded`. This is the official Fastify plugin for this content type, maintained by the Fastify org. v7.x is the Fastify 4-compatible line. Uses Node's built-in `querystring.parse` -- zero additional transitive deps. |
+None.
+
+The GDPR path filter requires **zero new npm dependencies**. The entire feature
+is implemented as a pure TypeScript utility function using only:
+
+- `String.prototype.split()` — built-in, no import needed
+- Comparison operators — built-in
 
 ### No New Dependencies Needed For
 
-| Capability | Why No New Dep | What To Use Instead |
-|------------|---------------|---------------------|
-| HTTP client for token proxy | Node.js 20 ships stable `fetch()` (undici-backed) | `globalThis.fetch` with `URLSearchParams` body -- automatically sets `Content-Type: application/x-www-form-urlencoded;charset=UTF-8` |
-| URL/query-string construction for authorization redirects | Node.js built-in `URL` and `URLSearchParams` | `new URL()` + `.searchParams.set()` for building Azure AD `/authorize` redirect URLs |
-| PKCE code challenge generation | Not needed -- proxy passes through PKCE params | MCP client generates `code_challenge` + `code_verifier`; proxy forwards them unchanged to Azure AD |
-| JSON response parsing from Azure AD token endpoint | Node.js `fetch()` built-in `.json()` | `response.json()` on the fetch response |
-| OpenID Connect discovery JSON | Fastify's built-in JSON response | Static JSON object returned by route handler -- no library needed |
-| Dynamic Client Registration | Static JSON response | Returns pre-configured Azure AD `client_id` -- no database or registration logic needed |
-| Scope mapping (bare to fully-qualified) | Simple string concatenation | `wikijs:read` -> `api://${clientId}/wikijs:read` -- pure TypeScript, no library |
+| Capability | Why No New Dep | What To Use |
+|------------|---------------|-------------|
+| Path segment parsing | Wiki.js paths use `/` as separator. `path.split("/")` produces the segment array in one call. No glob syntax, no wildcards, no recursion. | `String.prototype.split("/")` |
+| Path pattern matching | The rule is deterministic and fully specified: `segments.length === 2` AND `segments[0].toLowerCase() === "clients"`. No pattern language needed. | Direct comparison |
+| Testing the utility | Vitest is already present and used for `scope-mapper` unit tests, which are structurally identical (pure functions, table-driven test cases). | Vitest (existing) |
+| Filtering arrays of pages | `Array.prototype.filter()` in tool handlers | Built-in `.filter()` |
 
-### Dependencies to REMOVE
+---
 
-| Dependency | Current Version | Why Remove |
-|------------|----------------|------------|
-| `@azure/msal-node` | `^5.1.1` | **Not imported anywhere in `src/`.** Only used by `get-token.mjs` (a standalone developer helper script). MSAL is designed for client-side token acquisition (device code flow, auth code flow), NOT for proxying. The proxy needs raw HTTP control over the authorize/token flow -- MSAL abstracts away the exact parameters we need to manipulate (scope mapping, redirect_uri rewriting). Removing it also eliminates the musl libc concern that forced `node:20-slim` over Alpine in Docker. If the `get-token.mjs` script is still needed, it can use `npx @azure/msal-node` or be moved to a separate devDependency. |
+## Why Custom Utility, Not a Library
 
-## Detailed Rationale
+### Libraries Evaluated
 
-### Why `@fastify/formbody` (Not a Custom Content Type Parser)
+**accesscontrol / role-acl / casbin (node-casbin)** — These implement RBAC/ABAC
+for multi-role, multi-resource permission systems. They require defining roles, users,
+and resource permissions, then querying "can role X perform action Y on resource Z?".
+The GDPR rule has no roles and no users — it is a single structural test on a URL path
+segment. The libraries solve a fundamentally different problem and would add 100–400 KB
+of dependencies for a 3-line predicate.
 
-Fastify supports registering custom content type parsers via `addContentTypeParser()`.
-We could write a 5-line parser using `node:querystring`. However:
+**micromatch / picomatch / minimatch** — These match file paths against glob patterns
+(e.g., `Clients/**`). They add zero-dependency glob engines (~15–60 KB) that compile
+patterns to regexes. The rule `Clients/<CompanyName>` is not a glob — it is an exact
+structural test: exactly 2 segments, first segment equals "Clients". Using glob
+matching would be an abstraction mismatch: it would permit `Clients/` (empty second
+segment) and `Clients/Foo/Bar` unless the glob pattern is carefully tuned. A direct
+structural test is more readable, more precise, and impossible to misconfigure.
 
-1. `@fastify/formbody` is an official Fastify org plugin with TypeScript types
-2. It handles edge cases (body size limits, charset normalization)
-3. It is a single dependency with zero transitive deps (uses Node built-in `querystring.parse`)
-4. It is the conventional approach in the Fastify ecosystem -- makes the codebase readable to anyone familiar with Fastify
+**Conclusion:** No library fits. The rule is a predicate over string structure, not
+a policy system or a file-glob match. A custom pure function is the correct and
+simplest implementation.
 
-The plugin is registered at the Fastify instance level (or scoped to a plugin):
+### The Precedent: `scope-mapper.ts`
 
-```typescript
-import formbody from "@fastify/formbody";
+The codebase already uses this pattern for `src/oauth-proxy/scope-mapper.ts`:
 
-// Register for OAuth routes that receive form-encoded bodies
-server.register(formbody);
-```
+- Pure TypeScript functions (`mapScopes`, `unmapScopes`, `stripResourceParam`)
+- No dependencies beyond built-ins
+- Co-located unit tests in `__tests__/scope-mapper.test.ts`
+- Table-driven test cases covering edge cases (empty input, boundary conditions)
+- Exported and imported with `.js` extension (ESM NodeNext convention)
 
-After registration, `request.body` on POST routes with `Content-Type: application/x-www-form-urlencoded` is a parsed object.
+The `isBlocked()` utility should follow the exact same structure:
+a new file `src/path-filter.ts` with a co-located `src/__tests__/path-filter.test.ts`.
 
-**Flat parsing only** -- `@fastify/formbody` uses `querystring.parse` which produces
-flat key-value pairs (no nested objects). This is exactly what OAuth token requests
-need: `grant_type`, `code`, `client_id`, `redirect_uri`, `code_verifier` are all flat
-string values.
+---
 
-### Why Native `fetch()` (Not `@fastify/reply-from`, `axios`, or `undici` Direct)
+## Implementation Pattern
 
-The token proxy needs to:
-1. Receive a form-encoded POST from the MCP client
-2. Modify the scope parameter (prepend `api://{clientId}/`)
-3. Forward to Azure AD's token endpoint
-4. Return Azure AD's JSON response to the MCP client
-
-This is NOT a reverse proxy (transparent pass-through). It is a **transform proxy**:
-the request body is modified before forwarding. `@fastify/reply-from` and
-`@fastify/http-proxy` are designed for transparent proxying with header rewriting --
-they are overkill and the wrong abstraction for body transformation.
-
-Native `fetch()` gives us:
-- Full control over the outgoing request body (construct a new `URLSearchParams`)
-- Clean error handling (`response.ok`, `response.status`)
-- Zero additional dependencies
-- Built into Node.js 20 (stable, no longer experimental)
+### Function Signature
 
 ```typescript
-// Token proxy pattern -- transform and forward
-const azureParams = new URLSearchParams();
-azureParams.set("client_id", config.azure.clientId);
-azureParams.set("grant_type", body.grant_type);
-azureParams.set("code", body.code);
-azureParams.set("redirect_uri", body.redirect_uri);
-azureParams.set("scope", mapScopes(body.scope, config.azure.clientId));
-if (body.code_verifier) azureParams.set("code_verifier", body.code_verifier);
+// src/path-filter.ts
 
-const azureResponse = await fetch(
-  `https://login.microsoftonline.com/${config.azure.tenantId}/oauth2/v2.0/token`,
-  { method: "POST", body: azureParams }
-);
-
-const tokenResponse = await azureResponse.json();
-```
-
-`URLSearchParams` as the `fetch()` body automatically sets
-`Content-Type: application/x-www-form-urlencoded;charset=UTF-8` -- no manual header
-required.
-
-### Why NOT `@azure/msal-node` for the Proxy
-
-MSAL is a client-side authentication library. It is designed to:
-- Acquire tokens for a client application
-- Cache tokens in memory/disk
-- Handle device code flow, auth code flow from the client perspective
-
-The OAuth proxy needs to:
-- Receive authorization/token requests from MCP clients
-- Transform parameters (scope mapping, redirect_uri injection)
-- Forward raw HTTP requests to Azure AD
-- Return Azure AD's raw responses
-
-MSAL abstracts away the HTTP layer we need to control. Using MSAL would mean fighting
-the library to extract and modify the exact query/form parameters. Direct `fetch()` is
-simpler, more transparent, and aligns with the proxy's role as a thin HTTP translator.
-
-Additionally, `@azure/msal-node` adds ~2.5 MB to `node_modules` and was the reason
-for choosing `node:20-slim` over `node:20-alpine` in Docker. Removing it opens the
-door to switching to Alpine (smaller image, fewer CVEs) in a future milestone.
-
-### Why `URL` and `URLSearchParams` (Not a URL Manipulation Library)
-
-The authorization endpoint proxy needs to:
-1. Parse the incoming request's query parameters
-2. Modify the `scope` parameter
-3. Add the `client_id` parameter (Azure AD's, not the MCP client's)
-4. Construct a redirect URL to Azure AD's `/authorize` endpoint
-
-Node.js built-in `URL` and `URLSearchParams` handle all of this:
-
-```typescript
-// Authorization redirect construction
-const azureAuthUrl = new URL(
-  `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`
-);
-azureAuthUrl.searchParams.set("client_id", azureClientId);
-azureAuthUrl.searchParams.set("response_type", "code");
-azureAuthUrl.searchParams.set("redirect_uri", redirectUri);
-azureAuthUrl.searchParams.set("scope", mapScopes(requestedScope, azureClientId));
-azureAuthUrl.searchParams.set("state", state);
-azureAuthUrl.searchParams.set("code_challenge", codeChallenge);
-azureAuthUrl.searchParams.set("code_challenge_method", "S256");
-
-reply.redirect(302, azureAuthUrl.toString());
-```
-
-No URL manipulation library needed. `URL` handles encoding, normalization, and
-construction correctly per the WHATWG URL Standard.
-
-## Integration Points with Existing Fastify Server
-
-### Route Registration Pattern
-
-The OAuth proxy endpoints should be registered as a new Fastify plugin, following the
-existing pattern of `publicRoutes` and `protectedRoutes`:
-
-```typescript
-// New plugin: OAuth proxy routes (unauthenticated -- these ARE the auth endpoints)
-server.register(oauthProxyRoutes, {
-  appConfig,
-});
-```
-
-These routes are **unauthenticated** -- they are the mechanism by which MCP clients
-obtain tokens. The JWT auth middleware must NOT apply to them.
-
-### New Routes
-
-| Method | Path | Content-Type In | Content-Type Out | Purpose |
-|--------|------|-----------------|------------------|---------|
-| GET | `/.well-known/openid-configuration` | N/A | `application/json` | OIDC discovery metadata pointing to local proxy endpoints |
-| POST | `/oauth/register` | `application/json` | `application/json` | Dynamic Client Registration -- returns pre-configured Azure AD client_id |
-| GET | `/oauth/authorize` | N/A (query params) | 302 redirect | Redirect to Azure AD `/authorize` with scope mapping |
-| POST | `/oauth/token` | `application/x-www-form-urlencoded` | `application/json` | Forward token request to Azure AD with scope mapping |
-
-### Configuration Additions
-
-New environment variables needed:
-
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| None new | Tenant ID, Client ID, Resource URL already exist | All Azure AD details already in `config.ts` |
-
-The proxy uses existing config values:
-- `AZURE_TENANT_ID` -- for constructing Azure AD endpoint URLs
-- `AZURE_CLIENT_ID` -- returned by Dynamic Client Registration; used as `client_id` in Azure AD requests
-- `MCP_RESOURCE_URL` -- for constructing local endpoint URLs in discovery metadata
-
-### Scope Mapping Logic
-
-This is the core transformation the proxy performs:
-
-```typescript
-// Bare MCP scope -> Fully-qualified Azure AD scope
-function mapScopes(bareScopes: string, clientId: string): string {
-  return bareScopes
-    .split(" ")
-    .map(scope => {
-      // Standard OIDC scopes pass through unchanged
-      if (["openid", "profile", "email", "offline_access"].includes(scope)) {
-        return scope;
-      }
-      // Custom scopes get the api:// prefix
-      return `api://${clientId}/${scope}`;
-    })
-    .join(" ");
+/**
+ * Returns true if a Wiki.js page path is GDPR-blocked.
+ *
+ * Blocks direct client directory pages at Clients/<CompanyName> —
+ * paths with exactly 2 segments where the first segment is "Clients"
+ * (case-insensitive). Does NOT block deeper pages (Clients/Foo/Bar)
+ * or the Clients root itself (Clients).
+ */
+export function isBlocked(path: string): boolean {
+  const segments = path.split("/").filter(Boolean);
+  return segments.length === 2 && segments[0].toLowerCase() === "clients";
 }
 ```
 
-This function uses the existing `AZURE_CLIENT_ID` to construct fully-qualified scope
-names that Azure AD expects.
+The `.filter(Boolean)` removes empty strings from leading/trailing slashes,
+normalising `/Clients/Acme/` to the same result as `Clients/Acme`.
 
-### Protected Resource Metadata Update
+### Usage in Tool Handlers
 
-The existing `/.well-known/oauth-protected-resource` endpoint in `public-routes.ts`
-currently points `authorization_servers` to Azure AD directly. For the proxy, it must
-point to self:
-
-```typescript
-authorization_servers: [appConfig.azure.resourceUrl]
-```
-
-This tells MCP clients to discover OAuth endpoints at this server (not Azure AD).
-
-### `@fastify/formbody` Scoping
-
-Register `@fastify/formbody` only within the OAuth proxy plugin scope to avoid
-affecting the existing `/mcp` endpoint (which expects `application/json`):
+**get_page** — path is resolved from the API response, not the tool input. Filter
+applies after `wikiJsApi.getPageById()` returns:
 
 ```typescript
-async function oauthProxyRoutes(fastify: FastifyInstance, opts: OAuthProxyOptions) {
-  // Scoped registration -- only affects routes in this plugin
-  fastify.register(formbody);
-
-  fastify.post("/oauth/token", async (request, reply) => {
-    const body = request.body as Record<string, string>;
-    // ... proxy logic
-  });
+const page = await wikiJsApi.getPageById(id);
+if (isBlocked(page.path)) {
+  return { isError: true, content: [{ type: "text", text: "Page not found." }] };
 }
 ```
 
-Fastify's plugin encapsulation ensures the formbody parser only applies to routes
-registered inside this plugin.
+**list_pages** — filter applied to the returned array:
+
+```typescript
+const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
+const visible = pages.filter(p => !isBlocked(p.path));
+```
+
+**search_pages** — filter applied to the results array:
+
+```typescript
+const result = await wikiJsApi.searchPages(query, limit);
+const visible = result.results.filter(p => !isBlocked(p.path));
+```
+
+---
+
+## Testing Approach
+
+Vitest unit tests co-located with the utility, following the `scope-mapper.test.ts`
+pattern. All test cases are pure in/out — no mocks needed.
+
+### Test Case Categories
+
+| Category | Input | Expected |
+|----------|-------|----------|
+| Exact match | `"Clients/Acme Corp"` | `true` |
+| Case-insensitive | `"clients/Acme Corp"` | `true` |
+| Leading slash normalisation | `"/Clients/Acme"` | `true` |
+| Trailing slash normalisation | `"Clients/Acme/"` | `true` |
+| Root segment only | `"Clients"` | `false` |
+| Deeper path (3 segments) | `"Clients/Acme/Projects"` | `false` |
+| Unrelated top-level | `"Engineering/Architecture"` | `false` |
+| Empty string | `""` | `false` |
+| Single slash | `"/"` | `false` |
+
+The test file should be `src/__tests__/path-filter.test.ts` to keep it alongside
+the function source, matching the `scope-mapper` convention.
+
+---
 
 ## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `@azure/msal-node` (keep existing) | Not used in `src/`, wrong abstraction for proxying, adds 2.5 MB, forced slim Docker image | Remove from dependencies; use `fetch()` for direct HTTP calls to Azure AD |
-| `axios` or `got` | Adds unnecessary dependency when Node.js 20 has stable `fetch()` | `globalThis.fetch()` |
-| `@fastify/http-proxy` or `@fastify/reply-from` | Designed for transparent reverse proxying, not body transformation | Direct `fetch()` calls with constructed request bodies |
-| `qs` (nested query string parser) | OAuth token parameters are flat key-value pairs; nested parsing is unnecessary and a security risk (prototype pollution) | `@fastify/formbody` with default `querystring.parse` |
-| `openid-client` | Full OIDC client library -- we are building a proxy, not a client. Would fight the library's abstractions. | Manual endpoint implementation (4 simple routes) |
-| `oauth4webapi` | Same problem as `openid-client` -- client-side abstraction over what we need to control server-side | Manual implementation |
-| `express` middleware (e.g., `body-parser`) | Project uses Fastify; mixing middleware frameworks is an anti-pattern | `@fastify/formbody` (Fastify-native) |
-| Session/state management library | The proxy is stateless. Authorization `state` parameter is generated by the MCP client and passed through. No server-side session state is needed. | Stateless pass-through of state/PKCE params |
-| Token caching library | PROJECT.md explicitly puts token storage/caching out of scope. The proxy passes Azure AD's response through to the MCP client unchanged. | Direct pass-through |
+| `accesscontrol` / `casbin` / `role-acl` | RBAC/ABAC systems for multi-role permission models — wrong abstraction for a single structural path predicate | Custom `isBlocked()` pure function |
+| `micromatch` / `picomatch` / `minimatch` | Glob engines that compile patterns to regex — over-engineered for a deterministic 2-segment rule; introduces potential misconfiguration | `path.split("/")` + direct comparison |
+| Zod `.refine()` on tool inputs | Tool inputs don't include the page path — path is returned by the Wiki.js API after ID lookup. Zod validates inputs; blocking is output post-processing. | Filter in tool handler after API call |
+| Fastify `preHandler` hook | Blocking at HTTP layer would require parsing MCP JSON-RPC request body to extract page ID, then pre-fetching the page path — worse performance and coupling than filtering tool output | Filter inside tool handler closures |
+| Middleware / decorator pattern | No reuse across HTTP routes (this is all within MCP tool handlers). A shared utility function is cleaner. | Import `isBlocked` in `mcp-tools.ts` |
+| Configuration-driven block list | PROJECT.md specifies the rule exactly: `Clients/<CompanyName>`. Making it configurable at startup adds complexity without a stated need. | Hardcoded structural check in `isBlocked()` |
+| Environment variable for toggle | No stated requirement to disable GDPR filtering at runtime. A toggle would make blocking accidental rather than guaranteed. | Always-on predicate |
 
-## MCP Spec Alignment
+---
 
-The MCP authorization specification (draft, 2025-11-25 revision) has evolved:
+## Integration Points
 
-1. **Dynamic Client Registration is now OPTIONAL** (MAY support). The spec prefers
-   Client ID Metadata Documents. However, Claude Desktop currently uses DCR as a
-   fallback, so we implement it for compatibility.
+| File | Change |
+|------|--------|
+| `src/path-filter.ts` | New file — exports `isBlocked(path: string): boolean` |
+| `src/__tests__/path-filter.test.ts` | New file — Vitest unit tests for `isBlocked()` |
+| `src/mcp-tools.ts` | Import `isBlocked` from `./path-filter.js`; apply in all 3 tool handlers |
 
-2. **The proxy pattern is explicitly supported**: the MCP server lists itself as the
-   authorization server in Protected Resource Metadata, exposes OIDC discovery pointing
-   to local endpoints, and forwards authorization/token requests to the real IdP.
+No changes needed to:
+- `src/config.ts` — no new env vars
+- `src/types.ts` — `WikiJsPage.path` is already `string`
+- `src/api.ts` — filtering is tool-layer responsibility, not API layer
+- Docker / docker-compose — no new dependencies or volumes
 
-3. **PKCE is MUST for MCP clients**: Claude Desktop sends `code_challenge` and
-   `code_challenge_method=S256`. The proxy passes these through unchanged to Azure AD.
-   No PKCE generation or validation logic is needed on the proxy.
+---
 
-4. **Resource Indicators (RFC 8707)**: MCP clients MUST include a `resource` parameter
-   in authorization and token requests. Azure AD may or may not support this -- the
-   proxy should forward it and handle Azure AD's response gracefully.
+## Version Compatibility
 
-5. **Protected Resource Metadata (RFC 9728) is MUST**: Already implemented. Needs
-   update to point `authorization_servers` to self instead of Azure AD.
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| TypeScript | 5.3 (existing) | `split`, `filter`, comparison — no new TS features needed |
+| Node.js | 20 (existing) | No new built-ins required |
+| Vitest | 4.x (existing) | Same `describe/it/expect` pattern as existing unit tests |
 
-## Version Compatibility Matrix
+No new packages → no version compatibility concerns.
 
-| Package | Version | Fastify 4 | Node.js 20 | TypeScript 5.3 | ESM |
-|---------|---------|-----------|------------|----------------|-----|
-| `@fastify/formbody` | `^7.0.0` | Yes (v7.x line) | Yes | Yes (ships types) | Yes |
-| `globalThis.fetch` | Built-in | N/A | Stable since 18.0 | N/A | N/A |
-| `URL` / `URLSearchParams` | Built-in | N/A | Stable | N/A | N/A |
+---
 
 ## Installation
 
 ```bash
-# Single new dependency
-npm install @fastify/formbody@^7.0.0
-
-# Remove unused dependency
-npm uninstall @azure/msal-node
+# No new dependencies to install.
+# The feature is implemented entirely in TypeScript using built-ins.
 ```
 
-Net effect: dependency count decreases by 1 (remove msal-node, add formbody).
-`node_modules` size decreases significantly (msal-node is ~2.5 MB vs formbody ~15 KB).
+---
 
 ## Alternatives Considered
 
-| Category | Recommended | Alternative | Why Not Alternative |
-|----------|-------------|-------------|---------------------|
-| Form body parsing | `@fastify/formbody` | Custom `addContentTypeParser()` | 5 lines of code but loses type safety, body limit handling, and ecosystem familiarity. Not worth the marginal dependency savings. |
-| HTTP client for proxy | `globalThis.fetch()` | `undici.request()` (direct) | Undici is already bundled in Node.js 20 and powers `fetch()`. Direct undici usage gives lower-level control but fetch's ergonomics are better for our use case (simple POST, read JSON response). No benefit to going lower-level. |
-| HTTP client for proxy | `globalThis.fetch()` | `@fastify/reply-from` | Designed for transparent proxying (pipe request through). We need to transform the request body (scope mapping) before forwarding. Wrong abstraction. |
-| Token endpoint auth | No `client_secret` (public client) | `client_secret_post` | Azure AD app is configured as a public client (no secret). MCP clients are native desktop apps -- they cannot securely store a client secret. PKCE provides the security. |
-| Discovery endpoint | `/.well-known/openid-configuration` | `/.well-known/oauth-authorization-server` | MCP spec requires clients to support both. Azure AD uses OIDC discovery natively. Using the same convention reduces cognitive overhead. Implement OIDC discovery; MCP clients will find it. |
-| Scope mapping | String manipulation in TypeScript | Zod transform | Zod transform would validate AND transform scopes. However, the mapping is a simple `api://{id}/` prefix. Zod is better used for validating the incoming request shape; scope mapping is business logic, not validation. Keep them separate. |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Custom `isBlocked()` pure function | `micromatch` glob pattern | Only if the block rules become dynamic patterns configured at runtime by non-developers (not the case here) |
+| Custom `isBlocked()` pure function | `casbin` policy engine | Only if the system needs per-user permissions across multiple resource types (out of scope per PROJECT.md) |
+| Filter in `mcp-tools.ts` after API call | Fastify `preHandler` hook | Only if blocking needed at HTTP transport level before MCP deserialization (not needed — this is tool-level business logic) |
+| Hardcoded rule | Env var toggle | Only if GDPR compliance is optional — it is not. Hardcoding makes the constraint explicit and auditable. |
+
+---
 
 ## Sources
 
-- [MCP Authorization Specification (draft)](https://modelcontextprotocol.io/specification/draft/basic/authorization) -- Authoritative spec for OAuth proxy pattern, endpoint requirements, PKCE, scope handling. HIGH confidence.
-- [MCP Authorization Spec Update (Nov 2025)](https://aaronparecki.com/2025/11/25/1/mcp-authorization-spec-update) -- Client ID Metadata Documents replacing DCR as primary registration mechanism. MEDIUM confidence (blog post, verified against spec).
-- [Logto: MCP Auth Spec Review (2025-03-26 edition)](https://blog.logto.io/mcp-auth-spec-review-2025-03-26) -- Detailed analysis of proxy pattern, scope mapping, token handling. MEDIUM confidence.
-- [Microsoft: OAuth 2.0 authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) -- Azure AD token endpoint parameters, form-encoded body format, PKCE support. HIGH confidence (official docs, updated 2026-01-09).
-- [Azure AD OpenID Configuration](https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration) -- Verified: no `registration_endpoint` in Azure AD (confirms need for proxy DCR), no `code_challenge_methods_supported` in metadata. HIGH confidence (live endpoint).
-- [@fastify/formbody GitHub](https://github.com/fastify/fastify-formbody) -- Version matrix (v7.x for Fastify 4), uses `querystring.parse`, TypeScript types included. HIGH confidence (official Fastify org repo).
-- [@fastify/formbody npm](https://www.npmjs.com/package/@fastify/formbody) -- Latest v7 is `7.0.2`, v8.0.2 is for Fastify 5. HIGH confidence.
-- [Node.js Fetch API](https://nodejs.org/en/learn/getting-started/fetch) -- Stable in Node.js 18+, `URLSearchParams` body auto-sets form-urlencoded Content-Type. HIGH confidence (official Node.js docs).
-- [MDN: Using the Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) -- `URLSearchParams` as body, Content-Type automatic. HIGH confidence.
+- Codebase analysis of `src/oauth-proxy/scope-mapper.ts` and `src/oauth-proxy/__tests__/scope-mapper.test.ts` — establishes the pure-function utility pattern to follow. HIGH confidence (direct code inspection).
+- [accesscontrol npm](https://www.npmjs.com/package/accesscontrol) — RBAC/ABAC library, last reviewed 2026-03-27. Confirmed: requires role definitions and resource permissions — wrong abstraction. HIGH confidence.
+- [casbin/node-casbin GitHub](https://github.com/casbin/node-casbin) — Policy engine for ACL/RBAC/ABAC. Confirmed: designed for multi-user policy enforcement, not single-predicate filtering. HIGH confidence.
+- [micromatch npm](https://www.npmjs.com/package/micromatch) — Glob matching library. Confirmed: solves wildcard file-system path matching, not structural segment counting. HIGH confidence.
+- [picomatch npm](https://www.npmjs.com/package/picomatch) — Underlying glob engine for micromatch. Same conclusion. HIGH confidence.
+- `src/types.ts` inspection — `WikiJsPage.path` is `string`; field is present on all three tool API return types. HIGH confidence (direct code inspection).
+- `src/mcp-tools.ts` inspection — confirmed that page path is returned from API call, not from tool input; filtering must happen post-API-call inside tool handlers. HIGH confidence (direct code inspection).
 
 ---
-*Stack research for: OAuth Authorization Proxy -- wikijs-mcp-server v2.2*
-*Researched: 2026-03-25*
+*Stack research for: GDPR Path Filter — wikijs-mcp-server v2.5*
+*Researched: 2026-03-27*

@@ -1,449 +1,316 @@
-# Domain Pitfalls: OAuth Authorization Proxy with Azure AD
+# Domain Pitfalls: GDPR Path Filtering on an Existing MCP/API Server
 
-**Domain:** Adding OAuth 2.1 authorization proxy endpoints to an existing MCP server backed by Azure AD (Microsoft Entra ID)
-**Researched:** 2026-03-25
-**Overall confidence:** HIGH (Azure AD behaviors verified via Microsoft Learn docs; MCP spec verified via modelcontextprotocol.io draft spec; Claude Desktop/Code behaviors verified via GitHub issues #82 on claude-ai-mcp, #2527 on claude-code, #832 and #862 on typescript-sdk)
+**Domain:** Adding path-based access control (GDPR client directory blocking) to an existing MCP server
+**Researched:** 2026-03-27
+**Confidence:** HIGH (path normalization bypass patterns verified via security CVEs and PortSwigger research; GDPR personal-data scope verified via ICO/gdpr-info.eu official sources; existence-oracle pattern verified via Authress and LockMeDown guidance; Wiki.js path format verified via GitHub discussions)
 
-**Context:** The wikijs-mcp-server already validates Azure AD JWTs (shipped in v2.0). This research covers pitfalls specific to ADDING an OAuth proxy layer that helps MCP clients OBTAIN tokens, without breaking the existing JWT validation.
+**Context:** The wikijs-mcp-server already has 3 read-only tools (get_page, list_pages, search_pages) backed by Wiki.js GraphQL. This research covers pitfalls specific to ADDING a shared `isBlocked()` filter that silently blocks access to `Clients/<CompanyName>` paths (exactly 2 path segments where the first is "Clients"). No OAuth changes. Filter applies post-fetch.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause complete auth flow failure, security vulnerabilities, or require architectural rework.
+### Pitfall 1: Existence Oracle via Asymmetric Error Responses
 
-### Pitfall 1: Azure AD Rejects the RFC 8707 `resource` Parameter
+**What goes wrong:**
+`get_page` returns different responses for "blocked page that exists" vs "page that does not exist at all":
+- Blocked: `{ isError: true, "Page not found." }`
+- Not found: `{ isError: true, "Error in get_page: <GraphQL error message>." }`
 
-**What goes wrong:** The MCP spec (2025-11-25 draft) requires clients to include the `resource` parameter (RFC 8707) in both authorization and token requests. However, Azure AD v2.0 endpoints do NOT support RFC 8707. When an MCP client sends `resource=https://mcp.example.com` alongside v2-style scope parameters, Azure AD returns error `AADSTS9010010` ("The resource parameter provided in the request doesn't match with the requested scopes") with HTTP 400.
+A caller (AI or human) can enumerate which client company names exist in the wiki by probing IDs and comparing error messages. If `id=42` returns a generic "not found" error but `id=43` returns the same "not found" phrasing, both might be non-existent — OR 42 is a blocked client page. With enough probes and side-channel timing differences, the enumeration succeeds.
 
-**Why it happens:** Azure AD v1.0 used a `resource` parameter for a different purpose (identifying the target API). The v2.0 endpoint replaced this with fully-qualified scope strings (e.g., `api://client-id/wikijs:read`). The two cannot coexist. MCP clients like Cursor unconditionally send `resource`, which Azure AD v2.0 rejects.
+**Why it happens:**
+Developers think "return not found" is sufficient. They do not realise the original API error for a truly absent page and the GDPR "not found" sentinel must be textually identical — and that latency can also differ (blocked path = no upstream call, absent path = upstream call that returns an error).
 
-**Consequences:** The entire authorization flow fails at the authorization request step. Users see an Azure AD error page. No token is ever issued.
+**How to avoid:**
+1. `get_page` MUST call `getPageById()` first, then check `isBlocked()` on the returned `page.path`. This ensures both the blocked and the absent case go through the same upstream call and both produce identical timing.
+2. Return the EXACT same error message string for blocked and truly-absent: `"Page not found."` — no mention of blocking, no GDPR language, no field names.
+3. Do NOT short-circuit the upstream call by checking the numeric ID against a known list. IDs are opaque; paths are what reveal client names.
 
 **Warning signs:**
-- Azure AD returns `AADSTS9010010` or `invalid_target` during authorization
-- The error only appears when the `resource` parameter is present in the authorization URL
+- Blocked path returns faster (no upstream call) while absent path returns slower (upstream call fails)
+- Error messages differ between the two cases
+- Logs show blocked page access attempts with the page title or path in the message
 
-**Prevention:**
-1. The authorization proxy endpoint MUST strip the `resource` parameter from requests before forwarding to Azure AD
-2. Instead, encode the resource identity into the scope parameter: transform bare scopes like `wikijs:read` into `api://{client-id}/wikijs:read`
-3. Test with and without the `resource` parameter to verify the proxy handles both cases
-
-**Detection:** Monitor proxy logs for Azure AD 400 responses containing `AADSTS9010010`
-
-**Phase:** Authorization endpoint proxy (scope mapping phase). This must be addressed in the same phase that builds the `/authorize` proxy.
-
-**Confidence:** HIGH -- verified via [IBM/mcp-context-forge#2881](https://github.com/IBM/mcp-context-forge/issues/2881) and [MCP TypeScript SDK#862](https://github.com/modelcontextprotocol/typescript-sdk/issues/862)
+**Phase to address:** `isBlocked()` utility + `get_page` integration (first implementation phase)
 
 ---
 
-### Pitfall 2: Scope Format Mismatch -- Bare Scopes vs Fully-Qualified `api://` Scopes
+### Pitfall 2: Path Normalization Bypasses — Case, Trailing Slash, URL Encoding, Double Slash
 
-**What goes wrong:** MCP clients send bare scope names like `wikijs:read wikijs:write`. Azure AD v2.0 requires fully-qualified scope strings: `api://{client-id}/wikijs:read api://{client-id}/wikijs:write`. If bare scopes reach Azure AD, it returns `AADSTS70011` ("The provided value for the input parameter 'scope' is not valid").
+**What goes wrong:**
+Wiki.js stores paths without a leading slash and (per community discussion) folds path case — i.e., `clients/acme` and `Clients/ACME` resolve to the same page. If `isBlocked()` does a case-sensitive string comparison against `"Clients"`, the filter is bypassed by any variant casing. Additional bypass vectors:
 
-**Why it happens:** The MCP spec defines scopes as simple strings. Azure AD requires scopes prefixed with the App ID URI (typically `api://{client-id}/`). This is a fundamental format mismatch between the MCP ecosystem and Azure AD.
+| Input path | `isBlocked()` naively returns | Reality |
+|---|---|---|
+| `clients/acme` | `false` (wrong — lower-c) | Same page as `Clients/acme` |
+| `Clients/acme/` | `false` (trailing slash) | Same page (Wiki.js ignores trailing slash) |
+| `Clients//acme` | `false` (double slash) | Wiki.js normalises to `Clients/acme` |
+| `Clients/acme/../acme` | `false` (dot-dot) | Wiki.js normalises |
 
-**Consequences:** Authorization fails immediately. Users cannot obtain tokens. The error message is misleading -- developers often think the scope name itself is wrong rather than the format.
+**Why it happens:**
+`"Clients" === segments[0]` is exact-match. The filter is implemented for the happy path, not adversarial inputs. Search results and list results return paths as Wiki.js stores them (normalised, lowercase-first-letter), so direct testing with clean data passes — but the MCP tool accepts arbitrary user input for `get_page` by ID, and the path comes back from the API. Path normalisation issues only bite if `isBlocked()` is also used on user-supplied path strings elsewhere.
+
+**How to avoid:**
+1. `isBlocked()` MUST normalise its input before comparison:
+   ```typescript
+   export function isBlocked(path: string): boolean {
+     // Strip leading slash, collapse double slashes, strip trailing slash
+     const normalised = path
+       .replace(/^\/+/, '')
+       .replace(/\/+/g, '/')
+       .replace(/\/+$/, '');
+     const segments = normalised.split('/');
+     return segments.length === 2 && segments[0].toLowerCase() === 'clients';
+   }
+   ```
+2. Case fold only the first segment — do not alter the company name segment (it is only used for the count check, not displayed).
+3. Add a unit test suite covering every normalisation variant listed above.
+4. For `list_pages` and `search_pages` the path comes from Wiki.js GraphQL responses (already normalised), so the risk is lower — but the utility should be defensive regardless.
 
 **Warning signs:**
-- Azure AD returns `AADSTS70011` with "invalid scope" message
-- The `scp` claim in successfully-issued tokens contains bare names (e.g., `wikijs:read`), but the token REQUEST must use fully-qualified names
+- Unit tests only cover `Clients/acme` (the happy path)
+- `isBlocked()` does not call `.toLowerCase()` on the first segment
+- No test for empty path, single-segment path, or path with leading slash
 
-**Prevention:**
-1. The authorization proxy MUST transform scopes before forwarding to Azure AD:
-   - `wikijs:read` becomes `api://{client-id}/wikijs:read`
-   - `wikijs:write` becomes `api://{client-id}/wikijs:write`
-   - `wikijs:admin` becomes `api://{client-id}/wikijs:admin`
-2. Preserve standard OpenID scopes unchanged: `openid`, `profile`, `email`, `offline_access` do NOT get prefixed
-3. Add `offline_access` to the scope list if refresh tokens are needed (Claude Desktop expects refresh tokens)
-4. The returned token's `scp` claim will contain the bare scope names -- this is correct behavior and matches what the existing JWT validation middleware already expects
-
-**Detection:** Unit test the scope transformation function with edge cases: empty scopes, duplicate scopes, mixed bare and prefixed scopes, OpenID scopes
-
-**Phase:** Authorization endpoint proxy. This is the core value of the proxy -- it MUST be implemented correctly in the first phase.
-
-**Confidence:** HIGH -- verified via [Microsoft Learn: Scopes and permissions](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc) and project constraint in PROJECT.md
+**Phase to address:** `isBlocked()` utility implementation — address before integration into any tool
 
 ---
 
-### Pitfall 3: Claude.ai Ignores Discovery Metadata Endpoints -- Hardcodes Paths on MCP Server
+### Pitfall 3: Search Results Leak Client Names in `description` and `title` Fields
 
-**What goes wrong:** Claude.ai (web) does NOT respect `authorization_endpoint` and `token_endpoint` from the OAuth metadata document. Instead, it constructs endpoint URLs by appending `/authorize`, `/token`, and `/register` to the MCP server's base URL, regardless of what the discovery document advertises. This means even if your metadata points to `https://login.microsoftonline.com/.../authorize`, Claude.ai will hit `https://your-mcp-server.com/authorize`.
+**What goes wrong:**
+`search_pages` filters blocked pages from results by checking `isBlocked(page.path)`. However, the search results also include a `description` field and a `title` field. A client page `Clients/Acme` might have the title "Acme — Client Overview" and description "All information about Acme Corp (GDPR-sensitive client)." Even if the page itself is removed from results, if ANY other non-blocked page contains a hyperlink or mention of the Acme client page in its content, `search_pages` will return that unblocked page with a content excerpt that mentions "Acme." This is an indirect leakage via search excerpt, not a path filter bypass.
 
-**Why it happens:** Claude.ai implements the older MCP authorization spec (2025-03-26) which derived auth endpoints from the MCP server URL. The newer spec (2025-06-18+) introduced RFC 9728 support for external authorization servers. Claude.ai has not been updated. Claude Code CLI does NOT have this bug -- it correctly reads endpoints from metadata.
+**Why it happens:**
+Path filtering only removes the direct client pages. It does not scrub mentions of client names from content on other pages. A wiki structure where other pages link to or discuss client pages is common.
 
-**Consequences:** If you only configure the discovery document to point to Azure AD and do not implement actual proxy endpoints on the MCP server itself, Claude.ai users get 404 errors. Claude Code CLI users work fine. This client inconsistency is extremely confusing to debug.
+**How to avoid:**
+This is a **scope boundary decision** that must be made explicitly:
+1. Accept that indirect mentions in non-blocked pages are out of scope — document this explicitly in code comments and the design doc.
+2. Do not attempt content scrubbing (it would require semantic understanding and is out of scope for a path-filter implementation).
+3. The GDPR requirement (per PROJECT.md) is to block "direct client directory pages" — indirect mentions in other pages are not the target.
+
+Ensure this scope decision is documented so a future reviewer does not try to "fix" the intentional gap.
 
 **Warning signs:**
-- Claude.ai sends `GET /authorize?...` to the MCP server instead of Azure AD
-- Claude.ai sends `POST /token` to the MCP server instead of Azure AD
-- Claude Code CLI works perfectly while Claude.ai fails
-- 404 responses on `/authorize` and `/token` endpoints
+- A reviewer or auditor flags that search for a client name returns excerpts mentioning that client
+- The requirement scope is ambiguous about "indirect references"
 
-**Prevention:**
-1. MUST implement actual proxy endpoints on the MCP server at `/authorize`, `/token`, and `/register`
-2. The `/authorize` endpoint redirects to Azure AD with transformed parameters
-3. The `/token` endpoint proxies the request to Azure AD's token endpoint
-4. This is the ONLY architecture that works across all MCP clients -- metadata-only approaches are insufficient
-5. The discovery document's `authorization_endpoint` and `token_endpoint` SHOULD point to the MCP server's own proxy endpoints (not Azure AD directly)
-
-**Detection:** Test with both Claude.ai and Claude Code CLI. If only one works, this is the likely cause.
-
-**Phase:** This defines the fundamental architecture. Must be decided in Phase 1 (planning) and implemented in the first coding phase. The proxy approach is non-negotiable for Claude.ai compatibility.
-
-**Confidence:** HIGH -- verified via [anthropics/claude-ai-mcp#82](https://github.com/anthropics/claude-ai-mcp/issues/82) with reproduction steps and client comparison table
+**Phase to address:** Design phase / implementation phase — write an explicit comment in `isBlocked()` stating scope
 
 ---
 
-### Pitfall 4: Azure AD Does Not Advertise `code_challenge_methods_supported` in OIDC Metadata
+### Pitfall 4: `list_pages` Leaks Blocked-Page Existence via `totalHits` Count or Page Count Discrepancy
 
-**What goes wrong:** Azure AD's OIDC discovery document at `/.well-known/openid-configuration` omits the `code_challenge_methods_supported` field, even though Azure AD fully supports PKCE with S256. Per RFC 8414, omitting this field means "the authorization server does not support PKCE." MCP clients that strictly validate this field will refuse to proceed.
+**What goes wrong:**
+`list_pages` silently filters blocked pages. The response is a JSON array of pages. If a caller knows "there are 47 pages in the wiki" (e.g., from a previous call before the filter was deployed), and after deployment `list_pages` returns 45 pages, they can infer 2 client pages exist. This is a low-severity existence oracle through count discrepancy.
 
-**Why it happens:** This is a longstanding Azure AD metadata gap. Microsoft has been gradually rolling out a fix (build 2.1.22096.x includes the field), but rollout is incomplete across regions as of late 2025. Some regional ESTS clusters include `["plain", "S256"]`, others omit the field entirely.
+For `search_pages`, the `totalHits` field from Wiki.js GraphQL reflects the unfiltered index count. After filtering `results`, the caller sees `results.length < totalHits`, which reveals that some pages were filtered.
 
-**Consequences:** MCP clients following the spec strictly (the MCP TypeScript SDK did this until PR #992 in October 2025) will abort the auth flow, displaying an error like "does not support S256 code challenge method required by MCP specification."
+**Why it happens:**
+`totalHits` is returned as-is from the upstream GraphQL response. Filtering happens post-fetch in application code. The count is not adjusted.
 
-**Warning signs:**
-- Auth flow aborts before reaching the Azure AD login page
-- Error message mentions PKCE or code_challenge_methods
-- The problem appears intermittently across different Azure AD regions
-- Works when tested against `login.microsoftonline.com` from one region but fails from another
-
-**Prevention:**
-1. The proxy's discovery document (`/.well-known/openid-configuration` or `/.well-known/oauth-authorization-server`) MUST explicitly include `"code_challenge_methods_supported": ["S256"]`
-2. Since the proxy is the authorization server from the MCP client's perspective, the proxy controls this field -- do not relay Azure AD's metadata verbatim
-3. This is one of the key reasons to proxy the discovery document rather than redirecting to Azure AD's
-
-**Detection:** Fetch `https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration` and verify the field presence. If missing, the proxy MUST compensate.
-
-**Phase:** Discovery endpoint implementation. Must be correct in the first phase that creates `/.well-known/openid-configuration`.
-
-**Confidence:** HIGH -- verified via [MCP TypeScript SDK#832](https://github.com/modelcontextprotocol/typescript-sdk/issues/832) (closed, fix merged) and [Microsoft Q&A: OIDC metadata inconsistency](https://learn.microsoft.com/en-us/answers/questions/5576009/oidc-discovery-metadata-inconsistent-across-region)
-
----
-
-### Pitfall 5: Breaking Existing JWT Validation When Adding Proxy Routes
-
-**What goes wrong:** The existing server registers the auth middleware as a Fastify plugin that adds an `onRequest` hook to ALL routes in its scope. If proxy endpoints (`/authorize`, `/token`, `/register`, `/.well-known/openid-configuration`) are accidentally registered inside the protected route scope, they require a Bearer token -- but these endpoints must be public (they are used BEFORE the client has a token).
-
-**Why it happens:** Fastify's encapsulation model means hooks registered in a parent scope apply to all child routes. The existing `protectedRoutes` plugin applies JWT validation. If new OAuth proxy routes are registered as siblings or children of `protectedRoutes`, they inherit the auth hook.
-
-**Consequences:** The OAuth proxy endpoints return 401 "missing bearer token" to unauthenticated clients. The entire auth flow is dead -- clients cannot obtain a token because the token-obtaining endpoints require a token.
+**How to avoid:**
+1. `search_pages` MUST NOT return `totalHits` to the caller (do not expose it in the MCP tool response), OR recalculate `totalHits` as `results.length` after filtering. The current `mcp-tools.ts` returns only `result.results` (not `result.totalHits`) — verify this is preserved after the filter integration.
+2. `list_pages` returns an array; the count is implicit in the array length. This is acceptable — array length leakage is a low-severity residual risk that matches accepted scope.
+3. Document the `totalHits` decision explicitly.
 
 **Warning signs:**
-- `/authorize` returns 401 instead of redirecting to Azure AD
-- `/token` returns 401 instead of proxying to Azure AD
-- `/.well-known/openid-configuration` returns 401
-- The existing `/health` and `/.well-known/oauth-protected-resource` endpoints still work (they are in the public scope)
+- `searchPages()` in `api.ts` returns `{ results, totalHits }` and `mcp-tools.ts` passes the whole object to the caller
+- Integration test that checks `totalHits` in the search response
 
-**Prevention:**
-1. Register ALL proxy endpoints in the same scope as `publicRoutes` -- outside the `protectedRoutes` plugin
-2. Follow the existing pattern: `publicRoutes` is registered at root scope in `server.ts`, `protectedRoutes` is registered separately with the auth plugin
-3. Add a new `oauthProxyRoutes` plugin registered at root scope alongside `publicRoutes`
-4. Write integration tests that verify proxy endpoints respond WITHOUT a Bearer token
-5. Write regression tests that verify `/mcp` still REQUIRES a Bearer token
-
-**Detection:** The existing test pattern in `tests/route-protection.test.ts` already tests that certain routes require auth. Extend this to verify proxy routes do NOT require auth.
-
-**Phase:** Route registration phase. This is an architecture decision that must be made before any proxy routes are coded.
-
-**Confidence:** HIGH -- verified by reading the existing `server.ts` which clearly shows the Fastify encapsulation pattern with `publicRoutes` vs `protectedRoutes`
-
----
-
-### Pitfall 6: Shared Client ID Enables Cross-Client Token Theft
-
-**What goes wrong:** When Dynamic Client Registration returns a single hardcoded Azure AD `client_id` to all MCP clients, all clients share the same OAuth identity. If a user has previously consented to that `client_id`, Azure AD may skip the consent prompt for subsequent authorization requests -- even from a different MCP client. An attacker can register a malicious MCP client, receive the same `client_id` from your `/register` endpoint, and then craft an authorization URL that gets an authorization code without user consent (because the user already consented for a different client).
-
-**Why it happens:** Azure AD consent is bound to the `client_id`, not to the specific MCP client. When all clients share one `client_id`, the consent grant is effectively shared. The MCP server's Dynamic Client Registration endpoint has no way to differentiate legitimate clients from malicious ones.
-
-**Consequences:** One-click account takeover. An attacker sends a victim a link, the victim clicks it, and the attacker receives a valid authorization code for the victim's account.
-
-**Warning signs:**
-- Your `/register` endpoint returns the same `client_id` regardless of who calls it
-- Azure AD does not show a consent prompt after the first authorization
-- No per-client consent tracking at the proxy level
-
-**Prevention:**
-1. Implement a consent interstitial page on the MCP server that shows BEFORE redirecting to Azure AD
-2. Display the requesting client's name, redirect URI, and requested scopes
-3. Use a server-side session (not just the OAuth `state` parameter) to bind the consent to the user who initiated it
-4. Consider using `prompt=consent` in the Azure AD authorization URL to force consent every time (user friction tradeoff)
-5. Validate that the `redirect_uri` in the token request matches the one from the authorization request
-6. If using Client ID Metadata Documents (the newer MCP approach), validate the client metadata document and display the `client_name` to the user
-
-**Detection:** Test the flow with two different MCP clients using the same `client_id`. If the second client gets a token without consent, this vulnerability exists.
-
-**Phase:** Authorization endpoint proxy. This must be considered when implementing the `/authorize` proxy, not deferred.
-
-**Confidence:** HIGH -- verified via [Obsidian Security: MCP OAuth Pitfalls](https://www.obsidiansecurity.com/blog/when-mcp-meets-oauth-common-pitfalls-leading-to-one-click-account-takeover) with documented real-world exploits
+**Phase to address:** `search_pages` integration — check `mcp-tools.ts` line 181 which currently returns `result.results` (correct — do not change this)
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 7: Redirect URI Port Mismatch with Azure AD Localhost Handling
+### Pitfall 5: GDPR Scope Overreach — Blocking Sub-Pages (`Clients/Acme/Projects`)
 
-**What goes wrong:** Claude Desktop/Code uses ephemeral ports for its local callback server (observed ports include 54212, 56619, 57411, 59306, 64236). Azure AD's localhost handling ignores ports for matching purposes -- registering `http://localhost/callback` matches `http://localhost:54212/callback`. However, this behavior has a catch: if you register MULTIPLE localhost redirect URIs with different ports, Azure AD picks one ARBITRARILY and uses its platform type (Web vs SPA vs Native). The wrong platform type causes CORS errors or incorrect token format.
+**What goes wrong:**
+The filter rule is "exactly 2 segments where first is `Clients`." A path `Clients/Acme/Projects` has 3 segments and is NOT blocked by the current rule. This is correct per PROJECT.md scope. However, if sub-pages contain personal data (GDPR-sensitive contacts, contract details), the 2-segment rule creates a false sense of coverage.
 
-**Why it happens:** Azure AD follows RFC 8252 Section 8.3 for loopback redirects -- the port is ignored. But developers often register multiple localhost URIs "just in case," which triggers Azure AD's arbitrary selection behavior.
+**Why it happens:**
+The filter rule is written to block exactly `Clients/<CompanyName>` (the directory index page). Sub-pages under a client were not assessed for GDPR sensitivity.
 
-**Prevention:**
-1. Register exactly ONE localhost redirect URI in Azure AD: `http://localhost/callback` (no port)
-2. Set the platform type to "Mobile and desktop applications" (Native) -- this is correct for MCP clients which are native apps, not SPAs
-3. Do NOT register `http://localhost:3000/callback` AND `http://localhost:8080/callback` -- only the path matters for differentiation
-4. Use `127.0.0.1` instead of `localhost` for robustness (Microsoft recommends this to avoid firewall/DNS issues)
-5. The proxy should pass through whatever `redirect_uri` the MCP client provides -- do not rewrite it
-
-**Detection:** Test with multiple MCP client sessions that use different ephemeral ports. All should work. If they intermittently fail with CORS errors, check the Azure AD app registration for duplicate localhost URIs.
-
-**Phase:** Azure AD app registration setup (documentation/configuration phase) and token endpoint proxy (must forward `redirect_uri` faithfully).
-
-**Confidence:** HIGH -- verified via [Microsoft Learn: Redirect URI best practices](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)
-
----
-
-### Pitfall 8: Proxy Token Endpoint Leaks Azure AD Error Details to Clients
-
-**What goes wrong:** When Azure AD rejects a token exchange (expired code, PKCE mismatch, invalid redirect_uri), it returns a JSON error with `error`, `error_description`, and sometimes `correlation_id` and `trace_id`. Naively proxying this response verbatim to the MCP client leaks Azure AD internal details: tenant ID, correlation IDs, and AADSTS error codes that reveal the backend provider.
-
-**Why it happens:** The token proxy forwards Azure AD's response body and status code directly without sanitization.
-
-**Prevention:**
-1. Map Azure AD error codes to standard OAuth 2.0 error codes:
-   - `AADSTS70008` (expired code) -> `{ "error": "invalid_grant", "error_description": "authorization code expired" }`
-   - `AADSTS9002325` (PKCE required) -> `{ "error": "invalid_request", "error_description": "code verifier required" }`
-   - `AADSTS50011` (redirect URI mismatch) -> `{ "error": "invalid_grant", "error_description": "redirect_uri mismatch" }`
-   - `AADSTS70011` (invalid scope) -> `{ "error": "invalid_scope", "error_description": "scope not recognized" }`
-2. Log the full Azure AD error server-side (including `correlation_id` and `trace_id`) for debugging
-3. Return only standardized OAuth 2.0 error responses to the client
-4. Preserve the HTTP status code from Azure AD (typically 400) -- do not convert to 500
-
-**Detection:** Send a deliberately expired authorization code to the `/token` proxy and inspect the response. It should contain generic OAuth errors, not AADSTS codes.
-
-**Phase:** Token endpoint proxy implementation.
-
-**Confidence:** MEDIUM -- this is a security best practice; the exact behavior depends on implementation choices
-
----
-
-### Pitfall 9: Discovery Document Missing Required Fields for MCP Clients
-
-**What goes wrong:** The `/.well-known/openid-configuration` (or `/.well-known/oauth-authorization-server`) response is missing fields that MCP clients require, causing the auth flow to abort or behave incorrectly.
-
-**Why it happens:** Developers copy Azure AD's discovery document or create a minimal one without checking what MCP clients actually validate.
-
-**Required fields for MCP client compatibility:**
-
-| Field | Required By | Value for Proxy |
-|-------|------------|-----------------|
-| `issuer` | RFC 8414 | `https://your-mcp-server.com` (the proxy, not Azure AD) |
-| `authorization_endpoint` | RFC 8414 | `https://your-mcp-server.com/authorize` |
-| `token_endpoint` | RFC 8414 | `https://your-mcp-server.com/token` |
-| `registration_endpoint` | MCP spec (if DCR) | `https://your-mcp-server.com/register` |
-| `response_types_supported` | RFC 8414 | `["code"]` |
-| `grant_types_supported` | RFC 8414 | `["authorization_code", "refresh_token"]` |
-| `code_challenge_methods_supported` | MCP spec (MUST) | `["S256"]` |
-| `token_endpoint_auth_methods_supported` | RFC 8414 | `["none"]` (public client) |
-| `scopes_supported` | RFC 9728 | `["wikijs:read", "wikijs:write", "wikijs:admin", "openid", "profile", "email"]` |
-
-**Key gotcha with `issuer`:** If the proxy's discovery document has `issuer` set to `https://your-mcp-server.com` but the JWT tokens are issued by Azure AD with `iss: https://login.microsoftonline.com/{tenant}/v2.0`, there is a mismatch. This is expected and correct -- the proxy is the authorization server from the MCP client's perspective, but Azure AD is the actual token issuer. The resource server (your existing JWT validation) validates against Azure AD's issuer, not the proxy's. This dual-issuer situation is inherent to the proxy architecture.
-
-**Prevention:**
-1. Include ALL fields listed above
-2. Set `code_challenge_methods_supported: ["S256"]` explicitly (Pitfall 4)
-3. All endpoint URLs MUST point to the proxy server, not Azure AD
-4. Include `client_id_metadata_document_supported: true` if supporting Client ID Metadata Documents
-
-**Detection:** Fetch your discovery endpoint and validate every field against the table above. Write a test that does this automatically.
-
-**Phase:** Discovery endpoint implementation (first phase).
-
-**Confidence:** HIGH -- field requirements verified via [MCP Authorization Spec](https://modelcontextprotocol.io/specification/draft/basic/authorization) and [Claude Code issue#2527](https://github.com/anthropics/claude-code/issues/2527)
-
----
-
-### Pitfall 10: Protected Resource Metadata `authorization_servers` Points to Wrong URL
-
-**What goes wrong:** The existing `/.well-known/oauth-protected-resource` endpoint currently points `authorization_servers` to Azure AD directly: `https://login.microsoftonline.com/{tenant}/v2.0`. When the proxy is added, this must change to point to the MCP server itself (the proxy). If this is not updated, MCP clients will try to use Azure AD directly, bypassing the proxy, and the scope mapping / PKCE / redirect URI transformations will not be applied.
-
-**Why it happens:** The current implementation correctly points to Azure AD because there was no proxy. Adding the proxy changes the architecture -- the MCP server is now its own authorization server from the client's perspective.
-
-**Consequences:** MCP clients bypass the proxy entirely, sending bare scopes directly to Azure AD (which rejects them with AADSTS70011), or sending the `resource` parameter (which Azure AD rejects with AADSTS9010010).
+**How to avoid:**
+1. The current scope is explicitly "exactly 2 segments" — preserve this.
+2. Add a code comment stating: "Sub-pages (`Clients/Acme/Projects`) are out of scope for this filter. If those pages contain personal data, the rule must be extended or WikiJS permissions must be used."
+3. Do not silently expand the rule to 3+ segments without an explicit decision.
 
 **Warning signs:**
-- Clients skip the proxy endpoints entirely
-- Azure AD returns scope validation errors
-- The proxy endpoints never receive any traffic
+- `isBlocked()` implementation uses `segments.length >= 2` instead of `=== 2`
+- No test explicitly covering 3-segment Clients paths
 
-**Prevention:**
-1. Update `authorization_servers` in `/.well-known/oauth-protected-resource` to point to the MCP server's own URL (e.g., `["https://mcp.example.com"]`)
-2. This is a breaking change for any existing clients that hardcoded the Azure AD URL -- but since MCP clients should use discovery, this should be transparent
-3. Add a configuration toggle to make this switchable during development/testing
-
-**Detection:** Fetch `/.well-known/oauth-protected-resource` and verify `authorization_servers` contains the MCP server URL, not the Azure AD URL.
-
-**Phase:** Discovery/metadata update phase. Must be coordinated with the first proxy endpoint deployment.
-
-**Confidence:** HIGH -- verified from the existing `public-routes.ts` source code which currently has the Azure AD URL
+**Phase to address:** `isBlocked()` utility — add explicit boundary test
 
 ---
 
-### Pitfall 11: State Parameter Not Bound to Session -- CSRF Vulnerability
+### Pitfall 6: Filter Applied Only to Tool Responses, Not to Intermediate Logging
 
-**What goes wrong:** The OAuth `state` parameter is supposed to prevent CSRF attacks by binding the authorization request to the client session. In a proxy, there are TWO state parameters: the one from the MCP client to the proxy, and the one from the proxy to Azure AD. If the proxy simply passes through the client's `state` to Azure AD, it loses the ability to validate that the callback came from a legitimate flow it initiated.
+**What goes wrong:**
+`tool-wrapper.ts` uses `wrapToolHandler()` which logs timing and structured events. If the wrapper logs the full tool input or response payload at DEBUG level, a blocked page's path or content appears in server logs — which are stored and may be accessible to more people than the wiki itself.
 
-**Why it happens:** The proxy is stateless by design (per PROJECT.md constraint: "Token storage/caching -- proxy is stateless, passes tokens through"). But stateless proxies that do not validate state parameters are vulnerable to CSRF and authorization code injection.
+**Why it happens:**
+Logging is added for observability without considering that some payloads contain GDPR-sensitive identifiers (the client company name embedded in the path).
 
-**Prevention:**
-1. The proxy SHOULD generate its own `state` parameter for the Azure AD request
-2. Store a mapping of `proxy_state -> client_state + client_redirect_uri` in a short-lived server-side store (even a simple in-memory map with TTL)
-3. When Azure AD calls back, validate the `proxy_state`, look up the original `client_state` and `redirect_uri`, and redirect the client with the original `state`
-4. If truly stateless is required: encode the client's state and redirect_uri into the proxy's state (encrypted, not just base64) and validate on callback
-5. At minimum, the proxy MUST NOT embed the client's redirect_uri in plaintext in the state parameter (this was the exact attack vector in the Obsidian Security research)
+**How to avoid:**
+1. Do not log the `path` field of blocked pages in the filter logic.
+2. Log a generic event: `{ blocked: true }` — do not log `{ blocked: true, path: "Clients/Acme" }`.
+3. Review `tool-wrapper.ts` to confirm it does not log full response bodies at any log level.
+4. Confirm that pino's default serializers do not deep-serialize tool responses.
 
-**Detection:** Attempt to replay an authorization callback with a forged state parameter. The proxy should reject it.
+**Warning signs:**
+- `isBlocked()` returns early and logs the path it blocked
+- `wrapToolHandler` has a `log.debug({ result })` that serializes the full tool response
 
-**Phase:** Authorization endpoint proxy. Must be implemented alongside the `/authorize` proxy.
-
-**Confidence:** HIGH -- verified via [Obsidian Security: MCP OAuth Pitfalls](https://www.obsidiansecurity.com/blog/when-mcp-meets-oauth-common-pitfalls-leading-to-one-click-account-takeover) describing real-world CSRF exploits via state parameter manipulation
-
----
-
-## Minor Pitfalls
-
-### Pitfall 12: `offline_access` Scope Missing -- No Refresh Tokens
-
-**What goes wrong:** MCP clients (especially Claude Desktop) expect refresh tokens for long-lived sessions. Azure AD only issues refresh tokens when the `offline_access` scope is included in the authorization request. If the scope mapping logic transforms `wikijs:read` to `api://{client-id}/wikijs:read` but forgets to add `offline_access`, the token response will not include a `refresh_token`, and the client must re-authenticate when the access token expires (typically 1 hour).
-
-**Prevention:**
-1. Always include `offline_access` in the scope list forwarded to Azure AD
-2. Always include `openid` and `profile` for proper ID token and user info
-3. The proxy should ensure these are present even if the MCP client does not request them
-
-**Phase:** Authorization endpoint proxy (scope transformation logic).
-
-**Confidence:** MEDIUM -- standard Azure AD behavior, but whether Claude Desktop handles missing refresh tokens gracefully is not fully documented
+**Phase to address:** `isBlocked()` utility + `tool-wrapper.ts` audit
 
 ---
 
-### Pitfall 13: Discovery Endpoint URL Path Mismatch for Tenant-Specific Issuers
+### Pitfall 7: MCP Instructions Field Hints at the Filter Existence
 
-**What goes wrong:** MCP clients follow RFC 8414 Section 3.1 for metadata discovery. For an issuer URL WITH a path component (like `https://mcp.example.com/v1`), clients try:
-1. `https://mcp.example.com/.well-known/oauth-authorization-server/v1`
-2. `https://mcp.example.com/.well-known/openid-configuration/v1`
-3. `https://mcp.example.com/v1/.well-known/openid-configuration`
+**What goes wrong:**
+The `instructions.txt` file (loaded at startup and returned in the MCP `initialize` response) might contain guidance like "Note: client directory pages are blocked for GDPR compliance." An AI assistant reading the instructions learns that a `Clients/` path structure exists and that pages are blocked. This is an information disclosure via the protocol's own metadata.
 
-If the proxy only serves metadata at `/.well-known/openid-configuration` (no path suffix), clients with path-based issuer URLs will fail to discover it.
+**Why it happens:**
+Instructions are helpful for guiding the AI, but they are also visible to any authenticated caller inspecting the `initialize` response.
 
-**Prevention:**
-1. Keep the issuer URL simple: `https://mcp.example.com` (no path component)
-2. Serve metadata at both `/.well-known/oauth-authorization-server` AND `/.well-known/openid-configuration` for maximum compatibility
-3. The MCP spec requires clients to support both -- serve both to be safe
+**How to avoid:**
+1. Do NOT mention the path filter or its structure in `instructions.txt`.
+2. Do NOT name the blocked path pattern in any user-facing documentation or tool descriptions.
+3. If guidance is needed for the AI, phrase it as a general capability description without naming the blocked domain.
 
-**Phase:** Discovery endpoint implementation.
+**Warning signs:**
+- `instructions.txt` contains the word "Clients" or "GDPR" or "blocked"
+- Tool descriptions in `mcp-tools.ts` mention filtering or GDPR
 
-**Confidence:** MEDIUM -- depends on how the issuer URL is configured
-
----
-
-### Pitfall 14: Token Proxy Timeout When Azure AD Is Slow
-
-**What goes wrong:** The token exchange request from the proxy to Azure AD has a network round-trip that the direct flow does not. If Azure AD is slow (JWKS cache miss, regional routing, or transient issues), the MCP client's HTTP request to `/token` may time out before the proxy receives Azure AD's response.
-
-**Prevention:**
-1. Set a reasonable timeout for the outbound Azure AD request (10-15 seconds)
-2. Return a proper OAuth error (`{ "error": "server_error" }`) if the upstream times out, not a generic 500
-3. Include `Retry-After` header on timeout responses
-4. Log the Azure AD response time for monitoring
-
-**Phase:** Token endpoint proxy implementation.
-
-**Confidence:** LOW -- depends on network conditions and client timeout settings
+**Phase to address:** Instructions file review — verify after filter implementation
 
 ---
 
-### Pitfall 15: PKCE `code_verifier` Not Forwarded Correctly in Token Proxy
+### Pitfall 8: GDPR Audit Log Gap — No Record of Blocked Access Attempts
 
-**What goes wrong:** The MCP client sends `code_verifier` in the token request body (form-encoded). The proxy must forward this EXACTLY to Azure AD. If the proxy parses the body as JSON instead of `application/x-www-form-urlencoded`, or if it URL-encodes special characters differently, the PKCE verification fails at Azure AD with `AADSTS9002325`.
+**What goes wrong:**
+GDPR Article 30 and accountability principle require demonstrating that access controls are working. If a blocked access attempt produces no log entry (because the filter is silent), there is no audit trail showing the GDPR control was exercised. A DPA audit or internal security review cannot verify the filter is protecting data.
 
-**Prevention:**
-1. Parse the incoming token request body as `application/x-www-form-urlencoded` (OAuth standard)
-2. Forward ALL parameters to Azure AD's token endpoint in the same format
-3. Do not re-encode or transform the `code_verifier` -- pass it through verbatim
-4. Add integration tests that use a known `code_verifier`/`code_challenge` pair
+**Why it happens:**
+"Silent filtering" is correct for the tool response (to prevent existence oracle), but it should still produce an internal log event that is NOT surfaced to the caller.
 
-**Phase:** Token endpoint proxy implementation.
+**How to avoid:**
+1. Log blocked access attempts at `INFO` or `WARN` level server-side: `log.info({ tool: "get_page", blocked: true, userId: ctx.user.oid }, "GDPR path filter blocked access")`.
+2. Do NOT include the company name (the sensitive part of the path) in the log — log that a block occurred for a "Clients/* path" without naming the specific company.
+3. Use the existing `requestContext` (AsyncLocalStorage) to include correlation ID and user identity in the log entry, supporting GDPR audit requirements for "who tried to access what, when."
+4. Verify that pino log level in production is `INFO` or lower (not `ERROR` only) so these events are captured.
 
-**Confidence:** MEDIUM -- standard proxy behavior, but encoding issues are common in practice
+**Warning signs:**
+- `isBlocked()` returns `true` and the caller site does nothing except silently omit the page
+- No test verifying that a blocked access attempt produces a log entry
+- Production log level is `ERROR` (blocks at `INFO` are lost)
 
----
-
-### Pitfall 16: Dynamic Client Registration Returns Inconsistent Data
-
-**What goes wrong:** The `/register` endpoint returns a `client_id` and registration metadata. If this response does not match what the discovery document advertises or what Azure AD expects, the client will construct malformed requests. Common mistakes:
-- Returning `token_endpoint_auth_method: "client_secret_basic"` when the Azure AD app is a public client (no secret)
-- Missing `grant_types` in the registration response
-- Returning `redirect_uris` that do not match what the client sent
-
-**Prevention:**
-1. The registration response MUST include:
-   - `client_id`: the pre-configured Azure AD public client application ID
-   - `client_name`: echo back what the client sent (or a default)
-   - `redirect_uris`: echo back what the client sent (do NOT restrict these -- Azure AD handles localhost validation)
-   - `grant_types`: `["authorization_code", "refresh_token"]`
-   - `response_types`: `["code"]`
-   - `token_endpoint_auth_method`: `"none"` (public client, no secret)
-2. Do NOT return `client_secret` -- the Azure AD app is a public client
-
-**Phase:** Client registration endpoint.
-
-**Confidence:** HIGH -- format requirements verified via MCP spec and [Claude Code issue#2527](https://github.com/anthropics/claude-code/issues/2527)
+**Phase to address:** `isBlocked()` integration at each tool call site
 
 ---
 
-## Phase-Specific Warnings
+## Technical Debt Patterns
 
-| Phase Topic | Likely Pitfall | Severity | Mitigation |
-|-------------|---------------|----------|------------|
-| Discovery endpoints | Missing `code_challenge_methods_supported` (Pitfall 4) | Critical | Explicitly include `["S256"]` in proxy discovery doc |
-| Discovery endpoints | Missing required fields (Pitfall 9) | Moderate | Validate against required field checklist |
-| Discovery endpoints | `authorization_servers` still points to Azure AD (Pitfall 10) | Critical | Update to point to self |
-| Authorization proxy | `resource` parameter rejected by Azure AD (Pitfall 1) | Critical | Strip `resource`, encode into `scope` |
-| Authorization proxy | Bare scopes rejected by Azure AD (Pitfall 2) | Critical | Transform to `api://{client-id}/scope` format |
-| Authorization proxy | Missing `offline_access` (Pitfall 12) | Minor | Always include in forwarded scopes |
-| Authorization proxy | CSRF via state parameter (Pitfall 11) | Moderate | Generate proxy state, bind to session |
-| Authorization proxy | Shared client ID attack (Pitfall 6) | Critical | Consent interstitial page |
-| Token proxy | Error detail leakage (Pitfall 8) | Moderate | Map AADSTS errors to standard OAuth errors |
-| Token proxy | PKCE code_verifier encoding (Pitfall 15) | Minor | Forward form body verbatim |
-| Token proxy | Timeout handling (Pitfall 14) | Minor | Set upstream timeout, return OAuth error |
-| Route registration | Proxy routes require auth (Pitfall 5) | Critical | Register in public scope, not protected scope |
-| Client registration | Inconsistent registration response (Pitfall 16) | Minor | Match spec format, `token_endpoint_auth_method: "none"` |
-| Client integration | Claude.ai ignores metadata endpoints (Pitfall 3) | Critical | Implement actual proxy endpoints on MCP server |
-| Azure AD config | Redirect URI port confusion (Pitfall 7) | Moderate | Register ONE localhost URI, use Native platform |
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Apply `isBlocked()` only in `mcp-tools.ts`, not in `api.ts` | Simpler — filter at the layer you control | If `api.ts` methods are reused by future tools or scripts, new code bypasses the filter silently | Acceptable for v2.5 if `api.ts` methods are tool-handler-only |
+| Case-sensitive `"Clients"` comparison | Simple, explicit | Bypassed if Wiki.js ever stores `clients/acme` | Never — always case-fold the first segment |
+| Blocking by path prefix (`startsWith("Clients/")`) instead of exact-segment count | Covers sub-pages without extra logic | Silently grows scope; breaks pages like `ClientsGuide/intro` | Never — use exact segment count |
+| Returning `403 Forbidden` for blocked pages | Honest HTTP semantics | Existence oracle — reveals the page exists | Never in MCP tool context where callers are AI assistants |
+| Logging full path in block events | Easier debugging | Logs become a secondary data store for GDPR-sensitive info | Never |
 
-## Integration Pitfalls Summary
+---
 
-The following pitfalls are specific to adding the proxy without breaking existing functionality:
+## Integration Gotchas
 
-1. **Pitfall 5** (route registration) is the highest risk for breaking existing JWT validation -- one misplaced `register()` call and the entire protected API becomes inaccessible
-2. **Pitfall 10** (authorization_servers field) requires changing existing public endpoint behavior -- this is a backwards-incompatible change to the protected resource metadata
-3. **Pitfall 9** (discovery document dual-issuer) means the proxy's discovery says one issuer but the JWT tokens say another -- this is architecturally correct but confusing if not documented
-4. The existing `scp` claim parsing in `middleware.ts` (line 85) expects bare scope names like `wikijs:read` -- Azure AD correctly strips the `api://` prefix in the `scp` claim, so this continues to work without changes
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| Wiki.js GraphQL `pages.list` (used in `resolveViaPagesList`) | Filtering after the 500-page bulk fetch is correct, but the bulk fetch itself exposes all paths to in-process memory | Acceptable — process memory is not a GDPR disclosure risk; filter before returning to caller |
+| Wiki.js GraphQL `pages.search` | Search index `totalHits` is unfiltered count | Do not surface `totalHits` in tool response (current code already omits it) |
+| Wiki.js GraphQL `pages.singleByPath` | Used in `resolvePageByPath` during search resolution — returns full page including path | Check `isBlocked()` on resolved pages before adding to final results |
+| MCP `wrapToolHandler` | Timing differences between blocked and not-found responses | Ensure both paths call the upstream API to equalise latency |
+| Pino structured logging | Default serialisers may deep-clone objects including paths | Avoid passing full `WikiJsPage` objects to log calls at `isBlocked()` sites |
+
+---
+
+## Security Mistakes
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Returning `403` instead of a "not found" equivalent | Existence oracle — attacker learns `Clients/Acme` exists | Always return same response as "page not found" |
+| Checking `isBlocked()` before calling upstream API in `get_page` | Timing side-channel — blocked returns faster | Fetch first, then check path on returned object |
+| Including company name in block log entry | Logs become secondary personal data store | Log `{ blocked: true }` without the specific company name |
+| Filtering only in `list_pages` and `search_pages` but not `get_page` | Direct ID lookup bypasses the filter entirely | All three tools MUST apply `isBlocked()` |
+| Applying `isBlocked()` to the INPUT path string (before API call) in `get_page` | `get_page` takes an ID, not a path — no input path to check | Retrieve by ID first, then check the returned `page.path` |
+| Omitting `isBlocked()` from the `resolveViaPagesList` fallback path in `searchPages` | Fallback path bypasses filter on one code path | Apply filter after both the primary and fallback resolution in `searchPages` |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+- [ ] **`get_page` filter:** Only adds `isBlocked()` call — verify the error message is IDENTICAL to the genuine-not-found error message, and that upstream is still called before the path check
+- [ ] **`search_pages` filter:** Only filters `rawResults` — verify the `resolveViaPagesList` fallback path (Step 3 in `searchPages`) also has `isBlocked()` applied to its results before they are added to `resolved`
+- [ ] **`list_pages` filter:** Verify the filter runs AFTER `pages.filter(p => p.isPublished)` to avoid double-filtering and ordering dependency
+- [ ] **`totalHits` not exposed:** Verify `mcp-tools.ts` returns `result.results` (not the full `PageSearchResult` object including `totalHits`) — this is already correct in the current codebase; do not regress it
+- [ ] **Logging:** Verify a blocked `get_page` call produces a server-side log entry (not just a silent return)
+- [ ] **Case normalisation:** Verify `isBlocked("clients/acme")` returns `true` (lowercase first segment)
+- [ ] **Trailing slash:** Verify `isBlocked("Clients/acme/")` returns `true`
+- [ ] **3-segment path:** Verify `isBlocked("Clients/Acme/Projects")` returns `false` (out of scope)
+- [ ] **Non-Clients path:** Verify `isBlocked("docs/getting-started")` returns `false`
+- [ ] **Instructions file:** Verify `instructions.txt` does not mention the filter, blocked paths, or GDPR
+
+---
+
+## Recovery Strategies
+
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Existence oracle via error message mismatch | LOW | Change error string in `get_page` handler to match not-found string; deploy |
+| Case-sensitive bypass discovered in production | LOW | Fix `isBlocked()` to use `.toLowerCase()` on segment[0]; add test; deploy |
+| Timing side-channel (blocked returns faster) | MEDIUM | Refactor `get_page` to always call upstream first; adds one GraphQL call per blocked probe |
+| `totalHits` leaking in search response | LOW | Remove from tool response (current code already omits it — prevent regression) |
+| Blocked path logged with company name | MEDIUM | Redact logs retroactively; update logging; treat as personal data breach under GDPR Art. 33 (72-hour notification window) |
+| Filter missing from `resolveViaPagesList` fallback | LOW | Add `isBlocked()` check in fallback results; add regression test |
+
+---
+
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Existence oracle (Pitfall 1) | `isBlocked()` utility + `get_page` integration | Test: blocked ID returns same string as non-existent ID |
+| Path normalisation bypass (Pitfall 2) | `isBlocked()` utility | Unit test suite: case variants, trailing slash, double slash, leading slash |
+| Indirect search leak (Pitfall 3) | Design decision, document in code | Code comment in `isBlocked()` states indirect mentions are out of scope |
+| `totalHits` leakage (Pitfall 4) | `search_pages` integration | Verify `mcp-tools.ts` does not expose `totalHits` field |
+| Sub-page scope overreach (Pitfall 5) | `isBlocked()` utility | Unit test: 3-segment Clients path returns `false` |
+| Filter gap in `resolveViaPagesList` (Pitfall 6, secondary) | `search_pages` integration | Unit test: blocked page in fallback path is excluded from results |
+| Logging GDPR-sensitive path (Pitfall 6) | `isBlocked()` call sites | Code review: no `page.path` in log calls at blocked sites |
+| Instructions file disclosure (Pitfall 7) | Post-implementation review | Manual: read `instructions.txt` for filter mentions |
+| No audit log of blocked attempts (Pitfall 8) | `isBlocked()` call sites | Test: blocked access produces a log entry without company name |
+
+---
 
 ## Sources
 
-- [MCP Authorization Specification (draft)](https://modelcontextprotocol.io/specification/draft/basic/authorization) -- MCP auth flow requirements
-- [Obsidian Security: MCP OAuth Pitfalls](https://www.obsidiansecurity.com/blog/when-mcp-meets-oauth-common-pitfalls-leading-to-one-click-account-takeover) -- Cross-client token theft via shared client_id
-- [anthropics/claude-ai-mcp#82](https://github.com/anthropics/claude-ai-mcp/issues/82) -- Claude.ai ignores authorization_endpoint and token_endpoint from metadata
-- [anthropics/claude-code#2527](https://github.com/anthropics/claude-code/issues/2527) -- Azure AD integration complexity with DCR
-- [MCP TypeScript SDK#832](https://github.com/modelcontextprotocol/typescript-sdk/issues/832) -- Azure AD missing code_challenge_methods_supported
-- [MCP TypeScript SDK#862](https://github.com/modelcontextprotocol/typescript-sdk/issues/862) -- Azure AD workarounds needed for MCP servers
-- [IBM/mcp-context-forge#2881](https://github.com/IBM/mcp-context-forge/issues/2881) -- AADSTS9010010 resource+scope conflict
-- [Microsoft Learn: Redirect URI best practices](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) -- Localhost port behavior, platform types
-- [Microsoft Learn: Scopes and permissions](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc) -- api:// prefix requirements
-- [Microsoft Learn: AADSTS error codes](https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes) -- Token endpoint error reference
-- [Logto: MCP Auth Spec Review](https://blog.logto.io/mcp-auth-spec-review-2025-03-26) -- Proxy architecture complexity analysis
-- [Aaron Parecki: Let's fix OAuth in MCP](https://aaronparecki.com/2025/04/03/15/oauth-for-model-context-protocol) -- MCP OAuth design critique
-- [CVE-2025-69196: FastMCP OAuth Proxy token reuse](https://advisories.gitlab.com/pkg/pypi/fastmcp/CVE-2025-69196/) -- Token reuse vulnerability in proxy implementations
-- [Microsoft Q&A: OIDC metadata inconsistency](https://learn.microsoft.com/en-us/answers/questions/5576009/oidc-discovery-metadata-inconsistent-across-region) -- Regional code_challenge_methods_supported rollout
+- [PortSwigger: Access control vulnerabilities](https://portswigger.net/web-security/access-control) — existence oracle via 403 vs 404 distinction
+- [Authress: Choosing 401/403/404](https://authress.io/knowledge-base/articles/choosing-the-right-http-error-code-401-403-404) — when to return 404 to prevent resource enumeration
+- [LockMeDown: Return 404 instead of 403](https://lockmedown.com/when-should-you-return-404-instead-of-403-http-status-code/) — detailed guidance on existence oracle prevention
+- [DailyCVE: Gateway auth bypass via path canonicalization mismatch (CWE-288)](https://dailycve.com/gateway-authentication-bypass-via-path-canonicalization-mismatch-cwe-288-moderate/) — real CVE for case/trailing-slash bypass
+- [Medium: Path normalisation story (API gateway bypass)](https://medium.com/@dipanshuchhanikar/bypassing-authentication-in-a-major-api-gateway-a-path-normalization-story-5f1bea6d3f08) — practical path-canonicalization bypass examples
+- [ICO: What is personal data?](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/personal-information-what-is-it/what-is-personal-data/what-is-personal-data/) — GDPR personal data definition; company names are not personal data but client contact info within client pages is
+- [GDPR.eu: What is considered personal data?](https://gdpr.eu/eu-gdpr-personal-data/) — indirect identifiers; client directory pages may contain personal data about contact persons
+- [Exabeam: GDPR audit logging requirements](https://www.exabeam.com/explainers/gdpr-compliance/how-does-gdpr-comply-with-log-management/) — audit trail requirements under GDPR Article 30
+- [Mezmo: GDPR logging best practices](https://www.mezmo.com/blog/best-practices-for-gdpr-logging) — what to capture in access logs for GDPR accountability
+- [Hoop.dev: What GDPR really expects from audit logs](https://hoop.dev/blog/what-gdpr-really-expects-from-audit-logs/) — log what is needed, not more (data minimisation in logs)
+- [Wiki.js GitHub Discussion #6672: singleByPath path format](https://github.com/requarks/wiki/discussions/6672) — path format without leading slash
+- [Wiki.js GitHub Discussion #5606: Two-char paths reserved for locale](https://github.com/requarks/wiki/discussions/5606) — locale prefix path behaviour
+- [Red Hat: MCP security risks and controls](https://www.redhat.com/en/blog/model-context-protocol-mcp-understanding-security-risks-and-controls) — MCP-specific information leakage via tool responses
+- [MCPcat: Error handling in MCP servers](https://mcpcat.io/guides/error-handling-custom-mcp-servers/) — sanitising MCP tool error responses
+
+---
+*Pitfalls research for: GDPR path filtering on MCP/API server*
+*Researched: 2026-03-27*
