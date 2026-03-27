@@ -8,9 +8,15 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current Milestone: None (v2.3 Shipped)
+## Current Milestone: v2.4 MCP Instructions Field
 
-**Next:** Define v2.4 or later milestone based on new requirements.
+**Goal:** Add an `instructions` field to the MCP initialize response so Claude automatically searches the wiki for relevant topics without users needing to prompt it.
+
+**Target features:**
+- `instructions` field in MCP initialize response
+- File-based instruction loading with configurable path (`MCP_INSTRUCTIONS_PATH`)
+- Fallback default when file is missing
+- Docker volume mount support for instructions file
 
 ## Requirements
 
@@ -42,7 +48,10 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 
 <!-- Current scope. Building toward these. -->
 
-(None — define next milestone requirements)
+- [ ] MCP initialize response includes `instructions` field
+- [ ] Instructions loaded from file at startup with env-configurable path
+- [ ] Fallback default when instructions file is missing
+- [ ] Docker compose updated with volume mount for instructions file
 
 ### Out of Scope
 
@@ -116,4 +125,4 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
 
 ---
-*Last updated: 2026-03-26 after v2.3 milestone*
+*Last updated: 2026-03-27 after v2.4 milestone started*

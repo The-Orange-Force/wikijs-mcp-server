@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: completed
-stopped_at: v2.3 Tool Consolidation shipped
-last_updated: "2026-03-26T17:00:00.000Z"
-last_activity: 2026-03-26 -- v2.3 milestone completed and archived
+milestone: v2.4
+milestone_name: MCP Instructions Field
+status: defining_requirements
+stopped_at: null
+last_updated: "2026-03-27T00:00:00.000Z"
+last_activity: 2026-03-27 -- Milestone v2.4 started
 progress:
   total_phases: 0
   completed_phases: 0
@@ -18,16 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-26)
+See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Planning next milestone
+**Current focus:** v2.4 MCP Instructions Field
 
 ## Current Position
 
-Milestone: v2.3 Tool Consolidation -- SHIPPED
-Status: Ready for next milestone
-Last activity: 2026-03-26 -- v2.3 milestone completed and archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-27 — Milestone v2.4 started
 
 ## Completed Milestones
 
@@ -38,4 +39,4 @@ Last activity: 2026-03-26 -- v2.3 milestone completed and archived
 
 ## Session Continuity
 
-Next: Run `/gsd:new-milestone` to start planning v2.4+
+Milestone v2.4 MCP Instructions Field — defining requirements
