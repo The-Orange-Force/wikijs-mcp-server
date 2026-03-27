@@ -8,10 +8,15 @@ A Model Context Protocol server that bridges AI assistants with Wiki.js, secured
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current State
+## Current Milestone: v2.5 GDPR Path Filter
 
-**Latest:** v2.4 MCP Instructions Field (shipped 2026-03-27)
-**Next milestone:** Not yet planned
+**Goal:** Block access to direct client directory pages (`Clients/<CompanyName>`) at the MCP server level to comply with GDPR, independent of WikiJS permissions.
+
+**Target features:**
+- Shared `isBlocked()` utility that identifies GDPR-sensitive paths (exactly 2 segments starting with `Clients`)
+- `get_page` returns generic "not found" for blocked pages (no existence leak)
+- `search_pages` silently filters blocked pages from results
+- `list_pages` silently filters blocked pages from results
 
 ## Requirements
 
@@ -47,7 +52,10 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 
 <!-- Current scope. Building toward these. -->
 
-(None — next milestone not yet planned)
+- [ ] Shared isBlocked() utility for GDPR path filtering
+- [ ] get_page blocks GDPR-sensitive pages with "not found" error
+- [ ] search_pages silently excludes GDPR-sensitive pages from results
+- [ ] list_pages silently excludes GDPR-sensitive pages from results
 
 ### Out of Scope
 
@@ -130,4 +138,4 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
 
 ---
-*Last updated: 2026-03-27 after v2.4 milestone*
+*Last updated: 2026-03-27 after v2.5 milestone start*

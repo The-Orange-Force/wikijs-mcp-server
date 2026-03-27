@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.4
-milestone_name: MCP Instructions Field
-status: archived
-stopped_at: Milestone v2.4 archived
-last_updated: "2026-03-27T13:05:00.000Z"
-last_activity: 2026-03-27 -- Milestone v2.4 archived
+milestone: v2.5
+milestone_name: GDPR Path Filter
+status: defining_requirements
+stopped_at: Defining requirements
+last_updated: "2026-03-27T14:00:00.000Z"
+last_activity: 2026-03-27 -- Milestone v2.5 started
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,15 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** Planning next milestone
+**Current focus:** v2.5 GDPR Path Filter
 
 ## Current Position
 
-Phase: All complete
-Status: Between milestones
-Last activity: 2026-03-27 -- Milestone v2.4 archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-27 — Milestone v2.5 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Completed Milestones
 
@@ -43,7 +44,7 @@ Progress: [██████████] 100%
 
 ### Decisions
 
-(Cleared at milestone boundary — see .planning/milestones/v2.4-ROADMAP.md for v2.4 decisions)
+(None yet)
 
 ### Blockers/Concerns
 
@@ -52,5 +53,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Milestone v2.4 archived
+Stopped at: Defining requirements
 Resume file: None
