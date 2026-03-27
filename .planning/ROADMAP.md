@@ -121,10 +121,10 @@ Plans:
   1. Integration tests using Fastify `inject()` verify that all three tools return correct MCP response shapes for both blocked and non-blocked paths
   2. Integration tests confirm that `get_page` blocked responses are byte-identical to genuine "not found" responses
   3. The MCP instructions file (`instructions.txt`) does not contain references to "Clients", blocked paths, GDPR filtering, or any hint of the filter's existence or structure
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 24-01: TBD
+- [ ] 24-01-PLAN.md -- GDPR integration tests and instructions security audit
 
 ## Progress
 
@@ -140,7 +140,7 @@ Phases execute in numeric order: 22 -> 23 -> 24
 | 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 | 22. Core GDPR Predicate | v2.5 | 0/1 | Planning | - |
 | 23. Tool Handler Integration | v2.5 | 0/1 | Planning | - |
-| 24. Integration Tests and Security Hygiene | v2.5 | 0/0 | Not started | - |
+| 24. Integration Tests and Security Hygiene | v2.5 | 0/1 | Planning | - |
 
 ---
-*Last updated: 2026-03-27 after Phase 23 planning*
+*Last updated: 2026-03-27 after Phase 24 planning*
