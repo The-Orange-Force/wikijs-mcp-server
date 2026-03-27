@@ -2,6 +2,44 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.4 — MCP Instructions Field
+
+**Shipped:** 2026-03-27
+**Phases:** 3 | **Plans:** 4
+
+### What Was Built
+- Instructions loading module with async file reading and graceful default fallback (5-topic wiki guidance)
+- MCP initialize response wired with `instructions` field threaded through Fastify plugin options
+- Default instructions.txt template with Docker read-only volume mount for runtime customization
+- Zod default for MCP_INSTRUCTIONS_PATH closing Docker flow gap for zero-config deploys
+
+### What Worked
+- **Milestone audit caught a real gap** — Phase 21 was created specifically to close the "docker-custom-instructions" flow gap identified by `/gsd:audit-milestone`
+- **Small phases, fast execution** — 3 phases averaging 2-3 minutes each; total execution ~10 minutes
+- **Plugin options threading pattern** — startup-loaded instructions passed through Fastify plugin chain without per-request I/O
+- **TDD held across all plans** — RED/GREEN commits, 321 tests passing at completion
+
+### What Was Inefficient
+- **Phase 21 Nyquist validation left incomplete** — VALIDATION.md created in draft state but not formally completed
+- **Audit → gap closure → re-audit cycle** — required two audit passes; first audit identified the Docker flow gap, Phase 21 closed it, second audit confirmed
+
+### Patterns Established
+- **Container-friendly Zod defaults** — `z.string().default('/app/instructions.txt')` matches volume mount paths, eliminating deployer env var configuration
+- **Runtime-mounted config files** — host file mounted read-only into container via docker-compose volumes
+- **Graceful fallback pattern** — try file load, catch returns hardcoded default with warning
+
+### Key Lessons
+1. **Milestone audits find real gaps** — the audit workflow identified a legitimate flow gap (Docker volume mount existed but config didn't default to the mount path), leading to Phase 21
+2. **Zod defaults should match container filesystem conventions** — when deploying in Docker, defaults should point to well-known container paths that volume mounts target
+3. **Small milestones ship fast** — 3 phases with clear scope completed in a single day with no blockers
+
+### Cost Observations
+- Model mix: ~60% sonnet (execution), ~30% opus (planning/audit/completion), ~10% haiku (research)
+- Sessions: ~4 (planning, execution, audit, completion)
+- Notable: Smallest milestone by phase count; audit-driven gap closure added one phase but ensured completeness
+
+---
+
 ## Milestone: v2.3 — Tool Consolidation
 
 **Shipped:** 2026-03-26
@@ -97,6 +135,7 @@
 | v2.1 | 1 | 1 | Docker packaging, single-phase milestone |
 | v2.2 | 5 | 5 | OAuth proxy with research-driven planning, zero rework |
 | v2.3 | 4 | 8 | Aggressive consolidation (17→3 tools, 3→1 scopes), fastest milestone |
+| v2.4 | 3 | 4 | Audit-driven gap closure, smallest milestone, zero-config Docker deploys |
 
 ### Cumulative Quality
 
@@ -106,6 +145,7 @@
 | v2.1 | 97 | 4,133 | Docker (no runtime deps) |
 | v2.2 | 209 | 6,583 | @fastify/formbody |
 | v2.3 | 304 | 6,305 | None (removed msal-node) |
+| v2.4 | 321 | 3,225 (src/) | None |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -113,3 +153,4 @@
 2. **Research before planning prevents rework** — v2.2 had zero plan revisions due to thorough research phases
 3. **Pure function utilities as foundation** — extracting logic into tested pure functions before wiring routes has been consistently successful (scopes.ts in v2.0, scope-mapper.ts in v2.2)
 4. **Aggressive simplification pays dividends** — v2.3 removal of 14 tools and 2 scopes reduced maintenance without losing value
+5. **Milestone audits catch real gaps** — v2.4 audit identified Docker flow gap that led to Phase 21; validates the audit step as non-ceremonial

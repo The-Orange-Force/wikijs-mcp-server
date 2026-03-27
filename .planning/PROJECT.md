@@ -2,21 +2,16 @@
 
 ## What This Is
 
-A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials.
+A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials. Returns contextual instructions in the MCP initialize response that guide Claude to auto-search the wiki for relevant topics.
 
 ## Core Value
 
 Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance — without exposing the WikiJS API token to clients, and without requiring manual client credential configuration.
 
-## Current Milestone: v2.4 MCP Instructions Field
+## Current State
 
-**Goal:** Add an `instructions` field to the MCP initialize response so Claude automatically searches the wiki for relevant topics without users needing to prompt it.
-
-**Target features:**
-- `instructions` field in MCP initialize response
-- File-based instruction loading with configurable path (`MCP_INSTRUCTIONS_PATH`)
-- Fallback default when file is missing
-- Docker volume mount support for instructions file
+**Latest:** v2.4 MCP Instructions Field (shipped 2026-03-27)
+**Next milestone:** Not yet planned
 
 ## Requirements
 
@@ -43,15 +38,16 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - ✓ Single-scope model (wikijs:read only) — v2.3
 - ✓ STDIO transport removed, Alpine Docker image — v2.3
 - ✓ Dead code removed (types, API methods, msal-node dependency) — v2.3
+- ✓ MCP initialize response includes `instructions` field — v2.4
+- ✓ Instructions loaded from file at startup with env-configurable path — v2.4
+- ✓ Fallback default when instructions file is missing — v2.4
+- ✓ Docker compose updated with volume mount for instructions file — v2.4
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] MCP initialize response includes `instructions` field
-- [ ] Instructions loaded from file at startup with env-configurable path
-- [ ] Fallback default when instructions file is missing
-- [ ] Docker compose updated with volume mount for instructions file
+(None — next milestone not yet planned)
 
 ### Out of Scope
 
@@ -71,6 +67,8 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - User/group management tools — not needed for read-only wiki access
 - `search_unpublished_pages` — unreliable (Wiki.js doesn't index unpublished pages for search)
 - STDIO transport — removed in v2.3; HTTP-only simplifies codebase
+- Dynamic instructions generation from wiki content at startup — static file sufficient for v2.4
+- Hot-reload of instructions without restart — startup-time loading is simpler and sufficient
 
 ## Context
 
@@ -81,7 +79,9 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - MCP protocol uses JSON-RPC 2.0 over HTTP POST with stateless JSON responses
 - **MCP spec (2025-03-26 revision)** requires resource servers to provide OAuth proxy when IdP lacks dynamic client registration
 - Claude Desktop discovers auth via `/.well-known/oauth-protected-resource` → `/.well-known/openid-configuration` → registration → authorize → token
-- **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope, 6,305 LOC TypeScript
+- **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope
+- **v2.4 instructions:** MCP initialize response includes instructions field, file-based customization via MCP_INSTRUCTIONS_PATH, Docker volume mount
+- **Codebase:** 3,225 LOC TypeScript (src/), 321 tests across 23 files
 - **Tech stack:** TypeScript, Fastify, @modelcontextprotocol/sdk, graphql-request, jose, Zod, Vitest
 
 ## Constraints
@@ -118,6 +118,11 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 | Single wikijs:read scope | All remaining tools are read-only; no need for write/admin scopes | ✓ Shipped v2.3 |
 | Alpine Docker image | Switched from node:20-slim after msal-node removal eliminated glibc dependency | ✓ Shipped v2.3 |
 | Remove STDIO transport | HTTP-only simplifies codebase; OAuth only applies to HTTP transport | ✓ Shipped v2.3 |
+| File-based instructions with default fallback | Simpler than dynamic generation; deployers can customize without code changes | ✓ Shipped v2.4 |
+| Startup-loaded instructions threaded via plugin options | No per-request file I/O; single load at startup | ✓ Shipped v2.4 |
+| console.warn for instructions fallback (not pino) | Lightweight module, no pino dependency needed | ✓ Shipped v2.4 |
+| Zod default '/app/instructions.txt' | Docker volume mount works out-of-the-box without extra env var | ✓ Shipped v2.4 |
+| Read-only Docker volume mount for instructions | Prevent container from modifying host file | ✓ Shipped v2.4 |
 
 ## Known Issues
 
@@ -125,4 +130,4 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 - Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
 
 ---
-*Last updated: 2026-03-27 after v2.4 milestone started*
+*Last updated: 2026-03-27 after v2.4 milestone*

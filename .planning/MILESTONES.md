@@ -1,5 +1,32 @@
 # Milestones
 
+## v2.4 MCP Instructions Field (Shipped: 2026-03-27)
+
+**Phases:** 19-21 (3 phases, 4 plans, 8 tasks)
+**Tests:** 321 passing across 23 files
+**LOC:** 3,225 TypeScript (src/)
+**Timeline:** 1 day (2026-03-27)
+**Commits:** 31 | **Files changed:** 40 (+2,726 / -55)
+**Requirements:** 7/7 satisfied
+**Audit:** tech_debt (v2.4-MILESTONE-AUDIT.md) — 0 blockers, 5 non-blocking items
+
+**Delivered:** MCP initialize response includes instructions field that guides Claude to auto-search the wiki for relevant topics, with file-based customization and Docker volume mount support.
+
+**Key accomplishments:**
+1. Instructions loading module with file-based loading, 5-topic default fallback, and graceful error handling
+2. MCP initialize response wired with instructions field threaded through Fastify plugin options
+3. Default instructions.txt template with Docker read-only volume mount for runtime customization
+4. Zod default for MCP_INSTRUCTIONS_PATH closes Docker flow gap — zero-config deploys work out-of-the-box
+
+**Known Tech Debt:**
+- Phase 21 Nyquist validation incomplete (draft state)
+- instructions.txt uses generic [TOPIC] placeholders (deployer must customize)
+- FILE-03 uses console.warn not pino (accepted per phase decision)
+
+**Archives:** [ROADMAP](milestones/v2.4-ROADMAP.md) | [REQUIREMENTS](milestones/v2.4-REQUIREMENTS.md) | [AUDIT](milestones/v2.4-MILESTONE-AUDIT.md)
+
+---
+
 ## v2.3 Tool Consolidation (Shipped: 2026-03-26)
 
 **Phases:** 15-18 (4 phases, 8 plans)

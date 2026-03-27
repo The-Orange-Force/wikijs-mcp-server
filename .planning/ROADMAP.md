@@ -2,11 +2,11 @@
 
 ## Milestones
 
-- [v2.0 OAuth 2.1 Extension](./milestones/v2-ROADMAP.md) -- Azure AD authentication for MCP tools (2026-03-24)
-- [v2.1 Docker Deployment](./milestones/v2.1-ROADMAP.md) -- Docker container packaging for Caddy deployment (2026-03-25)
-- [v2.2 OAuth Authorization Proxy](./milestones/v2.2-ROADMAP.md) -- OAuth proxy for Claude Desktop auth flow (2026-03-26)
-- [v2.3 Tool Consolidation](./milestones/v2.3-ROADMAP.md) -- Consolidate 17 tools to 3 read-only page tools (2026-03-26)
-- **v2.4 MCP Instructions Field** -- Instructions in MCP initialize response for auto-guided Claude behavior (in progress)
+- ✅ [v2.0 OAuth 2.1 Extension](./milestones/v2-ROADMAP.md) -- Azure AD authentication for MCP tools (2026-03-24)
+- ✅ [v2.1 Docker Deployment](./milestones/v2.1-ROADMAP.md) -- Docker container packaging for Caddy deployment (2026-03-25)
+- ✅ [v2.2 OAuth Authorization Proxy](./milestones/v2.2-ROADMAP.md) -- OAuth proxy for Claude Desktop auth flow (2026-03-26)
+- ✅ [v2.3 Tool Consolidation](./milestones/v2.3-ROADMAP.md) -- Consolidate 17 tools to 3 read-only page tools (2026-03-26)
+- ✅ [v2.4 MCP Instructions Field](./milestones/v2.4-ROADMAP.md) -- Instructions in MCP initialize response for auto-guided Claude behavior (2026-03-27)
 
 ## Completed Milestones
 
@@ -60,71 +60,26 @@ Phase 18: Cleanup -- STDIO removal, Alpine Docker, dead code removal, documentat
 
 </details>
 
-## v2.4 MCP Instructions Field
+<details>
+<summary>v2.4 MCP Instructions Field (Phases 19-21) -- SHIPPED 2026-03-27</summary>
 
-**Milestone Goal:** Add an `instructions` field to the MCP initialize response so Claude automatically searches the wiki for relevant topics without users needing to prompt it.
+See [milestones/v2.4-ROADMAP.md](./milestones/v2.4-ROADMAP.md) for full details.
 
-## Phases
+Phase 19: Instructions Loading and Initialize Response -- loadInstructions module with file/fallback, MCP initialize response wiring
+Phase 20: Docker Integration and Default Instructions -- instructions.txt template, docker-compose volume mount
+Phase 21: Docker Instructions Path Default -- Zod default for MCP_INSTRUCTIONS_PATH, zero-config Docker deploys
 
-- [x] **Phase 19: Instructions Loading and Initialize Response** - Load instructions from configurable file path with fallback default and return in MCP initialize response (completed 2026-03-27)
-- [x] **Phase 20: Docker Integration and Default Instructions** - Ship default instructions file and wire docker-compose volume mount (completed 2026-03-27)
-- [x] **Phase 21: Docker Instructions Path Default** - Add Zod default for MCP_INSTRUCTIONS_PATH so Docker volume mount works out-of-the-box (completed 2026-03-27)
-**Gap Closure:** Closes flow gap from v2.4 audit
-
-## Phase Details
-
-### Phase 19: Instructions Loading and Initialize Response
-**Goal**: MCP clients receive contextual instructions that guide Claude to auto-search the wiki for relevant topics
-**Depends on**: Phase 18 (v2.3 codebase)
-**Requirements**: INIT-01, INIT-02, FILE-01, FILE-02, FILE-03
-**Success Criteria** (what must be TRUE):
-  1. When an MCP client sends an initialize request, the response includes an `instructions` field with text content
-  2. The instructions text mentions specific topic areas (Mendix, client names, AI, Java, career) that Claude should proactively search for
-  3. When `MCP_INSTRUCTIONS_PATH` env var points to a valid file, the server uses that file's content as instructions
-  4. When the instructions file is missing or unreadable, the server starts successfully and returns hardcoded default instructions
-  5. When falling back to defaults, the server logs a warning message indicating the file could not be loaded
-**Plans:** 2/2 plans complete
-
-Plans:
-- [ ] 19-01-PLAN.md -- Instructions loading module with file/fallback logic, config env var, unit tests
-- [ ] 19-02-PLAN.md -- Wire instructions into MCP initialize response, version bump to 2.4.0, integration tests
-
-### Phase 20: Docker Integration and Default Instructions
-**Goal**: Deployers can customize instructions via volume mount without rebuilding the Docker image
-**Depends on**: Phase 19
-**Requirements**: DOCK-01, DOCK-02
-**Success Criteria** (what must be TRUE):
-  1. A default `instructions.txt` file exists in the repository with meaningful content matching the hardcoded fallback
-  2. `docker-compose.yml` mounts the instructions file into the container at the path the server expects
-  3. A deployer can replace the instructions file on the host and restart the container to change Claude's behavior
-**Plans**: 1 plan
-
-Plans:
-- [ ] 20-01-PLAN.md -- Ship default instructions.txt, wire docker-compose volume mount, update documentation
-
-### Phase 21: Docker Instructions Path Default
-**Goal**: Docker volume mount for instructions.txt works out-of-the-box without requiring deployers to explicitly set MCP_INSTRUCTIONS_PATH
-**Depends on**: Phase 20
-**Requirements**: DOCK-01
-**Gap Closure**: Closes flow gap "docker-custom-instructions" from v2.4 audit
-**Success Criteria** (what must be TRUE):
-  1. When `MCP_INSTRUCTIONS_PATH` env var is not set, the server defaults to `/app/instructions.txt`
-  2. A deployer running `docker-compose up` with a customized `instructions.txt` sees their content in MCP initialize response without setting `MCP_INSTRUCTIONS_PATH`
-  3. Existing behavior (explicit env var override) continues to work
-**Plans:** 1/1 plans complete
-
-Plans:
-- [ ] 21-01-PLAN.md -- Add Zod default for MCP_INSTRUCTIONS_PATH, fix downstream type errors, update .env.example
+</details>
 
 ## Progress
 
-**Execution Order:** 19 -> 20 -> 21
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 19. Instructions Loading and Initialize Response | 2/2 | Complete    | 2026-03-27 |
-| 20. Docker Integration and Default Instructions | 1/1 | Complete    | 2026-03-27 |
-| 21. Docker Instructions Path Default | 1/1 | Complete    | 2026-03-27 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1-8. OAuth Foundation | v2.0 | 12/12 | Complete | 2026-03-24 |
+| 9. Docker Packaging | v2.1 | 1/1 | Complete | 2026-03-25 |
+| 10-14. OAuth Proxy | v2.2 | 5/5 | Complete | 2026-03-26 |
+| 15-18. Tool Consolidation | v2.3 | 8/8 | Complete | 2026-03-26 |
+| 19-21. MCP Instructions | v2.4 | 4/4 | Complete | 2026-03-27 |
 
 ---
-*Last updated: 2026-03-27*
+*Last updated: 2026-03-27 after v2.4 milestone completion*
