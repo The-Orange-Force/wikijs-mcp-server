@@ -90,15 +90,9 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string): Mcp
         // GDPR: check after API call completes (SEC-01 timing safety)
         if (page?.path && isBlocked(page.path)) {
           logBlockedAccess(TOOL_GET_PAGE);
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: "Error in get_page: Page not found. Verify the page ID using search_pages or list_pages.",
-              },
-            ],
-          };
+          // Throw the same error as a genuine not-found to ensure
+          // blocked responses are byte-identical to missing pages.
+          throw new Error("Page not found");
         }
         return {
           content: [

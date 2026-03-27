@@ -57,9 +57,10 @@ const SAFE_PAGE_2 = makePage({
   description: "A project page",
 });
 
-/** The exact error text from the existing catch block for absent pages */
+/** The exact error text from the catch block for absent pages.
+ *  When `throw new Error("Page not found")` is caught, String(error) = "Error: Page not found". */
 const ABSENT_PAGE_ERROR =
-  "Error in get_page: Page not found. Verify the page ID using search_pages or list_pages.";
+  "Error in get_page: Error: Page not found. Verify the page ID using search_pages or list_pages.";
 
 /**
  * Capture warn-level log entries from the logBlockedAccess helper.
