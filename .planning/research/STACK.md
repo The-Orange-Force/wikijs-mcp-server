@@ -1,19 +1,21 @@
 # Stack Research
 
-**Domain:** Marker-based GDPR content redaction and page URL injection for MCP server
+**Domain:** Metadata search fallback for MCP server search pipeline
 **Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Context: What This Covers
 
-This research is scoped to the v2.6 milestone. The existing application stack (TypeScript 5.3, Fastify 4, jose, Zod, Vitest, Docker) is validated and not re-researched. The v2.5 path-based GDPR filtering (`isBlocked()` predicate) is being **removed** and replaced with marker-based content redaction.
+This research is scoped to the v2.7 milestone. The existing application stack (TypeScript 5.3, Fastify 4, graphql-request, jose, Zod, Vitest, Pino, Docker Alpine) is validated and not re-researched. The existing search pipeline in `src/api.ts` already uses `pages.search` (GraphQL full-text) with `singleByPath` + `pages.list` fallback for ID resolution.
 
 **The questions:**
-1. What is needed for regex-based content redaction of `<!-- gdpr-start/end -->` markers in markdown?
-2. How to handle malformed markers (start without end) safely?
-3. How to construct page URLs for injection into get_page responses?
+1. What is needed for client-side substring matching on page metadata (path, title, description)?
+2. Should we use a text search library (Fuse.js, FlexSearch, MiniSearch) or plain string matching?
+3. How to handle case-insensitive matching correctly, including Unicode?
+4. How to deduplicate results from GraphQL search + metadata fallback?
+5. Any changes needed for structured logging of fallback activity?
 
-**Answer: Zero new dependencies.** All three capabilities are covered by Node.js built-ins and the existing stack.
+**Answer: Zero new dependencies.** All capabilities are covered by Node.js built-in string operations and the existing stack.
 
 ---
 
@@ -23,139 +25,167 @@ This research is scoped to the v2.6 milestone. The existing application stack (T
 
 None.
 
-The v2.6 milestone features (regex content redaction, malformed marker handling, URL construction) require **zero new npm dependencies**. Everything is implemented with:
+The v2.7 milestone features (metadata substring matching, deduplication, unpublished filtering, limit enforcement, fallback logging) require **zero new npm dependencies**. Everything is implemented with:
 
-- `String.prototype.replace()` with compiled `RegExp` -- content redaction
-- `String.prototype.includes()` and `String.prototype.indexOf()` -- malformed marker detection
-- `URL` class (WHATWG, built into Node.js since v10) -- page URL construction
-- Zod `.url().optional()` (already installed) -- new env var validation
-- Pino via Fastify (already installed) -- malformed marker warning logs
+- `String.prototype.toLowerCase()` + `String.prototype.includes()` -- case-insensitive substring matching
+- `Map<number, WikiJsPage>` -- deduplication by page ID
+- `Array.prototype.filter()` -- unpublished page filtering (already exists)
+- `Array.prototype.slice()` -- limit enforcement
+- Pino via Fastify (already installed) -- structured fallback logging via existing `requestContext` pattern
 
 ### Capabilities from Existing Stack
 
 | Capability | Provided By | How | Notes |
 |------------|-------------|-----|-------|
-| Regex content redaction | `String.prototype.replace()` + `RegExp` | Native V8 regex with `/g` flag | Compiled once at module level |
-| Cross-line matching in markdown | `[\s\S]*?` character class | Matches any character including newlines | Alternative: dotAll `s` flag (both work on Node >= 20) |
-| Malformed marker detection | `String.prototype.includes()` | Check start marker present, end marker absent | Faster than regex for presence detection |
-| Fail-safe truncation | `String.prototype.indexOf()` + `substring()` | Redact from start marker to end of content | No regex needed for this path |
-| URL construction | WHATWG `URL` class (Node.js built-in) | `new URL(path, baseUrl)` | Handles trailing slashes, encoding |
-| Config validation | Zod (^3.25.17, already installed) | Add `WIKIJS_PAGE_URL` to `envSchema` | Optional field with `.url()` validator |
-| Audit logging | Pino (via Fastify ^4.27.2, already installed) | `ctx.log.warn()` for malformed markers | Existing `requestContext` pattern |
+| Fetch all page metadata | `WikiJsApi.listPages()` in `src/api.ts` | Existing `pages.list` GraphQL query returns id, path, title, description, isPublished | Already fetches limit 500 in `resolveViaPagesList` |
+| Case-insensitive substring match | `String.toLowerCase().includes()` | `page.title.toLowerCase().includes(query.toLowerCase())` | Computed once per search, not per page |
+| Path segment matching | `String.toLowerCase().includes()` | Same method works on paths (e.g., "coa" matches "clients/coa/overview") | Path uses forward slashes, no special handling needed |
+| Description matching | `String.toLowerCase().includes()` | Same method on `page.description` field | Description may be empty string, `includes()` handles this correctly |
+| Deduplication | `Map<number, WikiJsPage>` | Key by `page.id`, merge GraphQL results with metadata results | Map preserves insertion order; GraphQL results take priority |
+| Unpublished page filtering | `Array.prototype.filter()` | `pages.filter(p => p.isPublished === true)` | Already implemented in `listPages()` |
+| Limit enforcement | `Array.prototype.slice()` | `results.slice(0, limit)` after merge + dedup | Applied as final step |
+| Fallback activity logging | Pino via `requestContext.getStore()` | `ctx?.log.info({ fallbackCount, query }, "Metadata search fallback triggered")` | Existing pattern from search ID resolution logging |
 
 ---
 
 ## Technical Design Decisions
 
-### 1. Regex Pattern for Marker Redaction
+### 1. Plain String Matching Over Fuzzy Search Libraries
 
-**Markers:** `<!-- gdpr-start -->` ... `<!-- gdpr-end -->`
+**Decision: Use `toLowerCase().includes()` for all metadata matching.**
+
+**Why NOT Fuse.js, FlexSearch, or MiniSearch:**
+
+| Library | Why Not for This Use Case |
+|---------|---------------------------|
+| Fuse.js (v7.1) | Fuzzy matching adds false positives; acronyms like "COA" should exact-match path segments, not fuzzy-match "COAT" or "COCA". ~17 KB minified adds unnecessary weight. Index rebuild per search is wasteful for < 500 pages. |
+| FlexSearch (v0.7) | Full-text indexing engine designed for persistent indexes; we query once per search call and discard results. Overkill for substring matching on < 500 pages. |
+| MiniSearch (v7.1) | Same problem as FlexSearch: designed for persistent searchable indexes, not one-shot substring filtering. |
+
+**Why plain substring matching is correct:**
+
+The feature goal is explicit: "acronyms, path segments, and short tokens always surface results." This is a **substring containment** problem, not a fuzzy relevance problem.
+
+- Query "COA" should match path `clients/coa/overview` and title "COA Client Portal" -- `includes()` does this
+- Query "getting" should match title "Getting Started Guide" -- `includes()` does this
+- Query "mendix" should match description "Mendix development best practices" -- `includes()` does this
+
+Fuzzy matching would introduce false positives (e.g., "COA" matching "COAT" or "COCOA") that degrade result quality. The GraphQL `pages.search` already handles relevance-ranked full-text search. The metadata fallback supplements it with exact substring hits that the search index missed.
+
+**Performance is not a concern:**
+
+Filtering 500 pages with 3 `includes()` calls each = 1500 string comparisons. On modern V8, `String.includes()` on short strings is sub-microsecond. Total: < 1 ms for the entire metadata scan, negligible versus the GraphQL round-trip (50-200 ms).
+
+### 2. Case Folding: `toLowerCase()` vs `toLocaleLowerCase()`
+
+**Decision: Use `toLowerCase()`, not `toLocaleLowerCase()`.**
+
+- `toLowerCase()` uses Unicode Default Case Mapping (invariant, locale-independent)
+- `toLocaleLowerCase()` uses locale-specific rules (e.g., Turkish dotless-I problem where `I` lowercases to `\u0131` instead of `i`)
+- Wiki.js page paths and titles are overwhelmingly ASCII or Western European characters
+- The server's locale is not controlled (Docker Alpine sets `C` locale by default)
+- `toLowerCase()` avoids surprising locale-dependent behavior in containerized deployments
+
+For this use case (path segments, acronyms, titles), `toLowerCase()` is the correct and predictable choice.
+
+### 3. Query Normalization
+
+**Decision: Lowercase the query string once, before iterating pages.**
 
 ```typescript
-// Compiled once at module level (not per-call) -- avoids recompilation overhead
-const GDPR_REDACT_RE = /<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g;
+const queryLower = query.toLowerCase();
+// Then for each page:
+const matches = page.title.toLowerCase().includes(queryLower)
+  || page.path.toLowerCase().includes(queryLower)
+  || page.description.toLowerCase().includes(queryLower);
 ```
 
-**Why `[\s\S]*?` (non-greedy, cross-line):**
-- GDPR-redacted content in markdown will span multiple lines -- `.` does not match newlines by default
-- `[\s\S]*?` matches any character (including `\n`) non-greedily
-- Non-greedy `*?` is essential: with greedy `*`, the pattern `start...end...start...end` would match the entire span as one block instead of two separate blocks
-- The `s` (dotAll) flag + `.*?` is an equivalent alternative, available since Node 10; `[\s\S]*?` is the more widely-recognized idiom
+Do NOT lowercase each page field for every query. In the current architecture (no persistent cache), fields are lowercased per-search, but the query is normalized once. This is the simplest correct approach.
 
-**Why this pattern is ReDoS-safe (HIGH confidence):**
+### 4. Deduplication Strategy
 
-The pattern consists of two **fixed literal anchors** (`<!-- gdpr-start -->` and `<!-- gdpr-end -->`) with a single non-greedy `[\s\S]*?` between them. This is a **linear-time** pattern:
-- No nested quantifiers (no `(a+)+` shapes)
-- No alternation inside quantifiers (no `(a|b)*` shapes)
-- No overlapping character classes
-- V8's regex engine processes this in O(n) time proportional to content length
+**Decision: Use `Map<number, WikiJsPage>` keyed by page ID.**
 
-The `re2` library (Google's linear-time regex engine) is unnecessary for this pattern shape. Adding `re2` would introduce a native C++ dependency that complicates the Alpine Docker image and CI pipeline for zero security benefit.
+The search pipeline produces results from two sources:
+1. GraphQL `pages.search` results (already resolved to real page IDs)
+2. Metadata fallback results (from `pages.list` substring matching)
 
-**Performance characteristics:**
-
-| Input Size | Expected Time | Basis |
-|------------|---------------|-------|
-| 5-20 KB (typical wiki page) | < 0.1 ms | Linear scan, no backtracking |
-| 100-500 KB (large page) | < 1 ms | Still linear; negligible vs GraphQL round-trip |
-
-These times are negligible compared to the Wiki.js GraphQL API round-trip (typically 50-200 ms).
-
-### 2. Malformed Marker Fail-Safe
-
-**Requirement:** If `<!-- gdpr-start -->` appears but `<!-- gdpr-end -->` is missing (or typo'd), redact from the start marker through the end of the content. Log a structured warning.
-
-**Strategy: Detection first, then branch.**
+Deduplication ensures a page appearing in both sets is returned only once.
 
 ```typescript
-// Fast presence detection via indexOf (O(n), no regex compilation)
-const startIdx = content.indexOf('<!-- gdpr-start -->');
+const seen = new Map<number, WikiJsPage>();
 
-if (startIdx !== -1 && !content.includes('<!-- gdpr-end -->')) {
-  // Malformed: redact from start marker to EOF
-  content = content.substring(0, startIdx) + '[Content redacted]';
-  // Log warning via existing Pino/requestContext pattern
-  ctx?.log.warn({ pageId, malformedMarker: true }, 'GDPR marker missing end tag; redacted to end of content');
-} else {
-  // Well-formed: regex handles matched pairs
-  content = content.replace(GDPR_REDACT_RE, '[Content redacted]');
+// GraphQL results first (higher relevance)
+for (const page of graphqlResults) {
+  seen.set(page.id, page);
 }
-```
 
-**Why not regex for the malformed case:**
-- `String.indexOf()` is O(n) and avoids regex compilation
-- The malformed case is simpler (find first occurrence, truncate) -- regex is the wrong tool
-- Separating well-formed (regex) from malformed (string ops) makes each path testable and readable
-- The fail-safe approach (redact more, not less) is the correct GDPR-safe default
-
-### 3. URL Construction
-
-**Use the WHATWG `URL` class**, not string concatenation.
-
-```typescript
-function buildPageUrl(baseUrl: string, pagePath: string): string {
-  const base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-  return new URL(pagePath, base).toString();
+// Metadata fallback results second (only if not already present)
+for (const page of metadataResults) {
+  if (!seen.has(page.id)) {
+    seen.set(page.id, page);
+  }
 }
+
+return Array.from(seen.values()).slice(0, limit);
 ```
 
-**Why `URL` class over template literals:**
-- Handles edge cases: double slashes (`https://wiki.example.com//Clients/Acme`), special characters in paths (spaces, unicode), proper percent-encoding
-- Wiki.js paths can contain spaces (e.g., `Clients/Acme Corp`), apostrophes, umlauts
-- TypeScript types are built-in (`URL` is globally available in Node.js)
-- `new URL(relative, base)` correctly resolves relative paths against the base, handling trailing slash presence/absence
+**Why `Map` over `Set`:**
+- `Set` stores values but we need key-based deduplication (by `page.id`)
+- `Map` preserves insertion order (GraphQL results come first)
+- `Map.has()` is O(1) lookup
 
-**Configuration:** New optional env var `WIKIJS_PAGE_URL` validated via Zod. When absent, page URLs are omitted from responses (backward-compatible; no breaking change for existing deployments).
+### 5. Where Metadata Fallback Executes
 
-### 4. Where Redaction Executes
-
-Redaction belongs in `mcp-tools.ts` (the tool handler layer), **not** in `api.ts` (the API client layer).
+**Decision: Inside `WikiJsApi.searchPages()` in `src/api.ts`, not in `mcp-tools.ts`.**
 
 **Rationale:**
-- `api.ts` is a thin GraphQL client -- it should return raw data from Wiki.js unchanged
-- Content redaction is a server-level GDPR policy, not an API concern
-- This matches the existing pattern where `isBlocked()` is called in tool handlers, not in `api.ts`
-- Testing is cleaner: the redaction function is pure (string in, string out), tested independently without API mocking
-- The redaction module replaces `src/gdpr.ts` (which currently exports `isBlocked()`)
+- The metadata fallback is a **search strategy**, not a presentation concern
+- The existing `searchPages()` already implements multi-step search (GraphQL + singleByPath + pages.list fallback for ID resolution)
+- Adding metadata matching is a natural extension of the same pipeline
+- `mcp-tools.ts` should remain a thin handler layer that calls `api.searchPages()` and formats the result
+- This matches the existing architecture: `api.ts` owns all Wiki.js data retrieval logic
+
+### 6. Triggering the Metadata Fallback
+
+**Decision: Trigger when GraphQL search returns fewer results than the requested limit.**
+
+```typescript
+const threshold = limit; // User-requested limit (default: 10)
+if (graphqlResults.length < threshold) {
+  // Run metadata fallback to supplement results
+}
+```
+
+**Why not "when GraphQL returns zero":**
+- A query like "COA" may return 1 result from full-text search but miss 3 pages where "COA" appears only in the path
+- Triggering only on zero results would miss this supplementation opportunity
+- The deduplication step prevents duplicates, so triggering eagerly is safe
+
+**Why not "always":**
+- If GraphQL returns the full requested limit, the user already has enough results
+- Avoiding an unnecessary `pages.list` call saves a GraphQL round-trip
+- The metadata fallback is a supplement, not a replacement
+
+### 7. Reusing `resolveViaPagesList` vs New Method
+
+**Decision: Extract a new method (e.g., `metadataSearch`) that reuses the existing `pages.list` query pattern, not the `resolveViaPagesList` method directly.**
+
+**Why:**
+- `resolveViaPagesList` is designed for ID resolution (matching by path), not substring searching
+- The metadata search needs to iterate all pages and apply substring matching, which is a different loop shape
+- However, the GraphQL query is identical (`pages.list` with limit 500, same fields)
+- Extract a shared private method for the `pages.list` call, called by both `resolveViaPagesList` and the new metadata search
+
+This avoids code duplication of the GraphQL query while keeping the matching logic separate and testable.
 
 ---
 
 ## Configuration Changes
 
-### New Environment Variable
+### No New Environment Variables
 
-| Variable | Required | Type | Default | Purpose |
-|----------|----------|------|---------|---------|
-| `WIKIJS_PAGE_URL` | No | URL string | (none) | Base URL for constructing page links in get_page responses |
-
-**Zod schema addition to `config.ts`:**
-```typescript
-WIKIJS_PAGE_URL: z.string().url("WIKIJS_PAGE_URL must be a valid URL").optional(),
-```
-
-**Example values:**
-- `https://wiki.example.com/en/` -- produces URLs like `https://wiki.example.com/en/Clients/AcmeCorp`
-- If unset, the `url` field is omitted from get_page JSON responses (no breaking change)
+No new env vars needed. The metadata fallback uses the existing `pages.list` GraphQL query, which already uses the configured `WIKIJS_BASE_URL` and `WIKIJS_TOKEN`.
 
 ---
 
@@ -163,16 +193,15 @@ WIKIJS_PAGE_URL: z.string().url("WIKIJS_PAGE_URL must be a valid URL").optional(
 
 | File | Change | Reason |
 |------|--------|--------|
-| `src/gdpr.ts` | **Rewrite**: replace `isBlocked()` with `redactContent()` and `buildPageUrl()` | Marker-based redaction replaces path-based blocking |
-| `src/mcp-tools.ts` | Call `redactContent()` on content; inject page URL; remove `isBlocked()` calls and `logBlockedAccess()` | New redaction + URL injection; remove old path filtering |
-| `src/config.ts` | Add `WIKIJS_PAGE_URL` to `envSchema` | New optional env var |
-| `example.env` | Add `WIKIJS_PAGE_URL` example | Document new config |
-| `src/__tests__/gdpr.test.ts` | **Rewrite**: test `redactContent()` and `buildPageUrl()` | New functions replace old ones |
-| `tests/gdpr-filter.test.ts` | **Remove or rewrite**: integration tests for old path-based filtering | Old filtering is removed |
+| `src/api.ts` | Add `metadataSearch()` private method; modify `searchPages()` to call it when GraphQL results are insufficient; extract shared `fetchPagesList()` for reuse | Core metadata fallback logic |
+| `src/mcp-tools.ts` | Update `search_pages` tool description to mention metadata fallback capability | User-facing tool description accuracy |
+| `tests/api.test.ts` | Add test cases for metadata fallback: substring matching, case insensitivity, deduplication, limit enforcement, unpublished filtering, fallback not triggered when limit satisfied | Verify new behavior |
 
 **No changes needed to:**
-- `src/api.ts` -- returns raw Wiki.js data unchanged
-- `src/types.ts` -- `WikiJsPage.content` is already `string | undefined`; URL is injected at serialization time in the tool handler, not stored on the type
+- `src/types.ts` -- `WikiJsPage` and `PageSearchResult` interfaces are unchanged
+- `src/config.ts` -- no new env vars
+- `src/mcp-tools.ts` handler logic -- only the description string changes; the handler still calls `api.searchPages()` and formats the result identically
+- `src/gdpr.ts` -- GDPR redaction is a separate concern applied in get_page, not search
 - Docker / docker-compose -- no new dependencies or volumes
 
 ---
@@ -181,14 +210,15 @@ WIKIJS_PAGE_URL: z.string().url("WIKIJS_PAGE_URL must be a valid URL").optional(
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `re2` / `node-re2` | Native C++ dependency; complicates Alpine Docker image; unnecessary because the marker pattern is provably linear-time (fixed delimiters + non-greedy quantifier) | Native `RegExp` with `[\s\S]*?` |
-| `html-comment-regex` npm | Abandoned (last publish 2016); generic HTML comment matching we do not need; our pattern is specific to `<!-- gdpr-start/end -->` | Specific hardcoded regex literal |
-| `sanitize-html` / `DOMPurify` | Designed for HTML sanitization for browser rendering; we are doing string-level content redaction on markdown source text | `String.prototype.replace()` with targeted regex |
-| `cheerio` / HTML parsers | Markdown content is not valid HTML; parsing as HTML would mangle the markdown | Direct string/regex operations on markdown |
-| Regex with greedy `.*` | Greedy quantifier matches across multiple GDPR blocks: `start...end...start...end` becomes one giant match instead of two | Non-greedy `[\s\S]*?` |
-| `String.prototype.replaceAll()` | With regex + `g` flag it is identical to `.replace()` with `g` flag; no benefit | `.replace()` with global regex |
-| Dynamic regex from user input | Never construct regex from user-provided strings (ReDoS vector) | All patterns are hardcoded literal strings compiled at module load |
-| `path` module for URL construction | `path.join()` uses OS-specific separators (backslash on Windows); URLs always use forward slashes | WHATWG `URL` class |
+| Fuse.js | Fuzzy matching produces false positives for acronym/path search; "COA" should not match "COAT" or "COCOA"; adds 17 KB dependency for < 500 items | `String.toLowerCase().includes()` |
+| FlexSearch | Full-text indexing engine designed for persistent indexes; rebuild per search call is wasteful and the API is complex for simple substring matching | `String.toLowerCase().includes()` |
+| MiniSearch | Same as FlexSearch: overkill for one-shot substring filtering on small datasets | `String.toLowerCase().includes()` |
+| `toLocaleLowerCase()` | Locale-dependent case folding causes surprising behavior in Docker Alpine (C locale); Turkish dotless-I problem can break ASCII acronym matching | `toLowerCase()` (Unicode Default Case Mapping) |
+| `String.prototype.match()` / `RegExp` | Unnecessary complexity for simple substring containment; introduces ReDoS risk if query is user-provided and used as regex pattern | `String.prototype.includes()` (no regex compilation) |
+| `String.prototype.search()` | Returns index not boolean; uses regex internally; same ReDoS concern as `match()` | `includes()` returns boolean directly |
+| `Array.prototype.find()` for dedup | O(n) per lookup; with 500 pages and potential 50-item result set, repeated scans add up | `Map.has()` for O(1) dedup lookup |
+| `lodash.uniqBy()` | Adding lodash for one utility is unnecessary; `Map` achieves the same thing in 5 lines | `Map<number, WikiJsPage>` |
+| Persistent search index / cache | Adds statefulness and cache invalidation complexity; pages.list is fast enough (< 200 ms) for per-request use at current wiki size | Stateless per-request fetch + filter |
 
 ---
 
@@ -196,26 +226,27 @@ WIKIJS_PAGE_URL: z.string().url("WIKIJS_PAGE_URL must be a valid URL").optional(
 
 | Recommended | Alternative | Why Not |
 |-------------|-------------|---------|
-| Native `RegExp` `[\s\S]*?` | `re2` (Google RE2 engine) | ReDoS is not a risk with fixed-literal-delimiter patterns; re2 adds native C++ dep that breaks Alpine Docker builds |
-| Native `RegExp` `[\s\S]*?` | `html-comment-regex` npm | Unmaintained since 2016; our pattern is simpler and more specific |
-| `String.prototype.replace()` | Custom streaming parser | Wiki.js pages are small (< 100 KB typically); full-string replacement is simpler and sufficient |
-| WHATWG `URL` class | Template literal concatenation | Template literals mishandle double slashes, special characters, and encoding edge cases |
-| `String.indexOf()` for malformed detection | Regex lookahead assertion | indexOf is faster and clearer for simple presence checks |
-| Pure functions in `src/gdpr.ts` | Inline logic in `mcp-tools.ts` | Separate module is more testable; follows existing pattern of `gdpr.ts` as a self-contained utility |
-| `WIKIJS_PAGE_URL` optional env var | Derive URL from `WIKIJS_BASE_URL` | Wiki.js base URL (API endpoint) may differ from the user-facing page URL (e.g., internal API vs public wiki hostname) |
-| Zod `.url().optional()` | Manual URL validation | Consistent with existing config pattern; fail-fast at startup |
+| `toLowerCase().includes()` | Fuse.js fuzzy matching | Fuzzy matching adds false positives; exact substring is what the feature spec requires |
+| `toLowerCase().includes()` | `RegExp` with `i` flag | User query used as regex pattern = ReDoS vector; `includes()` is simpler and safer |
+| `Map<number, WikiJsPage>` dedup | `Set<number>` + separate results array | Map combines storage and dedup in one structure; cleaner code |
+| Trigger on `results.length < limit` | Trigger only on `results.length === 0` | Misses supplementation opportunity; "COA" returns 1 from full-text but 3 more from path matching |
+| Trigger on `results.length < limit` | Always trigger | Unnecessary `pages.list` call when GraphQL already returned sufficient results |
+| Fallback in `api.ts` | Fallback in `mcp-tools.ts` | Search strategy belongs in the API layer; tool handlers should stay thin |
+| Shared `fetchPagesList()` extraction | Duplicate the pages.list query | `resolveViaPagesList` already has the same query; DRY principle |
+| Substring on 3 fields (path, title, desc) | Only match title | Acronyms often appear only in paths (e.g., `clients/coa/overview`); description may contain keywords not in title |
 
 ---
 
 ## Version Compatibility
 
-| Dependency | Current Version | v2.6 Compatible | Notes |
+| Dependency | Current Version | v2.7 Compatible | Notes |
 |------------|-----------------|-----------------|-------|
-| Node.js | >= 20 | Yes | `URL` class, `RegExp` with `[\s\S]`, `String.includes()` all available since Node 10+ |
-| TypeScript | ^5.3.3 | Yes | ES2020 target supports all needed string/regex features |
-| Zod | ^3.25.17 | Yes | `.url().optional()` stable since Zod 3.0 |
-| Vitest | ^4.1.1 | Yes | Pure function tests need no special configuration |
-| Fastify/Pino | ^4.27.2 | Yes | Existing `ctx.log.warn()` pattern unchanged |
+| Node.js | >= 20 | Yes | `String.toLowerCase()`, `includes()`, `Map`, `Array.from()` all available since ES2015 (Node 4+) |
+| TypeScript | ^5.3.3 | Yes | All used APIs have complete type definitions in `lib.es2015.d.ts` |
+| Zod | ^3.25.17 | Yes | No schema changes needed |
+| Vitest | ^4.1.1 | Yes | Pure function tests with existing mock patterns |
+| graphql-request | ^6.1.0 | Yes | Same `pages.list` query; no new GraphQL features needed |
+| Fastify/Pino | ^4.27.2 | Yes | Existing `ctx?.log.info()` pattern for fallback logging |
 
 No new packages means no version compatibility concerns.
 
@@ -225,22 +256,23 @@ No new packages means no version compatibility concerns.
 
 ```bash
 # No new dependencies to install.
-# All v2.6 features use existing dependencies + Node.js built-ins.
+# All v2.7 features use existing dependencies + Node.js built-ins.
 ```
 
 ---
 
 ## Sources
 
-- [MDN: String.prototype.replace()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace) -- regex replacement API reference. HIGH confidence.
-- [MDN: RegExp dotAll flag](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/dotAll) -- `s` flag documentation confirming availability in ES2018+. HIGH confidence.
-- [Node.js URL API documentation](https://nodejs.org/api/url.html) -- WHATWG URL class reference and best practices. HIGH confidence.
-- [Sonar: Dangers of Regular Expressions in JavaScript](https://www.sonarsource.com/blog/vulnerable-regular-expressions-javascript/) -- ReDoS pattern analysis confirming fixed-delimiter patterns are safe. MEDIUM confidence.
-- [RE2 safe regex library evaluation](https://www.oreateai.com/blog/unlocking-the-power-of-re2-a-safe-alternative-for-regular-expressions-in-nodejs/f47e51a51ef4b558a7aaeec6890a5ebb) -- evaluated and rejected for this use case. MEDIUM confidence.
-- [How to Safely Concatenate URLs with Node.js](https://plainenglish.io/blog/how-to-safely-concatenate-url-with-node-js-f6527b623d5) -- URL class vs string concatenation best practices. MEDIUM confidence.
-- [html-comment-regex npm](https://www.npmjs.com/package/html-comment-regex) -- evaluated and rejected (unmaintained since 2016). MEDIUM confidence.
-- Codebase analysis of `src/gdpr.ts`, `src/mcp-tools.ts`, `src/api.ts`, `src/config.ts`, `src/types.ts` -- existing patterns and integration points. HIGH confidence (direct code inspection).
+- Codebase analysis of `src/api.ts` (`searchPages()`, `resolveViaPagesList()`, `listPages()`) -- existing search pipeline and pages.list query. HIGH confidence (direct code inspection).
+- Codebase analysis of `src/mcp-tools.ts` -- tool handler layer, search_pages description. HIGH confidence (direct code inspection).
+- Codebase analysis of `src/types.ts` -- `WikiJsPage` and `PageSearchResult` interfaces confirm available fields. HIGH confidence (direct code inspection).
+- Codebase analysis of `tests/api.test.ts` -- existing test patterns and mock helpers for search. HIGH confidence (direct code inspection).
+- [MDN: String.prototype.includes()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/includes) -- substring search API reference. HIGH confidence.
+- [MDN: String.prototype.toLowerCase()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/toLowerCase) -- Unicode Default Case Mapping behavior (locale-independent). HIGH confidence.
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) -- insertion-order preservation guarantee. HIGH confidence.
+- [Fuse.js documentation](https://www.fusejs.io/) -- evaluated and rejected; fuzzy matching inappropriate for exact substring containment. MEDIUM confidence.
+- `.planning/PROJECT.md` -- v2.7 milestone scope: metadata fallback, case-insensitive matching, deduplication, limit enforcement. HIGH confidence (direct document).
 
 ---
-*Stack research for: v2.6 GDPR Content Redaction and Page URL Injection -- wikijs-mcp-server*
+*Stack research for: v2.7 Metadata Search Fallback -- wikijs-mcp-server*
 *Researched: 2026-03-27*
