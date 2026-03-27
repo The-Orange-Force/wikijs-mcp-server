@@ -9,8 +9,8 @@ Requirements for MCP Instructions Field milestone. Each maps to roadmap phases.
 
 ### Initialize Response
 
-- [ ] **INIT-01**: MCP server returns `instructions` field in initialize response
-- [ ] **INIT-02**: Instructions content guides Claude to auto-search wiki for Mendix, client, AI, Java, and career topics
+- [x] **INIT-01**: MCP server returns `instructions` field in initialize response
+- [x] **INIT-02**: Instructions content guides Claude to auto-search wiki for Mendix, client, AI, Java, and career topics
 
 ### File Loading
 
@@ -44,8 +44,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INIT-01 | Phase 19 | Pending |
-| INIT-02 | Phase 19 | Pending |
+| INIT-01 | Phase 19 | Complete |
+| INIT-02 | Phase 19 | Complete |
 | FILE-01 | Phase 19 | Complete |
 | FILE-02 | Phase 19 | Complete |
 | FILE-03 | Phase 19 | Complete |
