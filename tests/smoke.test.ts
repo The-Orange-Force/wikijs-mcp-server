@@ -71,6 +71,9 @@ describe("TRNS-01: POST /mcp JSON-RPC", () => {
     expect(data.result.serverInfo).toBeDefined();
     expect(data.result.serverInfo.name).toBe("wikijs-mcp");
     expect(data.result.protocolVersion).toBeDefined();
+    expect(data.result.instructions).toBeDefined();
+    expect(typeof data.result.instructions).toBe("string");
+    expect(data.result.instructions.length).toBeGreaterThan(0);
   });
 });
 
@@ -209,6 +212,41 @@ describe("TRNS-03: MCP tools/list and tools/call", () => {
 });
 
 // ---------------------------------------------------------------------------
+// INIT-01/INIT-02: Instructions in initialize response
+// ---------------------------------------------------------------------------
+describe("INIT-01/INIT-02: Instructions in initialize response", () => {
+  it("initialize response includes instructions with all 5 topic areas", async () => {
+    const res = await mcpPost({
+      jsonrpc: "2.0",
+      id: 100,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1.0.0" },
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const instructions = data.result.instructions;
+    expect(typeof instructions).toBe("string");
+
+    // All 5 topic areas present
+    expect(instructions.toLowerCase()).toContain("mendix");
+    expect(instructions.toLowerCase()).toContain("client");
+    expect(instructions).toContain("AI");
+    expect(instructions).toContain("Java");
+    expect(instructions.toLowerCase()).toContain("career");
+
+    // Instructions should NOT contain tool names
+    expect(instructions).not.toContain("search_pages");
+    expect(instructions).not.toContain("get_page");
+    expect(instructions).not.toContain("list_pages");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Additional route tests
 // ---------------------------------------------------------------------------
 describe("Server routes", () => {
@@ -218,7 +256,7 @@ describe("Server routes", () => {
 
     const data = await res.json();
     expect(data.name).toBe("wikijs-mcp");
-    expect(data.version).toBe("2.3.0")
+    expect(data.version).toBe("2.4.0")
     expect(data.auth_required).toBe(true);
     expect(data.protected_resource_metadata).toBeDefined();
     expect(data.endpoints).toBeDefined();
@@ -242,7 +280,7 @@ describe("Server routes", () => {
 describe("Module import", () => {
   it("createMcpServer returns an McpServer instance", () => {
     const mockApi = {} as any;
-    const mcpSrv = createMcpServer(mockApi);
+    const mcpSrv = createMcpServer(mockApi, "test instructions");
     expect(mcpSrv).toBeDefined();
     expect(typeof mcpSrv.connect).toBe("function");
   });

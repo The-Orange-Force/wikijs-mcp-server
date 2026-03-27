@@ -15,6 +15,7 @@ import { publicRoutes } from "../../src/routes/public-routes.js";
 import { protectedRoutes } from "../../src/routes/mcp-routes.js";
 import { oauthProxyRoutes } from "../../src/routes/oauth-proxy.js";
 import { getLocalJwks, TEST_CONFIG } from "../../src/auth/__tests__/helpers.js";
+import { DEFAULT_INSTRUCTIONS } from "../../src/instructions.js";
 
 /** Captured fetch call for test assertions. */
 export interface CapturedFetchCall {
@@ -112,6 +113,7 @@ export async function buildTestApp(
   configOverrides?: Partial<AppConfig["azure"]>,
   wikiJsApiOverride?: WikiJsApi,
   loggerOptions?: Record<string, unknown>,
+  instructions?: string,
 ): Promise<FastifyInstance> {
   const appConfig = makeTestConfig(configOverrides);
   const wikiJsApi = wikiJsApiOverride ?? mockWikiJsApi;
@@ -145,6 +147,7 @@ export async function buildTestApp(
   // Protected MCP routes -- auth enforced via scoped preHandler
   server.register(protectedRoutes, {
     wikiJsApi,
+    instructions: instructions ?? DEFAULT_INSTRUCTIONS,
     auth: {
       jwks,
       issuer: appConfig.azure.issuer,
