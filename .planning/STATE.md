@@ -4,7 +4,7 @@ milestone: v2.4
 milestone_name: MCP Instructions Field
 status: completed
 stopped_at: Completed 20-01-PLAN.md
-last_updated: "2026-03-27T09:10:49Z"
+last_updated: "2026-03-27T09:16:11.234Z"
 last_activity: 2026-03-27 -- Completed 20-01 (Docker Integration and Default Instructions)
 progress:
   total_phases: 2
