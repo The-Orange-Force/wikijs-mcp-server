@@ -81,11 +81,11 @@ Phase 18: Cleanup -- STDIO removal, Alpine Docker, dead code removal, documentat
   3. When `MCP_INSTRUCTIONS_PATH` env var points to a valid file, the server uses that file's content as instructions
   4. When the instructions file is missing or unreadable, the server starts successfully and returns hardcoded default instructions
   5. When falling back to defaults, the server logs a warning message indicating the file could not be loaded
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 19-01: TBD
-- [ ] 19-02: TBD
+- [ ] 19-01-PLAN.md -- Instructions loading module with file/fallback logic, config env var, unit tests
+- [ ] 19-02-PLAN.md -- Wire instructions into MCP initialize response, version bump to 2.4.0, integration tests
 
 ### Phase 20: Docker Integration and Default Instructions
 **Goal**: Deployers can customize instructions via volume mount without rebuilding the Docker image
@@ -106,7 +106,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 19. Instructions Loading and Initialize Response | 0/? | Not started | - |
+| 19. Instructions Loading and Initialize Response | 0/2 | Not started | - |
 | 20. Docker Integration and Default Instructions | 0/1 | Not started | - |
 
 ---
