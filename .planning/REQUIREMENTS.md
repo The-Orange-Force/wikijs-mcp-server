@@ -49,7 +49,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FILE-01 | Phase 19 | Complete |
 | FILE-02 | Phase 19 | Complete |
 | FILE-03 | Phase 19 | Complete |
-| DOCK-01 | Phase 20 | Complete |
+| DOCK-01 | Phase 20, Phase 21 (gap closure) | Complete |
 | DOCK-02 | Phase 20 | Complete |
 
 **Coverage:**

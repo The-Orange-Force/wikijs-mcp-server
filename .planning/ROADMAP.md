@@ -68,6 +68,8 @@ Phase 18: Cleanup -- STDIO removal, Alpine Docker, dead code removal, documentat
 
 - [x] **Phase 19: Instructions Loading and Initialize Response** - Load instructions from configurable file path with fallback default and return in MCP initialize response (completed 2026-03-27)
 - [x] **Phase 20: Docker Integration and Default Instructions** - Ship default instructions file and wire docker-compose volume mount (completed 2026-03-27)
+- [ ] **Phase 21: Docker Instructions Path Default** - Add Zod default for MCP_INSTRUCTIONS_PATH so Docker volume mount works out-of-the-box
+**Gap Closure:** Closes flow gap from v2.4 audit
 
 ## Phase Details
 
@@ -100,14 +102,27 @@ Plans:
 Plans:
 - [ ] 20-01-PLAN.md -- Ship default instructions.txt, wire docker-compose volume mount, update documentation
 
+### Phase 21: Docker Instructions Path Default
+**Goal**: Docker volume mount for instructions.txt works out-of-the-box without requiring deployers to explicitly set MCP_INSTRUCTIONS_PATH
+**Depends on**: Phase 20
+**Requirements**: DOCK-01
+**Gap Closure**: Closes flow gap "docker-custom-instructions" from v2.4 audit
+**Success Criteria** (what must be TRUE):
+  1. When `MCP_INSTRUCTIONS_PATH` env var is not set, the server defaults to `/app/instructions.txt`
+  2. A deployer running `docker-compose up` with a customized `instructions.txt` sees their content in MCP initialize response without setting `MCP_INSTRUCTIONS_PATH`
+  3. Existing behavior (explicit env var override) continues to work
+
+Plans: (not yet planned)
+
 ## Progress
 
-**Execution Order:** 19 -> 20
+**Execution Order:** 19 -> 20 -> 21
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 19. Instructions Loading and Initialize Response | 2/2 | Complete    | 2026-03-27 |
 | 20. Docker Integration and Default Instructions | 1/1 | Complete    | 2026-03-27 |
+| 21. Docker Instructions Path Default | 0/0 | Pending | — |
 
 ---
 *Last updated: 2026-03-27*
