@@ -6,6 +6,7 @@ import { publicRoutes } from "./routes/public-routes.js";
 import { protectedRoutes } from "./routes/mcp-routes.js";
 import { oauthProxyRoutes } from "./routes/oauth-proxy.js";
 import { jwks } from "./config.js";
+import { loadInstructions, DEFAULT_INSTRUCTIONS } from "./instructions.js";
 
 /**
  * Creates and configures a Fastify server with public and protected routes.
@@ -17,12 +18,15 @@ import { jwks } from "./config.js";
  *
  * @param appConfig - Validated application configuration
  * @param wikiJsApiOverride - Optional pre-built WikiJsApi (for test mocking)
+ * @param instructions - MCP instructions text (defaults to DEFAULT_INSTRUCTIONS)
  * @returns Configured Fastify instance
  */
 export function buildApp(
   appConfig: AppConfig,
   wikiJsApiOverride?: WikiJsApi,
+  instructions?: string,
 ): FastifyInstance {
+  const effectiveInstructions = instructions ?? DEFAULT_INSTRUCTIONS;
   const server = fastify({
     ...buildLoggerConfig(),
   });
@@ -53,6 +57,7 @@ export function buildApp(
   // Protected MCP routes -- auth enforced via scoped preHandler
   server.register(protectedRoutes, {
     wikiJsApi,
+    instructions: effectiveInstructions,
     auth: {
       jwks,
       issuer: appConfig.azure.issuer,
@@ -71,7 +76,8 @@ export function buildApp(
 async function start() {
   logConfig(config);
 
-  const server = buildApp(config);
+  const instructions = await loadInstructions(config.instructionsPath);
+  const server = buildApp(config, undefined, instructions);
 
   try {
     const wikiJsApi = new WikiJsApi(config.wikijs.baseUrl, config.wikijs.token);

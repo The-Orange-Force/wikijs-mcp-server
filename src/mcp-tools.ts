@@ -16,12 +16,15 @@ import { wrapToolHandler } from "./tool-wrapper.js";
  * read-only page tools registered.
  *
  * @param wikiJsApi - WikiJsApi instance used by tool handlers
+ * @param instructions - MCP instructions text for the initialize response
  * @returns Configured McpServer ready for transport connection
  */
-export function createMcpServer(wikiJsApi: WikiJsApi): McpServer {
+export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string): McpServer {
   const mcpServer = new McpServer({
     name: "wikijs-mcp",
-    version: "2.3.0",
+    version: "2.4.0",
+  }, {
+    instructions,
   });
 
   // Tool name constants (used in both registerTool and wrapToolHandler)

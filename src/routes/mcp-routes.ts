@@ -26,6 +26,8 @@ export interface ProtectedRoutesOptions {
   wikiJsApi: WikiJsApi;
   /** Auth plugin options (jwks, issuer, audience, resourceMetadataUrl) */
   auth: AuthPluginOptions;
+  /** MCP instructions text for the initialize response */
+  instructions: string;
 }
 
 /**
@@ -44,7 +46,7 @@ export async function protectedRoutes(
   fastify: FastifyInstance,
   opts: ProtectedRoutesOptions,
 ): Promise<void> {
-  const { wikiJsApi, auth } = opts;
+  const { wikiJsApi, auth, instructions } = opts;
 
   // Register Phase 4 auth plugin within this encapsulated scope.
   // Because protectedRoutes is NOT wrapped with fastify-plugin,
@@ -54,7 +56,7 @@ export async function protectedRoutes(
   // POST /mcp -- MCP JSON-RPC endpoint (TRNS-01, PROT-01)
   // In stateless mode, each request gets a fresh McpServer + transport pair.
   fastify.post("/mcp", async (request: FastifyRequest, reply: FastifyReply) => {
-    const mcpServer = createMcpServer(wikiJsApi);
+    const mcpServer = createMcpServer(wikiJsApi, instructions);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless mode
       enableJsonResponse: true,      // return JSON instead of SSE for POST
