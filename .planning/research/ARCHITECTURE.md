@@ -1,752 +1,666 @@
-# Architecture: Marker-Based Content Redaction and Page URL Injection
+# Architecture: Metadata Search Fallback Integration
 
-**Domain:** MCP server content transformation layer (wikijs-mcp-server v2.6)
+**Domain:** MCP server search pipeline enhancement (wikijs-mcp-server v2.7)
 **Researched:** 2026-03-27
-**Confidence:** HIGH (based on direct code analysis of existing src/ files and v2.5 architecture patterns)
+**Confidence:** HIGH (based on direct code analysis of existing src/ files and established architectural patterns from v2.3-v2.6)
 
 ---
 
-## Existing Request Flow (Baseline from v2.5)
+## Existing searchPages() Pipeline (Baseline from v2.6)
 
 ```
-MCP Client
+MCP Client: search_pages("COA")
     |
     v
-Fastify + JWT auth (mcp-routes.ts)
+mcp-tools.ts -- search_pages handler (inside wrapToolHandler)
     |
+    | wikiJsApi.searchPages(query, limit)
     v
-mcp-tools.ts -- tool handler (inside wrapToolHandler)
+WikiJsApi.searchPages(query, limit)    [src/api.ts line 171]
     |
-    | wikiJsApi.getPageById(id)   OR
-    | wikiJsApi.listPages(...)    OR
-    | wikiJsApi.searchPages(...)
+    |  Step 1: GraphQL pages.search(query)
+    |     -> returns RawSearchResult[] { id (string), path, title, description, locale }
+    |     -> slice to limit
+    |
+    |  Step 2: Resolve IDs via singleByPath (parallel Promise.allSettled)
+    |     -> fulfilled -> resolved[]
+    |     -> rejected  -> unresolved[]
+    |
+    |  Step 3: Fallback for unresolved via pages.list (limit 500)
+    |     -> match by path -> resolved[]
+    |     -> no match     -> dropped[] (logged as warnings)
+    |
+    |  Returns: { results: WikiJsPage[], totalHits: number }
     v
-WikiJsApi (api.ts)
+mcp-tools.ts -- search_pages handler
     |
-    v
-Wiki.js GraphQL API
-    |
-    | returns WikiJsPage / WikiJsPage[] / PageSearchResult
-    v
-WikiJsApi (api.ts) -- data returned as-is
-    |
-    v
-mcp-tools.ts -- tool handler
-    |
-    | isBlocked(page.path)?           <-- v2.5 (BEING REMOVED)
-    |   get_page:    -> isError: true, "Page not found."
-    |   list_pages:  -> .filter(p => !isBlocked(p.path))
-    |   search_pages:-> .filter(p => !isBlocked(p.path))
+    | JSON.stringify(result.results, null, 2)
     v
 MCP response (JSON text in content array)
-    |
-    v
-MCP Client
 ```
 
-The v2.5 architecture used `isBlocked(path)` as a binary predicate: either the entire page is accessible, or it is hidden. v2.6 replaces this with surgical content redaction -- every page is accessible, but marked sections within the content are removed before the response is constructed.
+### The Problem
+
+The GraphQL `pages.search` query relies on Wiki.js's internal search index (likely lunr/elasticsearch depending on engine configured). This index is optimized for natural language search and has known limitations:
+
+1. **Acronyms/short tokens** (e.g., "COA", "ZDG", "DSM") often return zero results because the search engine stems or ignores short tokens
+2. **Path segments** (e.g., searching "mendix" when pages live at `mendix/best-practices`) may not be indexed
+3. **Recently published pages** have indexing delay
+4. **Partial title matches** may not surface (searching "best" for "Best Practices Guide")
+
+When GraphQL search returns 0 results (or fewer than expected), there is no fallback -- the user gets nothing. The metadata fallback supplements this by searching page titles, paths, and descriptions directly.
 
 ---
 
-## What Changes in v2.6
+## What Changes in v2.7
 
-| v2.5 Behavior | v2.6 Behavior |
+| v2.6 Behavior | v2.7 Behavior |
 |----------------|---------------|
-| `isBlocked(path)` blocks entire page | All pages accessible; content is redacted |
-| Binary: page visible or hidden | Granular: specific content sections removed |
-| Filter in each tool handler | Single `redactContent()` call in `get_page` only |
-| No URL in response | `get_page` injects `url` field into response |
-| `src/gdpr.ts` exports `isBlocked()` | `src/gdpr.ts` exports `redactContent()` |
-| `logBlockedAccess()` in `mcp-tools.ts` | Logging moves into `redactContent()` or caller |
+| GraphQL search returns 0 results -> empty response | GraphQL search returns insufficient results -> metadata fallback triggers |
+| Only indexed content is searchable | Titles, paths, descriptions always searchable via substring matching |
+| `searchPages()` is a 3-step pipeline | `searchPages()` becomes a 4-step pipeline |
+| No metadata search capability | New `searchPagesByMetadata()` private method |
 
-### Key Insight: Redaction Only Applies to `get_page`
+### Key Insight: Fallback Triggers on Insufficient Results, Not Zero Results
 
-`list_pages` and `search_pages` do NOT return page `content` -- they return metadata only (id, path, title, description, isPublished, createdAt, updatedAt). The `content` field is only present in `getPageById()` responses. Therefore:
+The fallback should trigger when GraphQL search returns fewer results than the requested limit, not only when it returns zero. If a user requests `limit: 10` and GraphQL returns 3 results, the metadata fallback should try to find 7 more. This maximizes result coverage without adding latency when the primary search already saturates the limit.
 
-- **`get_page`**: Apply `redactContent()` to `page.content` before response. Inject `url` field.
-- **`list_pages`**: Remove all GDPR filtering. Return pages as-is.
-- **`search_pages`**: Remove all GDPR filtering. Return results as-is.
+**Threshold logic:** `if (resolved.length < limit) -> trigger metadata fallback`
 
-This is a significant simplification over v2.5, which had to filter in all three handlers.
+This is strictly an enhancement to the existing `searchPages()` method in `api.ts`. No changes to `mcp-tools.ts`, `server.ts`, `mcp-routes.ts`, or any other module.
 
 ---
 
-## Where the Redaction Function Lives
+## New Private Method: searchPagesByMetadata()
 
-**Decision: Pure utility function in `src/gdpr.ts`, called from the `get_page` handler in `mcp-tools.ts`.**
+**Location:** `src/api.ts`, as a private method on the `WikiJsApi` class.
 
-The same architectural reasoning from v2.5 applies, but even more clearly:
+### Why Inside WikiJsApi (Not a Separate Module)
 
-| Location | Description | Verdict |
-|----------|-------------|---------|
-| Inside `WikiJsApi.getPageById()` (`api.ts`) | Redact before returning to callers | **Rejected** -- policy-neutral data layer |
-| In `wrapToolHandler` (`tool-wrapper.ts`) | Redact in the timing wrapper | **Rejected** -- wrapper sees serialized JSON, not structured data |
-| In `get_page` handler (`mcp-tools.ts`) | Redact after API call, before response construction | **Chosen** |
-| As a Fastify plugin/middleware | Redact at the HTTP layer | **Rejected** -- see rationale below |
-
-### Why Not a Fastify Plugin or Middleware
-
-A Fastify plugin (registered via `server.register()`) or middleware (`onSend` hook) would operate on the serialized MCP JSON-RPC response. At that layer:
-1. The data is already `JSON.stringify`'d inside a `content[0].text` field inside a JSON-RPC envelope.
-2. Parsing it back to modify `page.content` is fragile and wasteful.
-3. Fastify hooks run for ALL routes, including non-MCP routes (`/health`, `/authorize`, etc.), requiring route filtering.
-4. The MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's `onSend` hooks entirely. A plugin physically cannot intercept MCP responses.
-
-Reason 4 alone is disqualifying. The MCP transport writes directly to the raw Node.js response object, not through Fastify's reply pipeline.
-
-### Why a Pure Function in `src/gdpr.ts`
-
-The existing `src/gdpr.ts` module already houses GDPR logic (`isBlocked`). Replacing its export with `redactContent()` maintains the single-responsibility pattern: `gdpr.ts` owns GDPR policy, `mcp-tools.ts` applies it.
-
-The function is pure: `(content: string) => { content: string; redacted: boolean }`. No side effects, no dependencies, trivially testable.
-
----
-
-## New Component: `src/gdpr.ts` (Rewritten)
-
-The existing `isBlocked()` function is deleted. The module is rewritten with a single export: `redactContent()`.
+| Location | Verdict | Rationale |
+|----------|---------|-----------|
+| Private method on `WikiJsApi` | **Chosen** | Uses the same GraphQL client (`this.client`). Same data layer. Same `pages.list` query already used by `resolveViaPagesList`. Encapsulated -- callers see the same `searchPages()` signature. |
+| Standalone `src/metadata-search.ts` module | Rejected | Would need its own GraphQL client instance or accept one as a parameter. Creates a second module that talks to Wiki.js, splitting the "single data access point" pattern. |
+| In `mcp-tools.ts` (tool handler) | Rejected | Tool handlers should not contain data access logic. Established pattern: handlers delegate to `WikiJsApi`. |
+| As a Fastify plugin | Rejected | Same reasoning as v2.6: MCP SDK writes to `reply.raw`, bypassing Fastify's pipeline. Also, metadata search is a data concern, not an HTTP concern. |
 
 ### Function Signature
 
 ```typescript
-// src/gdpr.ts
-
-export interface RedactionResult {
-  /** The content with GDPR-marked sections removed */
-  content: string;
-  /** Whether any redaction was performed */
-  redacted: boolean;
-  /** Whether a malformed marker was encountered (start without matching end) */
-  malformed: boolean;
-}
-
 /**
- * Redact GDPR-marked sections from page content.
+ * Search pages by case-insensitive substring matching on metadata fields
+ * (path, title, description). Used as a fallback when GraphQL search
+ * returns insufficient results.
  *
- * Removes content between <!-- gdpr-start --> and <!-- gdpr-end --> markers.
- * The markers themselves are also removed.
- *
- * Fail-safe: if a <!-- gdpr-start --> marker has no matching <!-- gdpr-end -->,
- * all content from the start marker to the end of the string is redacted.
- *
- * @param content - Raw page content (may be undefined/null for pages without content)
- * @returns RedactionResult with cleaned content and metadata flags
+ * @param query - Search query string
+ * @param limit - Maximum number of results to return
+ * @param excludeIds - Set of page IDs already found by primary search (for dedup)
+ * @returns WikiJsPage[] matching the query by metadata
  */
-export function redactContent(content: string | undefined | null): RedactionResult;
+private async searchPagesByMetadata(
+  query: string,
+  limit: number,
+  excludeIds: Set<number>,
+): Promise<WikiJsPage[]>
 ```
 
-### Behavior Specification
-
-**Normal markers:** `<!-- gdpr-start -->SENSITIVE<!-- gdpr-end -->` -- the markers and everything between them are removed.
-
-**Multiple sections:** Multiple start/end pairs are supported. Each is independently redacted.
-
-**Malformed (no end marker):** `<!-- gdpr-start -->SENSITIVE...EOF` -- everything from the start marker to end-of-string is redacted. The `malformed` flag is set to `true`.
-
-**No markers:** Content returned unchanged. `redacted: false`, `malformed: false`.
-
-**Null/undefined content:** Returns `{ content: "", redacted: false, malformed: false }`.
-
-### Implementation Strategy: Iterative Scan, Not Regex
-
-A regex approach (`content.replace(/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g, '')`) would work for the happy path but fails to handle the malformed-marker case correctly: `.*?` is non-greedy and would stop at the first `<!-- gdpr-end -->`, but if there is no end marker, it would match nothing (in a non-greedy pattern) or everything (in a greedy pattern), depending on whether there are other start/end pairs in the content.
-
-A safer approach is an iterative scan:
+### Implementation Strategy
 
 ```
-1. Find next <!-- gdpr-start -->
-2. Find next <!-- gdpr-end --> after that position
-3. If found: remove start marker through end marker (inclusive)
-4. If not found: remove from start marker to end of string; set malformed = true
-5. Repeat from position after removal
+1. Fetch pages via pages.list (limit: 500, orderBy: UPDATED)
+   -- Reuses the same GraphQL query pattern as resolveViaPagesList()
+   -- limit 500 is the practical Wiki.js ceiling for a single list call
+
+2. Normalize query to lowercase for case-insensitive matching
+
+3. For each page:
+   a. Skip if page.id is in excludeIds (already in primary results)
+   b. Skip if page.isPublished !== true (unpublished filter)
+   c. Check if query matches any of:
+      - page.path (lowercased)
+      - page.title (lowercased)
+      - page.description (lowercased)
+   d. Match = substring includes (query.toLowerCase() in field.toLowerCase())
+
+4. Take first `limit` matches
+
+5. Return matched WikiJsPage[]
 ```
 
-This handles interleaved markers, multiple sections, and the malformed case deterministically.
+### Why Substring Matching (Not Regex, Not Fuzzy)
 
-However, for this codebase the regex approach with a post-check for orphaned start markers is simpler and sufficient:
+- **Substring (`includes()`)**: Simple, predictable, handles acronyms perfectly ("COA" matches "COA/project-x"), handles path segments ("mendix" matches "mendix/best-practices"). Zero false positives.
+- **Regex**: Overkill for this use case. User queries are plain strings, not patterns. Regex special characters in queries would need escaping. No benefit over includes.
+- **Fuzzy matching (Levenshtein, etc.)**: Requires a library dependency. The problem statement is about exact tokens that the search index misses, not about typo tolerance. Adds complexity without solving the stated problem.
 
-```
-1. Replace all <!-- gdpr-start -->...<!-- gdpr-end --> pairs (non-greedy)
-2. Check if any <!-- gdpr-start --> remains (orphaned)
-3. If so: remove from orphaned marker to end of string; set malformed = true
-```
+### Reuse of pages.list Query
 
-This works because:
-- Step 1 handles all well-formed pairs
-- Step 2 catches the single remaining malformed case (an orphaned start marker)
-- There can be at most one orphaned start marker (any earlier ones would have been consumed by the non-greedy match with the first available end marker)
+Both `resolveViaPagesList()` and `searchPagesByMetadata()` issue `pages.list(limit: 500, orderBy: UPDATED)`. However, they should NOT share the call because:
 
-**Recommendation:** Use the regex approach with post-check. It is simpler, covers all specified cases, and is easier to read and test.
+1. `resolveViaPagesList()` is called only when singleByPath fails -- it runs conditionally
+2. `searchPagesByMetadata()` is called only when primary results are insufficient -- also conditional
+3. They run at different points in the pipeline
+4. Caching pages.list across calls would add state to a currently stateless method
+
+Each call is independent. The duplication is acceptable -- it is at most one extra GraphQL call per search request, and only when the fallback triggers.
 
 ---
 
-## Page URL Injection
+## Updated searchPages() Pipeline (v2.7)
 
-### Where the URL is Constructed
-
-Wiki.js pages are accessible at `{WIKIJS_BASE_URL}/{locale}/{path}`. However, `WIKIJS_BASE_URL` is not necessarily the public-facing URL of the Wiki.js instance -- it might be an internal Docker network URL (e.g., `http://wikijs:3000`) that the MCP server uses to reach the GraphQL API.
-
-**Decision: Reuse `WIKIJS_BASE_URL` for URL construction. Do NOT add a new env var.**
-
-Rationale:
-1. In the current deployment (PROJECT.md), `WIKIJS_BASE_URL` is the URL of the Wiki.js instance. The MCP server reaches it directly (same Caddy network).
-2. The URL is injected into `get_page` responses for human consumption -- it tells the user where to find the page in the wiki. If the MCP server can reach Wiki.js at `WIKIJS_BASE_URL`, that URL is likely reachable by the human reading the response too (they are on the same network, authenticated via the same Azure AD).
-3. Adding a separate `WIKIJS_PUBLIC_URL` env var adds configuration complexity for zero current benefit. If a deployment ever has a split internal/external URL, the env var can be added then.
-4. The `.env.example` already documents `WIKIJS_BASE_URL` as "Wiki.js base URL". It is the natural place to construct page URLs from.
-
-### URL Format
-
-Wiki.js page URLs follow the pattern: `{baseUrl}/{locale}/{path}`
-
-- `baseUrl`: From `config.wikijs.baseUrl` (already in config)
-- `locale`: The page locale. `getPageById` does not currently return locale. Wiki.js defaults to `en`.
-- `path`: From `page.path`
-
-The locale is a complication. The current `getPageById` GraphQL query does not request the `locale` field. Options:
-
-**Option A: Hardcode locale to `en` or use WIKIJS_LOCALE env var.** This is already partially supported -- the `.env.example` mentions `WIKIJS_LOCALE` as an optional var (per CLAUDE.md), though it is not currently in the Zod schema.
-
-**Option B: Add `locale` to the `getPageById` GraphQL query.** This makes the URL dynamically correct per page.
-
-**Decision: Add `locale` to the `getPageById` GraphQL query AND to `WikiJsPage` type.** This is a one-line change to the GraphQL query and a one-field addition to the type. It makes the URL correct without hardcoding assumptions. The locale field is already returned by search results (visible in `api.ts` `RawSearchResult` interface), so Wiki.js definitely supports it.
-
-### URL Construction Location
-
-The URL is constructed in the `get_page` handler in `mcp-tools.ts`, after fetching the page and before serializing the response. It is added to the page object as a `url` property before `JSON.stringify`.
-
-```typescript
-// In get_page handler, after redaction, before serialization:
-const pageWithUrl = {
-  ...page,
-  content: redacted.content,
-  url: `${config.wikijs.baseUrl}/${page.locale ?? 'en'}/${page.path}`,
-};
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(pageWithUrl, null, 2) },
-  ],
-};
+```
+WikiJsApi.searchPages(query, limit)
+    |
+    |  Step 1: GraphQL pages.search(query)           [UNCHANGED]
+    |     -> rawResults[] (sliced to limit)
+    |     -> totalHits
+    |
+    |  (early return if rawResults.length === 0 AND... wait, see below)
+    |
+    |  Step 2: Resolve IDs via singleByPath           [UNCHANGED]
+    |     -> resolved[], unresolved[]
+    |
+    |  Step 3: Fallback for unresolved via pages.list  [UNCHANGED]
+    |     -> resolved[], dropped[] (logged)
+    |
+    |  Step 4: Metadata search fallback                [NEW]
+    |     -> if resolved.length < limit:
+    |        remaining = limit - resolved.length
+    |        excludeIds = Set(resolved.map(r => r.id))
+    |        metadataResults = searchPagesByMetadata(query, remaining, excludeIds)
+    |        resolved.push(...metadataResults)
+    |        log metadata fallback activity
+    |
+    |  Returns: { results: WikiJsPage[], totalHits: number }
+    v
 ```
 
-### Config Threading
+### Critical Change: Early Return Behavior
 
-The `get_page` handler needs `config.wikijs.baseUrl` to construct URLs. Currently, `createMcpServer()` receives `wikiJsApi` and `instructions` -- it does not have direct access to config.
-
-**Decision: Pass `wikijsBaseUrl` as a third parameter to `createMcpServer()`.** This follows the existing pattern of threading specific config values through function parameters (like `instructions`), rather than importing the global `config` singleton directly into `mcp-tools.ts`.
+The current code has an early return at line 194:
 
 ```typescript
-// Updated signature:
-export function createMcpServer(
-  wikiJsApi: WikiJsApi,
-  instructions: string,
-  wikijsBaseUrl: string,
-): McpServer;
+if (rawResults.length === 0) {
+  return { results: [], totalHits };
+}
 ```
 
-This is threaded from `server.ts` -> `protectedRoutes` options -> `createMcpServer()`.
+**This early return must be removed or modified.** When GraphQL search returns 0 results (e.g., for acronym "COA"), the metadata fallback must still run. The updated logic:
+
+```typescript
+if (rawResults.length === 0) {
+  // GraphQL returned nothing -- skip steps 2-3, go straight to metadata fallback
+  const metadataResults = await this.searchPagesByMetadata(query, limit, new Set());
+  // Log fallback
+  if (metadataResults.length > 0) {
+    const ctx = requestContext.getStore();
+    ctx?.log.info(
+      { query, graphqlHits: 0, metadataHits: metadataResults.length },
+      "Metadata search fallback produced results after GraphQL returned zero"
+    );
+  }
+  return { results: metadataResults, totalHits };
+}
+```
+
+When GraphQL returns some results but fewer than limit, steps 2-3 run as before, then step 4 supplements:
+
+```typescript
+// After step 3 (existing resolved[] is final from GraphQL pipeline):
+if (resolved.length < limit) {
+  const remaining = limit - resolved.length;
+  const excludeIds = new Set(resolved.map(r => r.id));
+  const metadataResults = await this.searchPagesByMetadata(query, remaining, excludeIds);
+  resolved.push(...metadataResults);
+
+  if (metadataResults.length > 0) {
+    const ctx = requestContext.getStore();
+    ctx?.log.info(
+      { query, graphqlHits: resolved.length - metadataResults.length, metadataHits: metadataResults.length },
+      "Metadata search fallback supplemented GraphQL results"
+    );
+  }
+}
+```
+
+---
+
+## Component Boundaries
+
+| Component | Responsibility | v2.7 Status |
+|-----------|---------------|-------------|
+| `src/api.ts` -- `WikiJsApi.searchPages()` | Orchestrates 4-step search pipeline | **MODIFIED** -- adds step 4, modifies early return |
+| `src/api.ts` -- `WikiJsApi.searchPagesByMetadata()` | Case-insensitive metadata substring search | **NEW** -- private method |
+| `src/mcp-tools.ts` -- search_pages handler | Delegates to `WikiJsApi.searchPages()` | **MODIFIED** -- tool description update only |
+| `src/types.ts` -- `WikiJsPage`, `PageSearchResult` | Data types | **UNCHANGED** |
+| `src/request-context.ts` | AsyncLocalStorage for logging context | **UNCHANGED** (consumed by new logging) |
+| `src/tool-wrapper.ts` | Timing and logging wrapper | **UNCHANGED** |
+| `src/server.ts` | App factory | **UNCHANGED** |
+| `src/routes/mcp-routes.ts` | Protected route registration | **UNCHANGED** |
+| `src/config.ts` | Environment configuration | **UNCHANGED** |
+| `src/gdpr.ts` | Content redaction | **UNCHANGED** |
+
+### Key Observation: Minimal Surface Area
+
+Unlike v2.6 (which touched 6+ files), v2.7 modifies exactly 2 files:
+
+1. `src/api.ts` -- core logic (new method + pipeline modification)
+2. `src/mcp-tools.ts` -- tool description text update (one string change)
+
+Everything else is untouched. This is because the metadata fallback is purely a data-layer enhancement encapsulated within `WikiJsApi`.
+
+---
+
+## Data Flow Detail
+
+### Case 1: GraphQL Returns Sufficient Results (No Fallback)
+
+```
+searchPages("deployment guide", limit=5)
+    |
+    Step 1: GraphQL search -> 5 raw results
+    Step 2: singleByPath resolves all 5
+    Step 3: (skipped -- no unresolved)
+    Step 4: resolved.length (5) >= limit (5) -> SKIP metadata fallback
+    |
+    Return: { results: [5 pages], totalHits: 5 }
+```
+
+No extra GraphQL call. Zero overhead when primary search works.
+
+### Case 2: GraphQL Returns Zero (Full Metadata Fallback)
+
+```
+searchPages("COA", limit=10)
+    |
+    Step 1: GraphQL search -> 0 raw results, totalHits=0
+    (Early path: skip steps 2-3)
+    Step 4: searchPagesByMetadata("COA", 10, Set())
+        -> pages.list(500) fetches all pages
+        -> filter: "coa" in path/title/description (case-insensitive)
+        -> returns up to 10 matching pages
+    |
+    Log: "Metadata search fallback produced results after GraphQL returned zero"
+    Return: { results: [N pages], totalHits: 0 }
+```
+
+Note: `totalHits` reflects the GraphQL search count (0), not the metadata results. This is intentional -- totalHits comes from the search index and indicates indexed coverage, while metadata results are supplementary.
+
+### Case 3: GraphQL Returns Partial (Supplementary Fallback)
+
+```
+searchPages("best practices", limit=10)
+    |
+    Step 1: GraphQL search -> 3 raw results
+    Step 2: singleByPath resolves 2, unresolved 1
+    Step 3: pages.list resolves the 1 unresolved
+    -- resolved = 3 pages --
+    Step 4: resolved.length (3) < limit (10)
+        -> remaining = 7
+        -> excludeIds = Set(ids of 3 resolved pages)
+        -> searchPagesByMetadata("best practices", 7, excludeIds)
+        -> filter: "best practices" in path/title/description
+        -> up to 7 additional pages
+    |
+    Return: { results: [3 + N pages], totalHits: 3 }
+```
+
+### Case 4: GraphQL Sufficient, Some Unresolved (Existing Behavior)
+
+```
+searchPages("wiki guide", limit=5)
+    |
+    Step 1: GraphQL search -> 5 raw results
+    Step 2: singleByPath resolves 3, unresolved 2
+    Step 3: pages.list resolves 1, drops 1
+    -- resolved = 4 pages --
+    Step 4: resolved.length (4) < limit (5)
+        -> remaining = 1
+        -> searchPagesByMetadata("wiki guide", 1, excludeIds)
+        -> finds 0 or 1 additional pages
+    |
+    Return: { results: [4-5 pages], totalHits: 5 }
+```
+
+---
+
+## Logging Architecture
+
+### Existing Logging Pattern
+
+The codebase uses AsyncLocalStorage-based structured logging via `requestContext.getStore()`. All `searchPages()` logging already follows this pattern (lines 225-239 in api.ts).
+
+### New Log Points
+
+| Log Level | When | Payload | Message |
+|-----------|------|---------|---------|
+| `info` | Metadata fallback produces results | `{ query, graphqlHits, metadataHits }` | "Metadata search fallback produced results..." |
+| `info` | Metadata fallback supplements | `{ query, graphqlHits, metadataHits }` | "Metadata search fallback supplemented..." |
+| `debug` | Metadata fallback runs but finds nothing | `{ query, graphqlHits: N, metadataHits: 0 }` | "Metadata search fallback found no additional results" |
+
+The `debug` level for zero-result fallback avoids log noise when the query simply has no matches anywhere. The `info` level for successful fallback provides operational visibility into how often the fallback contributes.
+
+### No New Logging Dependencies
+
+All logging goes through the existing `requestContext.getStore()?.log` pattern. No new imports needed in `api.ts` -- it already imports `requestContext`.
+
+---
+
+## Deduplication Strategy
+
+Pages found by metadata search must not duplicate pages already found by GraphQL search. The deduplication key is `page.id` (numeric database ID).
+
+```typescript
+const excludeIds = new Set(resolved.map(r => r.id));
+```
+
+This is passed to `searchPagesByMetadata()` which skips pages whose `id` is in the set. Using `id` rather than `path` because:
+
+1. `id` is the primary key -- guaranteed unique
+2. `path` could theoretically have locale variants (same path, different locale)
+3. `id` comparison is O(1) with a Set, same as path, but semantically cleaner
+
+---
+
+## Unpublished Page Filtering
+
+The metadata fallback must filter out unpublished pages, matching the existing behavior:
+
+- `listPages()` filters `isPublished === true` by default (line 99-101 in api.ts)
+- `searchPages()` relies on Wiki.js search index which only indexes published pages
+- `searchPagesByMetadata()` must explicitly check `page.isPublished === true`
+
+This is critical: `pages.list` returns ALL pages (published + unpublished). Without the filter, draft pages would appear in metadata search results but not in GraphQL search results, creating an inconsistency.
+
+---
+
+## Limit Enforcement
+
+The metadata fallback must respect the caller's `limit` parameter. The strategy is:
+
+1. Calculate `remaining = limit - resolved.length` (how many more results needed)
+2. Pass `remaining` as the limit to `searchPagesByMetadata()`
+3. `searchPagesByMetadata()` returns at most `remaining` results
+4. After merging: `resolved.length <= limit` (guaranteed)
+
+This ensures the total result count never exceeds the requested limit, regardless of how many metadata matches exist.
+
+---
+
+## Tool Description Update
+
+The `search_pages` tool description in `mcp-tools.ts` should be updated to reflect the fallback capability. This is a single string change:
+
+```typescript
+// BEFORE (v2.6):
+description:
+  "Search Wiki.js pages by keyword query. Returns matching pages with metadata and content excerpts. Only searches published pages (unpublished pages are not indexed). Note: recently published pages may take a moment to appear in search results due to indexing delay. Use get_page with a result's ID to retrieve the full page content.",
+
+// AFTER (v2.7):
+description:
+  "Search Wiki.js pages by keyword query. Returns matching pages with metadata. Searches published pages via the search index, with automatic fallback to metadata matching (titles, paths, descriptions) for acronyms, short tokens, and path-based queries. Use get_page with a result's ID to retrieve the full page content.",
+```
+
+Key changes:
+- Removed "content excerpts" (search results return metadata only, not excerpts)
+- Added fallback capability description
+- Removed "recently published" indexing delay note (metadata fallback mitigates this)
+- Removed "unpublished not indexed" (implementation detail, not useful to the LLM caller)
 
 ---
 
 ## Modified Files and Their Changes
 
-### `src/gdpr.ts` -- REWRITTEN
+### `src/api.ts` -- MODIFIED
 
 ```
-Removes:  isBlocked(path: string): boolean
-Adds:     redactContent(content: string | undefined | null): RedactionResult
-          RedactionResult interface
-Tests:    src/__tests__/gdpr.test.ts (rewritten -- unit tests for redactContent)
-Dependencies: none
+Adds:     private searchPagesByMetadata(query, limit, excludeIds): Promise<WikiJsPage[]>
+Modifies: searchPages() -- adds step 4 metadata fallback, modifies early-return path
+Uses:     requestContext (already imported) for structured logging
 ```
 
-The module remains a pure-function utility with zero dependencies.
+**Estimated line changes:** +50-60 lines (new method ~30 lines, pipeline modifications ~20 lines)
 
 ### `src/mcp-tools.ts` -- MODIFIED
 
-**Changes:**
-1. Remove `import { isBlocked } from "./gdpr.js"` -- replace with `import { redactContent } from "./gdpr.js"`
-2. Remove `logBlockedAccess()` helper function entirely
-3. **`get_page` handler**: Remove `isBlocked()` check. Add `redactContent(page.content)` call. Add URL injection. Add malformed-marker warning log.
-4. **`list_pages` handler**: Remove `isBlocked()` filter. Return pages as-is.
-5. **`search_pages` handler**: Remove `isBlocked()` filter. Return results as-is.
-6. Update `createMcpServer` signature to accept `wikijsBaseUrl: string` parameter.
-
-**`get_page` handler -- before and after:**
-
-```typescript
-// v2.5 (BEFORE)
-const page = await wikiJsApi.getPageById(id);
-if (page?.path && isBlocked(page.path)) {
-  logBlockedAccess(TOOL_GET_PAGE);
-  throw new Error("Page not found");
-}
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(page, null, 2) },
-  ],
-};
-
-// v2.6 (AFTER)
-const page = await wikiJsApi.getPageById(id);
-const redacted = redactContent(page?.content);
-if (redacted.malformed) {
-  const ctx = requestContext.getStore();
-  ctx?.log.warn(
-    { toolName: TOOL_GET_PAGE, pageId: id },
-    "GDPR marker malformed: missing <!-- gdpr-end -->, redacted to end of content",
-  );
-}
-const pageWithUrl = {
-  ...page,
-  content: redacted.content,
-  url: `${wikijsBaseUrl}/${page.locale ?? "en"}/${page.path}`,
-};
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(pageWithUrl, null, 2) },
-  ],
-};
+```
+Modifies: search_pages tool description string (1 string change)
 ```
 
-**`list_pages` handler -- before and after:**
+**Estimated line changes:** +2/-2 lines
 
-```typescript
-// v2.5 (BEFORE)
-const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
-const filtered = pages.filter(p => {
-  if (isBlocked(p.path)) {
-    logBlockedAccess(TOOL_LIST_PAGES);
-    return false;
-  }
-  return true;
-});
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
-  ],
-};
+### Test Files
 
-// v2.6 (AFTER)
-const pages = await wikiJsApi.listPages(limit, orderBy, includeUnpublished);
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(pages, null, 2) },
-  ],
-};
+```
+Adds:     tests/api.test.ts -- new test cases in existing "searchPages" describe block
+          OR new describe block "searchPagesByMetadata integration"
 ```
 
-**`search_pages` handler -- before and after:**
-
-```typescript
-// v2.5 (BEFORE)
-const result = await wikiJsApi.searchPages(query, limit);
-const originalLength = result.results.length;
-const filtered = result.results.filter(p => {
-  if (isBlocked(p.path)) {
-    logBlockedAccess(TOOL_SEARCH_PAGES);
-    return false;
-  }
-  return true;
-});
-result.totalHits -= (originalLength - filtered.length);
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(filtered, null, 2) },
-  ],
-};
-
-// v2.6 (AFTER)
-const result = await wikiJsApi.searchPages(query, limit);
-return {
-  content: [
-    { type: "text" as const, text: JSON.stringify(result.results, null, 2) },
-  ],
-};
-```
-
-### `src/types.ts` -- MODIFIED
-
-Add `locale` field to `WikiJsPage`:
-
-```typescript
-export interface WikiJsPage {
-  id: number;
-  path: string;
-  locale?: string;  // NEW -- page locale (e.g., "en")
-  title: string;
-  description: string;
-  content?: string;
-  isPublished: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-The field is optional because `listPages` and `searchPages` results may not include it (depending on the GraphQL query).
-
-### `src/api.ts` -- MODIFIED
-
-Add `locale` to the `getPageById` GraphQL query:
-
-```graphql
-{
-  pages {
-    single (id: ${id}) {
-      id
-      path
-      locale        # NEW
-      title
-      description
-      content
-      isPublished
-      createdAt
-      updatedAt
-    }
-  }
-}
-```
-
-One line added to one query. No other API methods change.
-
-### `src/server.ts` -- MODIFIED
-
-Thread `wikijsBaseUrl` through to `protectedRoutes`:
-
-```typescript
-server.register(protectedRoutes, {
-  wikiJsApi,
-  instructions: effectiveInstructions,
-  wikijsBaseUrl: appConfig.wikijs.baseUrl,  // NEW
-  auth: { ... },
-});
-```
-
-### `src/routes/mcp-routes.ts` -- MODIFIED
-
-Accept `wikijsBaseUrl` in `ProtectedRoutesOptions` and pass to `createMcpServer`:
-
-```typescript
-export interface ProtectedRoutesOptions {
-  wikiJsApi: WikiJsApi;
-  auth: AuthPluginOptions;
-  instructions: string;
-  wikijsBaseUrl: string;  // NEW
-}
-
-// In handler:
-const mcpServer = createMcpServer(wikiJsApi, instructions, wikijsBaseUrl);
-```
-
-### `src/config.ts` -- UNCHANGED
-
-No new env vars. `WIKIJS_BASE_URL` is already validated and available as `config.wikijs.baseUrl`.
+**Estimated test additions:** 8-12 new test cases
 
 ### Files Summary
 
 | File | Status | Change |
 |------|--------|--------|
-| `src/gdpr.ts` | REWRITTEN | `isBlocked()` -> `redactContent()` + `RedactionResult` interface |
-| `src/mcp-tools.ts` | MODIFIED | Remove path blocking, add content redaction + URL injection |
-| `src/types.ts` | MODIFIED | Add `locale?: string` to `WikiJsPage` |
-| `src/api.ts` | MODIFIED | Add `locale` to `getPageById` GraphQL query |
-| `src/server.ts` | MODIFIED | Thread `wikijsBaseUrl` to protected routes |
-| `src/routes/mcp-routes.ts` | MODIFIED | Accept + pass `wikijsBaseUrl` |
-| `src/__tests__/gdpr.test.ts` | REWRITTEN | Tests for `redactContent()` |
-| `src/__tests__/mcp-tools-gdpr.test.ts` | REWRITTEN | Tests for redaction integration + URL injection |
+| `src/api.ts` | MODIFIED | New `searchPagesByMetadata()` private method, pipeline step 4, early-return modification |
+| `src/mcp-tools.ts` | MODIFIED | Tool description update (1 string) |
+| `tests/api.test.ts` | MODIFIED | New test cases for metadata fallback |
+| `src/types.ts` | UNCHANGED | `WikiJsPage` and `PageSearchResult` types sufficient |
+| `src/server.ts` | UNCHANGED | No config changes |
+| `src/routes/mcp-routes.ts` | UNCHANGED | No routing changes |
 | `src/config.ts` | UNCHANGED | No new env vars |
-| `src/tool-wrapper.ts` | UNCHANGED | Timing/logging unchanged |
-| `src/logging.ts` | UNCHANGED | Logger config unchanged |
-| `src/request-context.ts` | UNCHANGED | Context propagation unchanged |
-
----
-
-## Updated Request Flow (v2.6)
-
-```
-MCP Client
-    |
-    v
-Fastify + JWT auth (mcp-routes.ts)
-    |
-    v
-mcp-tools.ts -- get_page handler (inside wrapToolHandler)
-    |
-    | wikiJsApi.getPageById(id)
-    v
-WikiJsApi (api.ts) -- returns WikiJsPage with locale
-    |
-    | returns { id, path, locale, title, description, content, ... }
-    v
-mcp-tools.ts -- get_page handler
-    |
-    | 1. redactContent(page.content)          <-- NEW: src/gdpr.ts
-    |    Removes <!-- gdpr-start -->...<!-- gdpr-end --> sections
-    |    Sets malformed flag if orphaned start marker
-    |
-    | 2. If malformed: log.warn(...)          <-- NEW: malformed marker warning
-    |
-    | 3. Construct URL: {baseUrl}/{locale}/{path}  <-- NEW: URL injection
-    |
-    | 4. Build response: { ...page, content: redacted, url }
-    v
-MCP response (JSON text in content array)
-    |
-    v
-MCP Client
-
-
-mcp-tools.ts -- list_pages handler
-    |
-    | wikiJsApi.listPages(...)
-    v
-WikiJsApi (api.ts) -- returns WikiJsPage[]
-    |
-    v
-mcp-tools.ts -- list_pages handler
-    |
-    | (NO FILTERING -- pages returned as-is)  <-- SIMPLIFIED from v2.5
-    v
-MCP response
-
-
-mcp-tools.ts -- search_pages handler
-    |
-    | wikiJsApi.searchPages(...)
-    v
-WikiJsApi (api.ts) -- returns PageSearchResult
-    |
-    v
-mcp-tools.ts -- search_pages handler
-    |
-    | (NO FILTERING -- results returned as-is)  <-- SIMPLIFIED from v2.5
-    v
-MCP response
-```
-
----
-
-## Component Responsibilities (v2.6)
-
-| Component | Responsibility | Status |
-|-----------|---------------|--------|
-| `src/gdpr.ts` | `redactContent()` -- marker-based content redaction | REWRITTEN |
-| `src/mcp-tools.ts` | Apply redaction in `get_page`, inject URL, pass through `list_pages`/`search_pages` | MODIFIED |
-| `src/types.ts` | `WikiJsPage.locale` added | MODIFIED |
-| `src/api.ts` | `getPageById` returns `locale` field | MODIFIED |
-| `src/server.ts` | Thread `wikijsBaseUrl` to routes | MODIFIED |
-| `src/routes/mcp-routes.ts` | Accept + pass `wikijsBaseUrl` to `createMcpServer` | MODIFIED |
-| `src/tool-wrapper.ts` | Timing and logging -- unchanged | UNCHANGED |
-| `src/config.ts` | No new env vars | UNCHANGED |
+| `src/gdpr.ts` | UNCHANGED | Redaction is orthogonal |
+| `src/tool-wrapper.ts` | UNCHANGED | Timing wrapper unaffected |
+| `src/request-context.ts` | UNCHANGED | Already consumed by api.ts |
+| `tests/helpers/build-test-app.ts` | UNCHANGED | Mock WikiJsApi already covers searchPages |
 
 ---
 
 ## Test Architecture
 
-### Unit Tests for `redactContent()` -- `src/__tests__/gdpr.test.ts` (Rewritten)
+### Unit Tests: Metadata Fallback Behavior
 
-Pure function with no side effects. Test with vitest directly -- no mocking needed.
+All tests go in `tests/api.test.ts`, extending the existing `describe("searchPages", ...)` block. The mock pattern is already established: `mockRequest` is a `vi.fn()` that simulates GraphQL responses.
 
-**Test cases to cover:**
+**New test cases:**
 
-| Input | Expected Output | Flags |
-|-------|----------------|-------|
-| `"Hello <!-- gdpr-start -->SECRET<!-- gdpr-end --> world"` | `"Hello  world"` | `redacted: true, malformed: false` |
-| `"No markers here"` | `"No markers here"` | `redacted: false, malformed: false` |
-| `"Start <!-- gdpr-start -->SECRET..."` (no end marker) | `"Start "` | `redacted: true, malformed: true` |
-| `"A<!-- gdpr-start -->X<!-- gdpr-end -->B<!-- gdpr-start -->Y<!-- gdpr-end -->C"` | `"ABC"` | `redacted: true, malformed: false` |
-| `undefined` | `""` | `redacted: false, malformed: false` |
-| `null` | `""` | `redacted: false, malformed: false` |
-| `""` | `""` | `redacted: false, malformed: false` |
-| `"<!-- gdpr-start -->ALL REDACTED<!-- gdpr-end -->"` | `""` | `redacted: true, malformed: false` |
-| `"<!-- gdpr-start -->REST OF CONTENT"` (end missing) | `""` | `redacted: true, malformed: true` |
-| Content with extra whitespace around markers | Consistent behavior | Verify marker matching is exact |
+| # | Test Case | Setup | Expected |
+|---|-----------|-------|----------|
+| 1 | Metadata fallback triggers when GraphQL returns 0 | search returns 0, pages.list has matching pages | Results from metadata match |
+| 2 | Metadata fallback supplements partial GraphQL results | search returns 2 (limit 5), pages.list has 3 more matches | 5 total results |
+| 3 | Metadata fallback deduplicates against GraphQL results | search returns page id=42, pages.list also has id=42 | id=42 appears once |
+| 4 | Metadata fallback filters unpublished pages | pages.list has matching unpublished page | Unpublished page excluded |
+| 5 | Metadata fallback respects limit | pages.list has 20 matches, limit=3 | At most 3 results from metadata |
+| 6 | Metadata search is case-insensitive | query="coa", page title="COA Report" | Page matched |
+| 7 | Metadata matches on path | query="mendix", page path="mendix/guide" | Page matched |
+| 8 | Metadata matches on title | query="onboarding", page title="New Employee Onboarding" | Page matched |
+| 9 | Metadata matches on description | query="deploy", page description="Deployment procedures" | Page matched |
+| 10 | No fallback when GraphQL saturates limit | search returns limit results | No pages.list call for metadata |
+| 11 | Metadata fallback logs when it produces results | search returns 0, metadata finds pages | Log at info level |
+| 12 | Metadata fallback produces empty when no matches | search returns 0, pages.list has no matches | Empty results |
 
-### Integration Tests for Tool Behavior -- `src/__tests__/mcp-tools-gdpr.test.ts` (Rewritten)
+### Mock Pattern for Metadata Fallback
 
-Uses the same `createMcpServer` + `getToolHandler` pattern from v2.5 tests.
+The metadata fallback issues a `pages.list` GraphQL call (same shape as `resolveViaPagesList`). The existing `makePagesListResponse()` test helper is reusable.
 
-**Test cases to cover:**
+For tests where GraphQL search returns 0 and metadata fallback runs:
+```typescript
+// Step 1: GraphQL search returns empty
+mockRequest.mockResolvedValueOnce(makeSearchResponse([], 0));
+// Step 4: metadata fallback pages.list
+mockRequest.mockResolvedValueOnce(makePagesListResponse([
+  resolvedPage(10, "clients/coa", "COA Project Overview"),
+  resolvedPage(20, "clients/coa/sla", "COA SLA Agreement"),
+]));
+```
 
-1. `get_page` with content containing GDPR markers -- markers and content between them removed from response
-2. `get_page` with content containing no markers -- content unchanged
-3. `get_page` with malformed marker -- content redacted to end, malformed warning logged
-4. `get_page` response contains `url` field with correct format
-5. `get_page` response `url` uses page's `locale` field
-6. `get_page` response `url` defaults locale to `"en"` when locale is missing
-7. `list_pages` returns ALL pages (no GDPR filtering)
-8. `search_pages` returns ALL results (no GDPR filtering)
+For tests where GraphQL returns partial and metadata supplements:
+```typescript
+// Step 1: GraphQL search returns 1 result
+mockRequest.mockResolvedValueOnce(makeSearchResponse([
+  { id: "abc-1", path: "docs/guide", title: "Guide", description: "A guide", locale: "en" },
+], 1));
+// Step 2: singleByPath resolves it
+mockRequest.mockResolvedValueOnce(makeSingleByPathResponse(resolvedPage(42, "docs/guide", "Guide")));
+// Step 4: metadata fallback pages.list (limit=5 - 1 = 4 remaining)
+mockRequest.mockResolvedValueOnce(makePagesListResponse([
+  resolvedPage(42, "docs/guide", "Guide"),  // duplicate -- should be excluded
+  resolvedPage(50, "docs/guide-advanced", "Advanced Guide"),  // new match
+]));
+```
 
-### Removed Tests
+### E2E Test Considerations
 
-All v2.5 `isBlocked()`-based tests are removed or replaced:
-- `src/__tests__/gdpr.test.ts` -- completely rewritten for `redactContent()`
-- `src/__tests__/mcp-tools-gdpr.test.ts` -- completely rewritten for redaction + URL injection
+The existing `tests/e2e-redaction.test.ts` pattern could be extended for metadata search, but it requires wiring a custom `WikiJsApi` mock through `buildTestApp()`. Since the metadata fallback is entirely within `WikiJsApi.searchPages()`, unit tests with mocked GraphQL responses provide full coverage. E2E tests are not needed for v2.7.
+
+---
+
+## Patterns Applied
+
+### Pattern: Pipeline Extension (Not Replacement)
+
+The metadata fallback is added as step 4 to the existing 3-step pipeline. No existing steps are removed or reordered. Steps 1-3 execute exactly as before. Step 4 only runs when results are insufficient.
+
+This pattern minimizes regression risk: if the metadata fallback has a bug, the worst case is that supplementary results are wrong, but the primary GraphQL search results remain correct.
+
+### Pattern: Thin Filter Between Fetch and Serialize (Continued)
+
+Same pattern used in v2.5 and v2.6. The metadata search fetches all pages via `pages.list`, then applies a pure filter (substring match, unpublished filter, dedup). No mutation of source data.
+
+### Pattern: Conditional Execution for Zero Overhead
+
+When GraphQL search saturates the limit, `searchPagesByMetadata()` is never called. No extra GraphQL request, no filtering, no overhead. The fallback is truly additive -- it adds cost only when it adds value.
+
+### Pattern: Structured Logging at Decision Points
+
+Log when the fallback triggers and produces results (info), but not when it is skipped (no log for "fallback not needed"). This follows the existing logging philosophy: log meaningful events, not non-events.
+
+---
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Always Running Metadata Search
+
+**What:** Running metadata search on every call regardless of GraphQL result count.
+**Why bad:** Doubles the GraphQL load (extra `pages.list` call) on every search. The `pages.list(500)` query fetches all pages -- expensive when unnecessary.
+**Instead:** Only trigger when `resolved.length < limit`.
+
+### Anti-Pattern 2: Caching pages.list Results
+
+**What:** Caching the `pages.list` response to avoid redundant calls between `resolveViaPagesList` and `searchPagesByMetadata`.
+**Why bad:** Adds mutable state to a currently stateless class. Creates cache invalidation complexity. The two methods run at different pipeline points and may not both trigger. Caching saves at most one GraphQL call per search request.
+**Instead:** Accept the potential duplicate `pages.list` call. It is at most 2 calls total per search, and only when fallback triggers.
+
+### Anti-Pattern 3: Fuzzy Matching or Scoring
+
+**What:** Implementing Levenshtein distance, TF-IDF, or relevance scoring for metadata search.
+**Why bad:** Adds complexity and potentially a library dependency for a problem that is fundamentally about exact token matching (acronyms, path segments). The GraphQL search already handles fuzzy/relevance matching -- the metadata fallback handles what the index misses.
+**Instead:** Simple case-insensitive `includes()`. If this proves insufficient in practice, scoring can be added in a future milestone.
+
+### Anti-Pattern 4: Modifying totalHits for Metadata Results
+
+**What:** Adding metadata result count to `totalHits`.
+**Why bad:** `totalHits` is a field from the GraphQL search index. It represents "how many documents matched in the index." Metadata fallback results are not index matches -- they are supplementary results from a different matching strategy. Mixing the two numbers would make `totalHits` misleading.
+**Instead:** Keep `totalHits` as-is from the GraphQL response. The actual number of results returned may exceed `totalHits` when metadata fallback contributes, which is acceptable.
+
+### Anti-Pattern 5: Returning Metadata Results Separately
+
+**What:** Changing `PageSearchResult` to have separate `results` and `metadataResults` arrays.
+**Why bad:** Changes the return type, breaking the `mcp-tools.ts` handler and all existing tests. The MCP client (Claude) does not need to distinguish how a result was found -- it just needs relevant pages.
+**Instead:** Merge metadata results into the existing `results` array. The distinction is invisible to callers.
+
+### Anti-Pattern 6: Adding a Separate MCP Tool for Metadata Search
+
+**What:** Creating a `search_pages_metadata` tool alongside `search_pages`.
+**Why bad:** Violates the v2.3 consolidation principle (3 tools only). Forces the LLM to decide which search tool to use. The fallback should be automatic and transparent.
+**Instead:** Integrate into existing `searchPages()`. The LLM calls `search_pages` and gets the best results regardless of how they were found.
 
 ---
 
 ## Suggested Build Order
 
 ```
-Phase 1: Core redaction function + unit tests
-  Files: src/gdpr.ts (rewrite), src/__tests__/gdpr.test.ts (rewrite), src/types.ts (add locale)
+Phase 1: Core metadata search method + unit tests
+  Files: src/api.ts (add searchPagesByMetadata), tests/api.test.ts (new test cases)
   Dependencies: none
-  Rationale: Pure function with no deps. Zero-risk foundation. All downstream changes
-             depend on redactContent(). Types change is trivial and needed early.
+  Rationale: The new private method can be tested in isolation via the existing
+             mock pattern. Add the method and its tests without modifying the
+             searchPages() pipeline yet. Test the method indirectly through
+             searchPages() by adding tests that mock the full pipeline.
 
-Phase 2: Remove path blocking, wire redaction + URL injection
-  Files: src/mcp-tools.ts, src/api.ts, src/server.ts, src/routes/mcp-routes.ts
-  Dependencies: Phase 1 (redactContent import, locale in WikiJsPage)
-  Rationale: Core integration. Touches the most files but each change is small.
-             api.ts gets locale field. mcp-tools.ts gets redaction + URL. server.ts
-             and mcp-routes.ts thread the baseUrl config.
+Phase 2: Pipeline integration + tool description update
+  Files: src/api.ts (modify searchPages pipeline), src/mcp-tools.ts (description)
+  Dependencies: Phase 1 (searchPagesByMetadata must exist)
+  Rationale: Wire the metadata fallback into the searchPages pipeline. Update
+             the tool description. Existing tests continue to pass (they mock
+             GraphQL responses that saturate the limit, so the fallback never
+             triggers in existing tests).
 
-Phase 3: Integration tests
-  Files: src/__tests__/mcp-tools-gdpr.test.ts (rewrite)
+Phase 3: Integration tests + logging verification
+  Files: tests/api.test.ts (additional pipeline integration tests)
   Dependencies: Phases 1-2
-  Rationale: Tests the full tool handler behavior with mock API. Confirms
-             redaction, URL injection, and malformed-marker logging all work together.
+  Rationale: Test the full pipeline with scenarios that trigger the fallback:
+             zero GraphQL results, partial results, dedup, unpublished filtering.
+             Verify logging output.
 ```
 
-Build order is linear -- 3 phases, matching the 3-phase pattern established in v2.5.
+**Alternative: 2-phase approach** (combine phases 1 and 2):
 
----
-
-## Architectural Patterns Applied
-
-### Pattern: Content Transformation Between Fetch and Serialize
-
-After fetching the `WikiJsPage` with its raw `content` string and before serializing to JSON, apply a pure transformation function. The data remains typed through the transformation, ensuring field access is compile-checked.
-
-This is the same "Thin Filter Between Fetch and Serialize" pattern from v2.5, adapted from filtering (removing pages) to transforming (modifying content).
-
-### Pattern: Fail-Safe Redaction
-
-When a `<!-- gdpr-start -->` marker has no matching `<!-- gdpr-end -->`, the safe default is to redact everything from the start marker to the end of content. This ensures that incomplete markup caused by editing errors never leaks GDPR-sensitive content. The principle: **when in doubt, redact more, not less**.
-
-The `malformed` flag allows the caller to log a warning, enabling wiki editors to be notified and fix the markup. But the content is never exposed.
-
-### Pattern: Config Threading via Function Parameters
-
-Rather than importing the global `config` singleton in `mcp-tools.ts`, the `wikijsBaseUrl` value is threaded through function parameters: `config` -> `buildApp()` -> `protectedRoutes` options -> `createMcpServer()`. This matches the existing pattern for `instructions` and keeps modules decoupled from the config singleton for testability.
-
-### Pattern: Optional Field with Default
-
-The `locale` field on `WikiJsPage` is optional (`locale?: string`). When constructing the URL, the handler uses `page.locale ?? "en"` as a fallback. This handles the case where the GraphQL response omits the field (it shouldn't, but defensive coding prevents runtime errors).
-
----
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Redacting in `WikiJsApi`
-
-**What:** Adding `redactContent()` calls inside `getPageById()` in `api.ts`.
-**Why bad:** The API layer becomes a policy layer. If a future admin tool needs unredacted content (e.g., for wiki editing), the redaction cannot be bypassed.
-**Instead:** Keep `api.ts` as a pure data access layer. Apply redaction in the consumers.
-
-### Anti-Pattern 2: Adding a New Env Var for Page URL Base
-
-**What:** Creating `WIKIJS_PUBLIC_URL` or `WIKIJS_PAGE_BASE_URL` separate from `WIKIJS_BASE_URL`.
-**Why bad:** Adds configuration complexity. Deployers must now set two URLs that in practice are the same value. Creates a new failure mode (mismatched URLs).
-**Instead:** Reuse `WIKIJS_BASE_URL`. Add a separate var only when a concrete deployment needs different internal/external URLs.
-
-### Anti-Pattern 3: Regex-Only Without Malformed Handling
-
-**What:** Using `content.replace(/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g, '')` and calling it done.
-**Why bad:** An orphaned `<!-- gdpr-start -->` with no end marker leaves GDPR-sensitive content in the response. Wiki editors make mistakes; the server must be fail-safe.
-**Instead:** After regex replacement, scan for remaining `<!-- gdpr-start -->` markers and redact to end of content.
-
-### Anti-Pattern 4: Adding URL to `list_pages` and `search_pages` Responses
-
-**What:** Injecting a `url` field into every page in list and search results.
-**Why bad:** The requirement specifies "Inject page URL into get_page responses." Over-delivering bloats list/search responses and changes their shape without a stated need.
-**Instead:** Only add `url` to `get_page` responses.
-
-### Anti-Pattern 5: Using Fastify `onSend` Hook for Redaction
-
-**What:** Registering a Fastify `onSend` hook that intercepts MCP responses and redacts content.
-**Why bad:** The MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's reply pipeline. The hook physically cannot intercept the response. Even if it could, parsing JSON-RPC envelopes in a hook is fragile.
-**Instead:** Apply redaction in the tool handler, where data is still structured.
-
-### Anti-Pattern 6: Preserving `isBlocked()` Alongside `redactContent()`
-
-**What:** Keeping `isBlocked()` as a "belt and suspenders" measure alongside content redaction.
-**Why bad:** The requirement explicitly states "Remove path-based GDPR filtering from all MCP tools." Keeping both creates confusion about which mechanism is authoritative and adds dead code paths that need testing.
-**Instead:** Remove `isBlocked()` entirely. `redactContent()` is the single GDPR mechanism.
-
----
-
-## Data Flow Diagram: `get_page` Response Construction
+Since `searchPagesByMetadata()` is a private method, it cannot be tested directly. All tests go through `searchPages()`. It makes sense to add the method AND wire it into the pipeline in a single phase, then test everything together. This reduces to:
 
 ```
-WikiJsApi.getPageById(id)
-    |
-    | Returns WikiJsPage:
-    | {
-    |   id: 42,
-    |   path: "Clients/AcmeCorp",
-    |   locale: "en",
-    |   title: "AcmeCorp",
-    |   content: "Public info\n<!-- gdpr-start -->\nContract: EUR 500K\n<!-- gdpr-end -->\nMore public info",
-    |   ...
-    | }
-    v
-redactContent(page.content)
-    |
-    | Returns RedactionResult:
-    | {
-    |   content: "Public info\n\nMore public info",
-    |   redacted: true,
-    |   malformed: false,
-    | }
-    v
-URL Construction
-    |
-    | url = `${wikijsBaseUrl}/${page.locale}/${page.path}`
-    |     = "http://wikijs.example.com/en/Clients/AcmeCorp"
-    v
-Response Assembly
-    |
-    | pageWithUrl = {
-    |   id: 42,
-    |   path: "Clients/AcmeCorp",
-    |   locale: "en",
-    |   title: "AcmeCorp",
-    |   content: "Public info\n\nMore public info",   <-- redacted
-    |   url: "http://wikijs.example.com/en/Clients/AcmeCorp",  <-- injected
-    |   isPublished: true,
-    |   ...
-    | }
-    v
-JSON.stringify(pageWithUrl, null, 2)
-    |
-    v
-MCP Response: { content: [{ type: "text", text: "..." }] }
+Phase 1: Metadata fallback implementation
+  Files: src/api.ts (new method + pipeline integration)
+  Rationale: Add searchPagesByMetadata() and wire it into searchPages() step 4.
+             Both changes are in the same file and method. Separating them is
+             artificial since the new method is private.
+
+Phase 2: Tests + tool description
+  Files: tests/api.test.ts (new test cases), src/mcp-tools.ts (description update)
+  Rationale: All test cases for the metadata fallback behavior. Tool description
+             update is a single string change that ships with the tests.
 ```
+
+**Recommendation: Use the 2-phase approach.** The 3-phase split is artificial for a feature contained in one file. The private method and its integration are not independently useful.
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At current scale | Notes |
-|---------|-----------------|-------|
-| Redaction performance | O(n) where n is content length | Single regex pass + one indexOf check. Content is typically < 100KB. |
-| Memory | No additional state | Pure function, no caching. Input and output strings. |
-| URL construction | O(1) per get_page call | String concatenation. Negligible. |
-| Multiple markers per page | Handled by global regex flag | No performance concern at typical marker counts (< 10 per page). |
-| Config threading | 1 extra string param | No performance impact. |
+| Concern | Impact | Mitigation |
+|---------|--------|------------|
+| `pages.list(500)` query cost | Fetches all pages on every fallback | Only triggers when GraphQL search is insufficient. Most searches return enough results from the index. |
+| Memory: 500 pages in memory | ~500 * ~200 bytes per page metadata = ~100KB | Negligible for a Node.js process |
+| Substring matching on 500 pages | O(500 * 3 fields * query.length) = O(1500 * N) | Linear scan is sub-millisecond for 500 items |
+| Multiple fallback triggers | Step 3 (resolveViaPagesList) + Step 4 (metadata) could both issue pages.list | At most 2 pages.list calls per search. Both are read-only. |
+| Wiki grows beyond 500 pages | pages.list limit truncates results | Wiki.js v2 `pages.list` does not support offset/pagination. 500 is the practical ceiling. If the wiki exceeds 500 pages, some pages will not be searchable via metadata fallback. This is acceptable for the current deployment scale. |
 
-The redaction adds microseconds of latency per `get_page` call -- negligible at any scale this server encounters.
+---
+
+## Integration Points Summary
+
+| Integration Point | Direction | What Changes |
+|-------------------|-----------|--------------|
+| `searchPages()` -> `searchPagesByMetadata()` | Internal call (private method) | New call at step 4 |
+| `searchPages()` early return (line 194) | Modified behavior | Now routes to metadata fallback instead of returning empty |
+| `requestContext.getStore()` -> logging | Consumed by new code | New log points for fallback activity |
+| `mcp-tools.ts` tool description | String update | Reflects fallback capability |
+| `PageSearchResult` type | Unchanged | Return type remains `{ results: WikiJsPage[], totalHits: number }` |
+| `WikiJsPage` type | Unchanged | Metadata pages have same shape as GraphQL-resolved pages |
 
 ---
 
 ## Sources
 
-- Direct code analysis of `src/mcp-tools.ts`, `src/gdpr.ts`, `src/api.ts`, `src/types.ts`, `src/config.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` (current codebase)
-- v2.5 ARCHITECTURE.md research (`.planning/research/ARCHITECTURE.md`) for architectural precedent
-- PROJECT.md v2.6 requirements for feature specification
-- Wiki.js URL format: `{baseUrl}/{locale}/{path}` (observed in `api.ts` `RawSearchResult` locale field and Wiki.js documentation)
+- Direct code analysis of `src/api.ts` (searchPages pipeline, resolveViaPagesList pattern)
+- Direct code analysis of `src/mcp-tools.ts` (tool registration and description)
+- Direct code analysis of `tests/api.test.ts` (existing mock patterns and test helpers)
+- Direct code analysis of `src/request-context.ts` (AsyncLocalStorage logging pattern)
+- PROJECT.md v2.7 requirements for feature specification
+- [Wiki.js GraphQL API documentation](https://docs.requarks.io/dev/api) for pages.list and pages.search capabilities
+- [Wiki.js search content discussion](https://github.com/requarks/wiki/discussions/7335) for search engine limitations context
 
 ---
 
-*Architecture research for: Marker-Based Content Redaction and Page URL Injection -- wikijs-mcp-server v2.6*
+*Architecture research for: Metadata Search Fallback Integration -- wikijs-mcp-server v2.7*
 *Researched: 2026-03-27*

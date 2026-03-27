@@ -1,178 +1,220 @@
 # Project Research Summary
 
-**Project:** wikijs-mcp-server v2.6
-**Domain:** Marker-based GDPR content redaction and page URL injection for MCP server
+**Project:** wikijs-mcp-server v2.7 — Metadata Search Fallback
+**Domain:** MCP server search pipeline enhancement (client-side metadata matching)
 **Researched:** 2026-03-27
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The v2.6 milestone replaces the v2.5 path-based GDPR blocking (`isBlocked()`) with surgical marker-based content redaction. Wiki authors wrap sensitive sections in `<!-- gdpr-start -->` / `<!-- gdpr-end -->` HTML comment markers; the MCP server strips those sections before returning content to AI assistants. This is a fundamentally different security model: v2.5 blocked entire pages, v2.6 redacts specific sections and makes the rest of each page accessible. The scope is tightly bounded — only `get_page` returns a `content` field, so redaction applies to one tool handler. `list_pages` and `search_pages` are simplified by removing their GDPR filters entirely.
+The v2.7 milestone adds a metadata search fallback to the existing `WikiJsApi.searchPages()` pipeline in `src/api.ts`. The existing pipeline relies on Wiki.js's full-text search index (`pages.search` GraphQL query), which silently fails for acronyms (e.g., "COA", "ZDG"), short tokens, and path-segment queries because search engines tokenize and stem text, discarding exactly the short structured tokens users search for most. The fix is well-understood and requires zero new dependencies: fetch `pages.list` when GraphQL returns insufficient results, filter client-side with case-insensitive `String.includes()`, deduplicate by page ID, and merge into the existing result array.
 
-The recommended implementation requires zero new dependencies. All capabilities — regex content redaction, malformed marker fail-safe, URL construction — are covered by Node.js built-ins and the existing stack. The redaction function is a pure string transformation (`redactContent(content: string | undefined | null): RedactionResult`) that belongs in `src/gdpr.ts` and is called from the `get_page` handler in `mcp-tools.ts`. The `WikiJsApi` layer remains policy-neutral. URL injection reuses `WIKIJS_BASE_URL` from existing config and adds the `locale` field to the `getPageById` GraphQL query.
+The recommended approach is a minimal, additive pipeline extension: insert a new step 4 into the existing 3-step search pipeline inside `WikiJsApi`, add a private `searchPagesByMetadata()` method on the same class, and modify the early-return path that currently drops zero-result searches on the floor. The only other change is a one-string update to the `search_pages` tool description in `mcp-tools.ts`. No new files, no new environment variables, no new npm packages. The entire feature is contained in two modified source files and expanded test coverage.
 
-The most significant risk is a transition window where PII is exposed: if `isBlocked()` is removed before wiki authors have added markers to all previously-blocked pages, client pages will be accessible with full PII content. The mitigation is clear — remove `isBlocked()` only after markers are in place and verified. Secondary risks are regex correctness (greedy vs. lazy quantifier, malformed marker handling) and URL encoding edge cases. All are well-understood with documented solutions.
+The primary risks are implementation correctness hazards, not architectural risks. Six distinct correctness concerns converge in the same ~30-line `searchPages()` integration point: deduplication must use database `WikiJsPage.id` (not the search index's string ID), the trigger condition must be `resolved.length === 0` (not `< limit`), unpublished pages must be filtered before matching, limit must be enforced after deduplication, and the `pages.list` call should be shared between the existing ID-resolution fallback and the new metadata fallback to avoid a redundant GraphQL round-trip. Each of these is a testable correctness requirement, and the 12-test matrix covers all of them.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependencies are needed. The v2.6 features (regex content redaction, malformed marker handling, URL construction) are implemented with `String.prototype.replace()`, `String.prototype.indexOf()`, and the WHATWG `URL` class — all built into Node.js >= 20. The existing Zod, Pino, and Vitest dependencies cover validation, logging, and testing respectively.
+The v2.7 feature requires **zero new dependencies**. All required capabilities exist in the current stack (TypeScript 5.3, Fastify 4, graphql-request, jose, Zod, Vitest 4, Pino). Case-insensitive substring matching uses `String.toLowerCase().includes()`, deduplication uses `Map<number, WikiJsPage>`, filtering uses `Array.prototype.filter()`, limit enforcement uses `Array.prototype.slice()`, and fallback logging uses the existing `requestContext.getStore()?.log` Pino pattern already in `api.ts`.
 
-The one decision that was researched and resolved: the `re2` library (Google's linear-time regex engine) is unnecessary. The marker pattern uses fixed literal anchors (`<!-- gdpr-start -->`, `<!-- gdpr-end -->`) with a single non-greedy `[\s\S]*?` between them — this is provably linear-time with no backtracking risk. Adding `re2` would introduce a native C++ dependency that complicates the Alpine Docker image for zero security benefit.
+Third-party search libraries (Fuse.js, FlexSearch, MiniSearch) were explicitly evaluated and rejected. The problem is substring containment for structured tokens, not fuzzy relevance matching. Fuzzy matching adds false positives ("COA" matching "COAT"), introduces package weight, and solves a different problem. `String.includes()` is faster (sub-microsecond per comparison at 500 pages), safer (no ReDoS risk from user-controlled input used as a `RegExp` pattern), and produces correct results for the stated use case.
 
 **Core technologies (all existing — nothing added):**
-- `RegExp` with `[\s\S]*?gi`: marker pair redaction — compiled once at module level, O(n) time, case-insensitive and global flags
-- `String.prototype.indexOf()`: malformed marker detection — faster than regex for presence checks, used in the fail-safe path
-- WHATWG `URL` class (Node.js built-in): page URL construction — handles double slashes, special characters, percent-encoding
-- Zod (already installed): no new env vars needed; `WIKIJS_BASE_URL` is reused for URL construction
-- Pino via Fastify (already installed): malformed marker warning logs via existing `requestContext` pattern
+- `String.toLowerCase().includes()`: case-insensitive substring matching — correct for acronyms and path segments, no false fuzzy positives
+- `Map<number, WikiJsPage>`: deduplication by database page ID — O(1) lookup, preserves insertion order (GraphQL results first)
+- Pino via `requestContext.getStore()`: structured fallback logging — existing pattern, no new imports in `api.ts`
+- `pages.list` GraphQL query (existing): metadata data source — same query used by `resolveViaPagesList`, no schema changes
 
-See `.planning/research/STACK.md` for full dependency analysis, ReDoS safety rationale, and alternatives considered.
+See `.planning/research/STACK.md` for full analysis, `toLowerCase()` vs `toLocaleLowerCase()` decision, and alternatives considered.
 
 ### Expected Features
 
-**Must have (table stakes):**
-- Remove path-based GDPR filtering — delete `isBlocked()` and all call sites in `mcp-tools.ts`; prerequisite for marker-based redaction
-- Marker-based content redaction — regex `/<!-- *gdpr-start *-->[\s\S]*?<!-- *gdpr-end *-->/gi` with global and case-insensitive flags
-- Redaction placeholder `[REDACTED]` — industry-standard convention per GDPR guidance; single consistent placeholder regardless of amount of content removed
-- Multiple marker pairs per page — handled automatically by the `g` (global) regex flag
-- Malformed marker fail-safe — if `<!-- gdpr-start -->` has no matching `<!-- gdpr-end -->`, redact from start marker to end of content; fail-closed is the only GDPR-safe default
-- Warning log for malformed markers — `log.warn({ pageId, malformedMarker: true }, ...)` via existing `requestContext` pattern
-- Redaction scoped to `get_page` only — `list_pages` and `search_pages` return metadata only, no content field
-- Page URL injection in `get_page` — construct and inject `url` field using `WIKIJS_BASE_URL` + page locale + page path
+The feature scope for v2.7 is precisely defined. All P1 features are low-complexity, high-value, and must ship together — they form an interdependent correctness set where omitting any one breaks the others.
 
-**Should have (differentiators):**
-- Case-insensitive and whitespace-tolerant markers — `i` flag and ` *` around marker text prevent bypass via casing or spacing variations
-- Structured audit log for redacted pages — `log.info({ pageId, redactionCount, malformed })` for GDPR Article 30 compliance trail
-- Whitespace normalization — collapse excessive blank lines after redaction for cleaner output
+**Must have (table stakes) — v2.7:**
+- Metadata fallback trigger when GraphQL returns zero results — the core feature purpose
+- Case-insensitive substring matching on path, title, and description — covers acronyms, path segments, and keyword variants
+- Deduplication by page ID — prevents duplicate results when a page matches both search paths
+- Unpublished-page filtering in fallback results — maintains consistency with the search tool's published-only contract
+- Limit enforcement on merged results — honors the tool's `limit` parameter across both result sources
+- Updated `search_pages` tool description — informs the AI assistant that short queries and acronyms now work
+- Structured logging for fallback activity — gives operators visibility into fallback trigger rate and yield
 
-**Defer to v2.7+:**
-- URL injection for `list_pages` / `search_pages` results — not required for the core GDPR use case
-- Redaction count in response text — cosmetic improvement; `[REDACTED]` placeholder already signals removal
-- Fenced code block awareness — accept-and-document as a limitation for v2.6; add complexity only if it becomes a real problem
+**Should have (add after v2.7 validation):**
+- Multi-token query splitting — AND-matching across tokens for multi-word queries like "mendix best practices"
+- Relevance-weighted ordering — title match > path match > description match for fallback results
+- Configurable fallback threshold — allow tuning the trigger condition beyond the default zero-result trigger
 
-See `.planning/research/FEATURES.md` for full feature dependency graph, anti-features, and MVP definition.
+**Defer (v2.8+):**
+- Short-TTL metadata cache — only warranted if `pages.list` call rate becomes a measured bottleneck
+- Path segment matching — refinement for cases where full-path substring matching produces false positives
+
+**Explicitly out of scope (anti-features):**
+- Full content search in fallback — requires N `getPageById` calls per search, completely impractical
+- Fuzzy/Levenshtein matching — false positives for structured token search; GraphQL already handles fuzzy for content
+- Regex-based query syntax — ReDoS exposure from user-controlled pattern input
+- Separate `search_metadata` MCP tool — increases AI tool selection complexity; fallback must be automatic and transparent
+
+See `.planning/research/FEATURES.md` for the full feature dependency graph, MVP definition, and anti-feature rationale.
 
 ### Architecture Approach
 
-The architecture is a targeted rewrite of one module (`src/gdpr.ts`) and modifications to the `get_page` handler in `mcp-tools.ts`. The data flow is: `WikiJsApi.getPageById()` returns raw `WikiJsPage` (including a new `locale` field from the GraphQL query) → `redactContent(page.content)` strips GDPR sections → URL is constructed → response is assembled with `{ ...page, content: redacted.content, url }`. The `list_pages` and `search_pages` handlers are simplified by removing all GDPR filtering — they return data as-is from the API. The `wikiJsBaseUrl` value is threaded as a parameter through `server.ts` → `protectedRoutes` options → `createMcpServer()`, following the existing pattern for the `instructions` parameter.
+The metadata fallback is a pure data-layer enhancement encapsulated within `WikiJsApi`. No changes propagate to routing, auth, config, GDPR redaction, or any module outside `api.ts` and `mcp-tools.ts`. The existing `search_pages` handler continues to call `api.searchPages()` with the same signature and receives the same `{ results: WikiJsPage[], totalHits: number }` return type. The fallback is invisible to callers.
 
-**Major components:**
-1. `src/gdpr.ts` (REWRITTEN) — exports `redactContent(content: string | undefined | null): RedactionResult`; pure function with no side effects; replaces `isBlocked()`
-2. `src/mcp-tools.ts` (MODIFIED) — calls `redactContent()` in `get_page`; injects URL; removes all `isBlocked()` usage; accepts `wikijsBaseUrl` as a new parameter
-3. `src/api.ts` (MODIFIED) — adds `locale` field to `getPageById` GraphQL query; one-line change
-4. `src/types.ts` (MODIFIED) — adds `locale?: string` to `WikiJsPage` interface
-5. `src/server.ts` + `src/routes/mcp-routes.ts` (MODIFIED) — thread `wikijsBaseUrl` to `createMcpServer()`
+**Modified components:**
+1. `src/api.ts` — adds `searchPagesByMetadata()` private method (~30 lines); modifies `searchPages()` to replace the zero-result early return and add step 4 (~20 lines)
+2. `src/mcp-tools.ts` — tool description string update only (±2 lines)
+3. `tests/api.test.ts` — 8-12 new test cases covering all fallback scenarios
 
-Key architectural constraint: Fastify `onSend` hooks cannot intercept MCP responses because the MCP SDK's `StreamableHTTPServerTransport` writes directly to `reply.raw`, bypassing Fastify's reply pipeline. Redaction must be applied at the tool handler layer, not at the HTTP layer.
+**Unchanged (all other files):** `src/types.ts`, `src/config.ts`, `src/server.ts`, `src/routes/`, `src/auth/`, `src/gdpr.ts`, `src/tool-wrapper.ts`, `src/request-context.ts`, `tests/helpers/`
 
-See `.planning/research/ARCHITECTURE.md` for component boundaries, data flow diagrams, before/after code patterns, and full build order rationale.
+The 4-step pipeline in `searchPages()` after v2.7:
+1. GraphQL `pages.search` (unchanged)
+2. `singleByPath` ID resolution (unchanged)
+3. `pages.list` fallback for unresolved IDs (unchanged — reuse cached result in step 4)
+4. **NEW:** If `resolved.length === 0`, run `searchPagesByMetadata()` against the `pages.list` data
+
+See `.planning/research/ARCHITECTURE.md` for full data flow diagrams, all four case scenarios, anti-patterns to avoid, and the recommended 2-phase build order.
 
 ### Critical Pitfalls
 
-1. **Transition window PII exposure** — removing `isBlocked()` before wiki authors add markers to all previously-blocked pages exposes full PII. Mitigation: deploy redaction code first (additive alongside existing filter), add markers to all sensitive pages, audit coverage, then remove `isBlocked()` as a final separate step.
+1. **Duplicate results from two search paths** — Deduplicate using `Set<number>` of `WikiJsPage.id` (database IDs), built from GraphQL results before adding metadata results. The `RawSearchResult.id` (string, search index ID) and `WikiJsPage.id` (number, database ID) are different types — dedup at the `WikiJsPage` level only, not at the raw result level.
 
-2. **Unclosed start marker causes silent PII leak** — a `<!-- gdpr-start -->` without matching `<!-- gdpr-end -->` passes content through unredacted with the naive single-regex approach. Mitigation: two-pass approach — run paired-marker regex first, then scan for remaining orphaned start markers and redact to end of content. This is fail-closed, not fail-open.
+2. **Double `pages.list` GraphQL call** — The existing `resolveViaPagesList()` already calls `pages.list(500)` for ID resolution. Share the fetched page list between both functions within a single `searchPages()` invocation. The metadata fallback receives the cached list as a parameter rather than fetching independently. At most one `pages.list` call per search invocation.
 
-3. **Greedy quantifier consumes multiple GDPR sections** — `/<!-- gdpr-start -->[\s\S]*<!-- gdpr-end -->/g` (greedy `*`) matches from the first start marker to the last end marker, destroying public content between separate GDPR sections. Mitigation: use the lazy quantifier `[\s\S]*?`. Test with two marker pairs and public content between them.
+3. **Overly aggressive fallback trigger** — Use `resolved.length === 0` as the primary trigger, not `resolved.length < limit`. Most legitimate searches return fewer results than the limit. Triggering on under-saturation fires the fallback on nearly every search, doubling GraphQL load without value.
 
-4. **URL construction edge cases** — template literal concatenation fails on paths with spaces, Unicode, double slashes from trailing `/` on base URL. Mitigation: use the WHATWG `URL` class or `encodeURIComponent` per path segment. Add test cases for paths with spaces, Unicode, and special characters.
+4. **Unpublished pages in fallback results** — `pages.list` returns all pages (published and unpublished). `resolveViaPagesList` does not filter by `isPublished` because it resolves paths the search engine already indexed (which are all published). The metadata fallback must explicitly check `page.isPublished === true` before matching — this is not inherited from the existing code.
 
-5. **Markers inside fenced code blocks** — regex has no concept of markdown structure; markers in code examples will be processed as real markers. Mitigation: document the limitation for v2.6; wiki authors must escape markers in code blocks.
+5. **Limit enforcement order** — Apply limit after deduplication and merge, not before. Correct order: get GraphQL results → get all metadata matches → deduplicate by ID → slice to limit.
 
-See `.planning/research/PITFALLS.md` for all pitfalls including nested marker behavior, locale mismatch edge cases, and detection strategies.
+6. **Existing test mocks break** — The existing `api.test.ts` uses sequential `mockResolvedValueOnce()` calls. Adding a `pages.list` call to the pipeline changes mock consumption order and breaks `toHaveBeenCalledTimes` assertions. Audit all 7 existing `searchPages` test cases before touching `searchPages()`.
+
+See `.planning/research/PITFALLS.md` for all 11 pitfalls including short-query false positives (Pitfall 4), `totalHits` accuracy (Pitfall 8), and tool description behavioral risks (Pitfall 10).
+
+---
 
 ## Implications for Roadmap
 
-Research converges on a 3-phase implementation sequence. The phases are ordered by dependency: pure functions first, integration second, cleanup/tests last.
+Research converges on a 2-phase implementation. A 3-phase split (separating the private method from its wiring) would be artificial — `searchPagesByMetadata()` is private and cannot be validated independently of `searchPages()`.
 
-### Phase 1: Core Redaction Function
+### Phase 1: Metadata Fallback Implementation
 
-**Rationale:** `redactContent()` is a pure function with no dependencies. It is the foundation everything else builds on. Starting here validates the regex pattern, the malformed-marker behavior, and the `RedactionResult` interface before any integration work begins.
-**Delivers:** `src/gdpr.ts` rewritten with `redactContent()`, `src/types.ts` updated with `locale?: string`, `src/__tests__/gdpr.test.ts` rewritten with full test coverage including happy path, multiple pairs, malformed marker, null/undefined inputs.
-**Addresses:** Must-have features — marker redaction, fail-safe, placeholder text, multiple pairs, case/whitespace tolerance.
-**Avoids:** Pitfall 2 (unclosed marker) and Pitfall 3 (greedy quantifier) — both are first-commit regex decisions that must be correct from the start.
+**Rationale:** The private `searchPagesByMetadata()` method and its wiring into `searchPages()` are co-dependent — both live in `src/api.ts` and the private method cannot be meaningfully tested without being called through the pipeline. They must ship together. This phase contains all implementation risk and all critical correctness pitfalls.
 
-### Phase 2: Integration — Remove Old Filtering, Wire Redaction and URL Injection
+**Delivers:** A working metadata search fallback. Searching "COA", "ZDG", or other acronyms and path tokens that previously returned zero results now returns matching pages. The zero-result early return in `searchPages()` is replaced with the metadata fallback path.
 
-**Rationale:** With `redactContent()` tested and working, the integration changes are low-risk. This phase removes the `isBlocked()` filter from all three tool handlers, wires the new redaction into `get_page`, adds URL injection, and threads `wikijsBaseUrl` through the call chain.
-**Delivers:** `src/mcp-tools.ts`, `src/api.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` all updated. The `get_page` tool returns redacted content and a `url` field. `list_pages` and `search_pages` return unfiltered results.
-**Uses:** `redactContent()` from Phase 1, `locale` field from Phase 1's types change, existing `WIKIJS_BASE_URL` config.
-**Implements:** Content transformation between fetch and serialize; config threading pattern for `wikijsBaseUrl`.
-**Avoids:** Pitfall 4 (URL construction edge cases) — use `URL` class, not template literals. Pitfall 6 (inconsistent redaction across tools) — redaction is scoped to `get_page` content only.
+**Addresses features from FEATURES.md:**
+- Zero-result trigger condition
+- Case-insensitive substring matching on path, title, description
+- Deduplication by page ID
+- Unpublished-page filtering
+- Limit enforcement on merged results
 
-### Phase 3: Integration Tests and Cleanup
+**Avoids pitfalls from PITFALLS.md:**
+- Pitfall 1: dedup by `WikiJsPage.id` (number), not search index ID (string)
+- Pitfall 2: share `pages.list` data from `resolveViaPagesList` with metadata fallback
+- Pitfall 3: trigger on `resolved.length === 0`, not `< limit`
+- Pitfall 4: consider minimum query length (2-3 chars) to avoid substring explosion
+- Pitfall 5: filter `isPublished === true` before matching, not inherited from existing code
+- Pitfall 6: enforce limit after dedup and merge
+- Pitfall 7: use `includes()`, not `RegExp`, to eliminate ReDoS risk
+- Pitfall 8: update `totalHits` to reflect merged result count
 
-**Rationale:** Rewrite integration tests after the implementation is stable. Tests that mock `WikiJsApi` and exercise the full `get_page` handler verify that redaction, malformed-marker logging, and URL injection work together as a system. `isBlocked()` removal is confirmed safe only after end-to-end tests pass.
-**Delivers:** `src/__tests__/mcp-tools-gdpr.test.ts` rewritten. Confirms `get_page` with markers, without markers, with malformed markers, and URL correctness. Confirms `list_pages` and `search_pages` return all pages. Removes obsolete v2.5 path-filter tests.
-**Avoids:** Pitfall 1 (transition window) — the old `isBlocked()` code is removed only in this final phase, after redaction is verified end-to-end.
+### Phase 2: Tests, Logging, and Tool Description
+
+**Rationale:** All test cases and the tool description update depend on Phase 1 existing, but are independent of each other. The 12-test matrix validates every correctness requirement from PITFALLS.md. The tool description is a single string change with behavioral implications for AI clients.
+
+**Delivers:** Full test coverage of all fallback pipeline scenarios, structured observability logging at `info`/`debug` level, and an updated tool description that tells AI assistants that acronyms and path-based queries now work.
+
+**Uses from STACK.md:**
+- Vitest 4 — existing test runner, no new setup
+- Existing `mockRequest` / `makeSearchResponse` / `makePagesListResponse` helpers
+- Pino via `requestContext` — existing `ctx?.log.info()` pattern
+
+**Implements from ARCHITECTURE.md (new test cases):**
+- Fallback triggers on zero GraphQL results
+- Fallback supplements partial GraphQL results
+- Dedup prevents duplicate pages
+- Unpublished pages are excluded
+- Limit is respected across merged results
+- Case-insensitive path/title/description matching
+- No fallback when GraphQL saturates limit (no extra `pages.list` call)
+- Logging on successful fallback
+
+**Avoids pitfalls from PITFALLS.md:**
+- Pitfall 9: audit all 7 existing `searchPages` mock sequences before modifying the method — every `toHaveBeenCalledTimes` assertion needs review
+- Pitfall 10: keep description user-facing ("searches titles, paths, descriptions") not implementation-facing ("falls back to metadata substring matching when index returns zero"); verify smoke test `expect(description).toContain("published")` still passes
 
 ### Phase Ordering Rationale
 
-- Pure function before integration: `redactContent()` has no dependencies and can be tested in complete isolation. A verified contract before touching `mcp-tools.ts` eliminates a class of integration bugs.
-- `locale` in types and API before URL injection: URL construction requires `page.locale`, which requires the GraphQL query change in `api.ts` and the type change in `types.ts`. These land in Phase 1/2 before the URL injection code uses them.
-- `isBlocked()` removal last: the old filter must not be removed until the new redaction is working end-to-end. This is the safety gate that prevents the transition window PII exposure (Pitfall 1).
-- Three phases matches the v2.5 precedent established in ARCHITECTURE.md.
+- Phase 1 before Phase 2: tests and description update depend on the implementation existing
+- No Phase 0 pre-research needed: all architectural decisions, method signatures, and risk mitigations are fully resolved in this research cycle
+- Single-file containment: both phases touch only `src/api.ts` and `src/mcp-tools.ts`, eliminating integration coordination overhead
+- The existing 366-test suite must remain green at the end of each phase
 
 ### Research Flags
 
-No phases require `/gsd:research-phase` — the domain is fully documented across the four research files.
+Phases needing deeper research during planning:
+- **Neither phase requires additional research.** All design decisions, implementation patterns, and risk mitigations are fully resolved by this research cycle. Direct codebase inspection provides higher confidence than external documentation for this scope.
 
-Phases with standard patterns (skip additional research):
-- **Phase 1:** Pure regex and string operations on well-understood input. Regex pattern is analyzed and confirmed safe (linear-time, no ReDoS risk) in STACK.md and PITFALLS.md. Pure function testing follows existing Vitest patterns.
-- **Phase 2:** Config threading and GraphQL query modification follow established patterns already in the codebase. All integration points are precisely identified in ARCHITECTURE.md.
-- **Phase 3:** Vitest unit and integration tests follow existing test patterns. No new test infrastructure needed.
+Phases with standard patterns (skip research-phase):
+- **Phase 1:** Pipeline extension follows the same established pattern used in v2.5 and v2.6. All data types, method signatures, and call patterns are documented from codebase inspection.
+- **Phase 2:** Standard Vitest unit tests with established mock helpers. No new test infrastructure or patterns needed.
 
-Execution-time concerns (not research gaps, flag for code review):
-- **Phase 2, URL construction:** Confirm the WHATWG `URL` class is used, not template literal concatenation. Test with paths containing spaces and Unicode.
-- **Phase 2, `locale` fallback:** Confirm `page.locale ?? "en"` fallback is present wherever the URL is constructed.
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies; all capabilities verified against official Node.js and MDN docs; ReDoS safety confirmed via regex structure analysis |
-| Features | HIGH | Requirements clearly defined in PROJECT.md; feature boundaries well-reasoned with explicit anti-features documented; dependency graph complete |
-| Architecture | HIGH | Based on direct code inspection of current `src/` files; all integration points identified precisely; before/after code patterns specified |
-| Pitfalls | HIGH | Regex backtracking patterns verified against authoritative regex security sources; transition safety analysis based on direct inspection of 371 existing tests; Wiki.js path/URL format verified via official docs |
+| Stack | HIGH | Zero new dependencies confirmed. All implementation uses Node.js built-ins and the existing stack. Verified against actual `package.json` and codebase. `toLowerCase()` vs `toLocaleLowerCase()` decision is documented and correct for Docker Alpine. |
+| Features | HIGH | Feature scope directly derived from `.planning/PROJECT.md` v2.7 milestone requirements. P1/P2/P3 split is unambiguous. Anti-features are explicitly documented with rationale. 500-page `pages.list` ceiling is an acknowledged and acceptable constraint. |
+| Architecture | HIGH | Based on direct code inspection of `src/api.ts` `searchPages()` pipeline, `resolveViaPagesList()` pattern, `src/types.ts` type definitions, and existing test mock sequences. No inference from documentation alone. Component boundaries confirmed through method-level analysis. |
+| Pitfalls | HIGH | 11 pitfalls identified through codebase inspection of actual code paths and data flows. Six critical pitfalls converge at the same integration point and are all testable. The double `pages.list` call (Pitfall 2) and deduplication ID-type confusion (Pitfall 1) are the highest implementation risk items. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Wiki author migration prerequisite:** The transition from path-based blocking to marker-based redaction requires wiki authors to add `<!-- gdpr-start -->` / `<!-- gdpr-end -->` markers to all previously-blocked `Clients/<CompanyName>` pages before `isBlocked()` is removed. This is an operational dependency outside the codebase. The roadmap should include an explicit gate (audit step) between Phase 2 and the removal of `isBlocked()`, or treat the removal as a separate post-migration task.
+- **`totalHits` semantics when metadata contributes results (Pitfall 8):** Two options documented: (a) update in place as `Math.max(originalTotalHits, mergedResults.length)` — no type change; (b) add `fallbackUsed: boolean` to `PageSearchResult` — requires `src/types.ts` change and handler update. Option (a) is preferred for v2.7 to minimize surface area. Resolve before starting Phase 1 to avoid a mid-implementation type change.
 
-- **Locale fallback correctness:** Architecture research recommends `page.locale ?? "en"` as the URL fallback. If the target Wiki.js instance uses a non-English default locale, hardcoding `"en"` produces wrong URLs. This should be validated against the actual deployment; if needed, the fallback can be driven by `WIKIJS_LOCALE` (already documented in CLAUDE.md as an optional env var).
+- **Fallback trigger threshold disagreement:** ARCHITECTURE.md suggests `resolved.length < limit` as the trigger; PITFALLS.md argues for `resolved.length === 0`. PITFALLS.md rationale is stronger — `< limit` fires the fallback on most searches, creating a performance regression. Use `=== 0` for v2.7 and validate in production before widening. This must be decided before Phase 1 code is written.
 
-- **URL encoding for paths with spaces and Unicode:** PITFALLS.md confirms this is a real risk and that Wiki.js allows spaces in paths (e.g., `Clients/Acme Corp`). Implementation must include test cases for paths with spaces, Unicode, and special characters. The WHATWG `URL` class handles this correctly; template literal concatenation does not.
+- **`pages.list` data sharing implementation detail:** Pitfall 2 requires sharing the `pages.list` result between `resolveViaPagesList` and `searchPagesByMetadata`. ARCHITECTURE.md recommends against class-level caching. Resolution: pass the pre-fetched page list as a parameter when both fallbacks run, not as class state. This requires refactoring `resolveViaPagesList` to accept an optional pre-fetched page list, or fetching pages once at the top of `searchPages()` and passing to both. Resolve the exact refactoring pattern before Phase 1 implementation to avoid structural rework.
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
 
-- Direct codebase analysis — `src/mcp-tools.ts`, `src/gdpr.ts`, `src/api.ts`, `src/types.ts`, `src/config.ts`, `src/server.ts`, `src/routes/mcp-routes.ts` — establishes integration points, existing patterns, and change surface
-- [MDN: String.prototype.replace()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace) — regex replacement API reference
-- [MDN: RegExp dotAll flag](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/dotAll) — `s` flag availability in ES2018+
-- [Node.js URL API documentation](https://nodejs.org/api/url.html) — WHATWG URL class reference and best practices
-- [WHATWG HTML Comments Issue](https://github.com/whatwg/html/issues/10153) — nested comments not allowed per HTML spec
-- [Wiki.js GraphQL API](https://docs.requarks.io/dev/api) — content field returns raw editor content; `locale` field confirmed on search results
+- Direct codebase inspection — `src/api.ts` (`searchPages()`, `resolveViaPagesList()`, `listPages()`), `src/mcp-tools.ts`, `src/types.ts`, `tests/api.test.ts` — implementation baseline and mock patterns
+- `.planning/PROJECT.md` v2.7 milestone scope — feature requirements and acceptance criteria
+- [MDN: String.prototype.includes()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/includes) — substring matching behavior and performance characteristics
+- [MDN: String.prototype.toLowerCase()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/toLowerCase) — Unicode Default Case Mapping (locale-independent, correct for Docker Alpine C locale)
+- [MDN: Map](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) — insertion-order preservation guarantee used for dedup ordering
+- [Wiki.js GraphQL API](https://docs.requarks.io/dev/api) — `pages.list` and `pages.search` query structure and field availability
+- [Wiki.js Issue #2938](https://github.com/Requarks/wiki/issues/2938) — search index IDs are not database IDs; root cause of existing ID resolution pipeline
 
 ### Secondary (MEDIUM confidence)
 
-- [Sonar: Dangers of Regular Expressions in JavaScript](https://www.sonarsource.com/blog/vulnerable-regular-expressions-javascript/) — ReDoS pattern analysis confirming fixed-delimiter patterns are safe
-- [AuthZed: Fail Open vs Fail Closed](https://authzed.com/blog/fail-open) — security principle definitions; GDPR mandates fail-closed for data protection
-- [TermsFeed: Data Redaction Under GDPR](https://www.termsfeed.com/blog/gdpr-data-redaction/) — `[REDACTED]` as standard placeholder per GDPR guidance
-- [Redactable: GDPR Redaction Guidelines](https://www.redactable.com/blog/gdpr-redaction-guidelines) — consistency in placeholder text
-- [Wiki.js Locales](https://docs.requarks.io/locales) — locale prefix in page URLs
-- [Wiki.js Pages](https://docs.requarks.io/guide/pages) — path-based page structure
-- [How to Safely Concatenate URLs with Node.js](https://plainenglish.io/blog/how-to-safely-concatenate-url-with-node-js-f6527b623d5) — URL class vs string concatenation best practices
+- [Wiki.js Discussion #7335](https://github.com/requarks/wiki/discussions/7335) — `singleByPath` requires admin privileges; search-then-resolve pattern documented by community
+- [Wiki.js Discussion #4111](https://github.com/requarks/wiki/discussions/4111) — `pages.list` limit behavior; known issues in some versions
+- [Elasticsearch fallback query proposal #51840](https://github.com/elastic/elasticsearch/issues/51840) — canonical pattern for fallback queries: trigger on insufficient results, deduplicate, primary results listed first
+- [Empathy Platform: Search Fallback Features](https://docs.empathy.co/play-with-empathy-platform/configure-empathy-platform/configure-search-service/search-fallback-features.html) — fallback activates on zero results; partial query splitting as secondary strategy
+- [MCP Tool Descriptions Best Practices (Merge.dev)](https://www.merge.dev/blog/mcp-tool-description) — keep descriptions user-facing; AI assistants use them to decide when to invoke tools
+- [JavaScript Substring Performance](https://www.javaspring.net/blog/fastest-way-to-check-a-string-contain-another-substring-in-javascript/) — `includes()` 2-3x faster than `RegExp.test()` for simple substring matching
 
 ### Tertiary (evaluated and rejected)
 
-- [RE2 safe regex library](https://www.oreateai.com/blog/unlocking-the-power-of-re2-a-safe-alternative-for-regular-expressions-in-nodejs/f47e51a51ef4b558a7aaeec6890a5ebb) — evaluated and rejected; native C++ dep complicates Alpine Docker image with no benefit for this pattern shape
-- [html-comment-regex npm](https://www.npmjs.com/package/html-comment-regex) — evaluated and rejected; abandoned since 2016; our pattern is simpler and more specific
+- Fuse.js, FlexSearch, MiniSearch documentation — evaluated and rejected; fuzzy matching produces false positives for acronym/path-segment search; all are overkill for 500-item one-shot filtering
 
 ---
+
 *Research completed: 2026-03-27*
 *Ready for roadmap: yes*

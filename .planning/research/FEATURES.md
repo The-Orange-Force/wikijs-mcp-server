@@ -1,196 +1,189 @@
-# Feature Landscape
+# Feature Research
 
-**Domain:** Marker-based GDPR content redaction and page URL injection for MCP server responses
+**Domain:** Metadata search fallback for MCP server search pipeline
 **Researched:** 2026-03-27
-**Overall confidence:** HIGH
+**Confidence:** HIGH
 
-## Context
+## Feature Landscape
 
-This research covers the features needed for v2.6: replacing path-based page blocking (`isBlocked()`) with surgical marker-based content redaction using HTML comment markers (`<!-- gdpr-start -->` / `<!-- gdpr-end -->`), plus injecting page URLs into `get_page` responses. The three existing MCP tools (`get_page`, `list_pages`, `search_pages`) remain unchanged in their external API -- v2.6 modifies what happens to the `content` field after it is fetched from Wiki.js and before it is serialized into the MCP response.
+### Table Stakes (Users Expect These)
 
-**Why replace path-based blocking:** The v2.5 approach blocks entire pages when their path matches `Clients/<CompanyName>`. This is a blunt instrument -- it prevents AI assistants from reading any content on client pages, even non-sensitive project descriptions, technical notes, or methodology sections. Marker-based redaction allows wiki authors to surgically mark only the GDPR-sensitive sections (e.g., contact names, billing details, contract terms) while leaving the rest of the page accessible to AI assistants.
-
-**How Wiki.js stores content:** The GraphQL API returns a `content` field containing the raw markdown source as written by the editor. HTML comments (`<!-- ... -->`) are preserved verbatim in the stored markdown. They are not stripped during storage or retrieval -- only during HTML rendering for browser display. This means the MCP server receives the raw markers in the content string and can operate on them with simple string operations.
-
----
-
-## Table Stakes
-
-Features users expect. Missing any one of these produces an incorrect, insecure, or unusable implementation.
+These are the minimum features required for a metadata search fallback that actually solves the problem. Missing any one of these would leave the fallback broken or misleading.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Remove path-based GDPR filtering** | The `isBlocked()` predicate and all call sites in `mcp-tools.ts` must be deleted. Keeping both systems would cause confusion (which one wins?) and double-filtering. Clean removal is prerequisite to marker-based redaction. | LOW | Delete `src/gdpr.ts`, remove import/usage from `mcp-tools.ts`, delete `src/__tests__/gdpr.test.ts` and `src/__tests__/mcp-tools-gdpr.test.ts`. Also remove the `logBlockedAccess()` helper. |
-| **Marker-based content redaction** | Replace content between `<!-- gdpr-start -->` and `<!-- gdpr-end -->` markers with a placeholder. This is the core feature: wiki authors mark sensitive sections, the MCP server strips them before returning content to AI assistants. | MEDIUM | Regex: `/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/g` with global flag. The `[\s\S]*?` pattern (non-greedy) matches any content including newlines between the nearest start/end pair. The `s` (dotAll) flag is an alternative to `[\s\S]` but `[\s\S]` has broader engine compatibility. |
-| **Redaction placeholder text** | Redacted sections must be replaced with a visible placeholder, not silently removed. Silent removal would make adjacent content flow together confusingly and hide the fact that content was redacted. | LOW | Use `[REDACTED]` as the placeholder. This is the industry-standard convention for document redaction per GDPR guidance, legal practice, and DSAR response formatting. A single consistent placeholder regardless of how much content was removed. |
-| **Multiple marker pairs per page** | A single page may contain several distinct GDPR-sensitive sections (e.g., contact info in one section, billing in another). Each `<!-- gdpr-start -->` / `<!-- gdpr-end -->` pair must be handled independently. | LOW | The `/g` (global) flag on the regex handles this automatically -- all non-overlapping matches are replaced in a single `content.replace()` call. |
-| **Malformed marker fail-safe (unclosed start)** | If a `<!-- gdpr-start -->` marker exists without a matching `<!-- gdpr-end -->`, the system must fail closed: redact everything from the start marker to the end of the content. This is a security-critical design choice -- fail-open (showing the content) would leak GDPR-sensitive data if a wiki author accidentally deletes the closing marker. | MEDIUM | Two-pass approach: (1) first pass with the paired regex replaces complete pairs; (2) second pass checks for any remaining `<!-- gdpr-start -->` and replaces from that point to end-of-content with the placeholder. Alternatively, a single regex with alternation: `<!-- gdpr-start -->(?:[\s\S]*?<!-- gdpr-end -->|[\s\S]*)` but the two-pass approach is clearer. |
-| **Warning log for malformed markers** | When a fail-safe redaction occurs (unclosed marker), emit a structured warning log so operators can identify and fix the wiki page. Without this, broken markers would silently degrade content quality with no alerting. | LOW | Use the existing `requestContext` pattern to emit `log.warn({ pageId, malformedMarker: true }, "Unclosed gdpr-start marker; content redacted to end of page")`. Include page ID (not path) to avoid leaking sensitive path segments. |
-| **Redaction applied only to `get_page` responses** | Only `get_page` returns the `content` field. `list_pages` and `search_pages` return metadata only (title, path, description, timestamps) -- no content field. Redaction logic only needs to intercept `get_page`. | LOW | This simplifies the implementation surface significantly vs. v2.5 which had to filter all three tools. |
-| **Page URL injection in `get_page` responses** | When `get_page` returns a page, include the page's browsable URL in the response so AI assistants can reference it in their answers. The URL is constructed from a configurable base URL + the page path. | MEDIUM | Add `WIKIJS_PAGE_BASE_URL` env var (or reuse `WIKIJS_BASE_URL`). Construct URL as `${baseUrl}/${locale}/${page.path}`. Inject into the response JSON as a `url` field on the page object before serialization. |
-| **Configurable base URL for page links** | The Wiki.js instance's public URL may differ from the API URL (e.g., API is internal `http://wikijs:3000`, but pages are browsable at `https://wiki.company.com`). A dedicated config variable avoids coupling page URLs to the API endpoint. | LOW | New env var or reuse existing `WIKIJS_BASE_URL`. Wiki.js URL format is `{base}/{locale}/{path}` where locale is typically `en`. |
+| **Metadata fallback trigger when GraphQL search returns insufficient results** | The entire reason this feature exists. Wiki.js `pages.search` uses a full-text search index that fails on acronyms (e.g., "COA", "ZDG"), short tokens (2-3 chars), and path segments that the search engine tokenizer does not index. When the search engine returns 0 results, the fallback must activate to search page metadata (path, title, description) directly. | MEDIUM | Trigger condition: GraphQL `pages.search` returns 0 results (or fewer results than the requested limit -- but 0-result trigger is simpler and avoids over-eagerness). The fallback calls `pages.list` (already used by the existing ID resolution fallback) and filters client-side. |
+| **Case-insensitive substring matching on path, title, and description** | Users search with varying casing ("coa", "COA", "Coa"). Path segments use mixed casing (`Projects/ClientName`). Titles may use title case. The matching must be case-insensitive to avoid false negatives. Substring matching (not word-boundary or exact match) is essential because acronyms often appear as substrings in paths like `clients/coa-project`. | LOW | `field.toLowerCase().includes(query.toLowerCase())` on each of the three fields (path, title, description). Simple string operation -- no regex needed for the core case. |
+| **Deduplication when merging primary and fallback results** | If the GraphQL search returns some results (say 2 out of 10 requested) and the metadata fallback finds additional matches, the same page could appear in both sets. Duplicate pages in the response waste the AI assistant's context window and look broken. Deduplicate by page `id` (the canonical integer database ID after resolution). | LOW | Build a `Set<number>` of IDs from primary results. Filter fallback results to exclude IDs already present. This is O(n) and trivial to implement. |
+| **Unpublished-page filtering in fallback results** | The existing `pages.list` call returns both published and unpublished pages. The search tool's contract is "Only searches published pages" (per the tool description). The metadata fallback must honor this contract by filtering `isPublished === true`. | LOW | Already implemented for `listPages()` in `api.ts` -- the same filter pattern applies. The `pages.list` response includes the `isPublished` field. |
+| **Limit enforcement on combined results** | The `search_pages` tool accepts a `limit` parameter (default 10, max 50). The combined result set (primary + fallback) must not exceed this limit. Without enforcement, the fallback could return hundreds of metadata matches and blow up the response. | LOW | Slice the combined results array to the requested limit after merging and deduplication. Primary results take priority (appear first), fallback results fill remaining slots. |
+| **Updated tool description reflecting fallback capability** | The `search_pages` tool description currently says "Search Wiki.js pages by keyword query" with no mention of metadata fallback. AI assistants rely on tool descriptions to decide when and how to use tools. An accurate description helps the AI understand that short queries and acronyms will work. | LOW | Update the description string in `mcp-tools.ts` to mention that the search supplements full-text results with title/path/description matching when the search index returns insufficient results. |
+| **Structured logging for fallback activity** | Operators need visibility into when and why the fallback activates. Without logging, failures in the fallback path would be invisible, and operators cannot assess whether the fallback is providing value or creating performance issues. | LOW | Log at `info` level when fallback activates: `{ query, primaryResultCount, fallbackResultCount, totalAfterDedup }`. Log at `debug` level for fallback details. Use the existing `requestContext` + pino pattern. |
 
-## Differentiators
+### Differentiators (Competitive Advantage)
 
-Features beyond the minimum that improve quality, security, or developer experience.
+Features beyond the minimum that improve quality, relevance, or developer experience. Not required for the fallback to function, but valuable.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Whitespace normalization around redaction** | When a redacted section is between paragraphs, the placeholder should not create awkward double-blank-lines or join previously separated paragraphs. Normalize to a single blank line before and after `[REDACTED]`. | LOW | Post-replacement cleanup: `content.replace(/\n{3,}/g, '\n\n')` to collapse excessive newlines. Not critical for correctness but improves readability. |
-| **Orphaned end marker handling** | A `<!-- gdpr-end -->` without a preceding `<!-- gdpr-start -->` is a malformed marker. It should be stripped silently (it is not a security risk -- no content before a start marker needs protection) but logged as a warning for operator awareness. | LOW | After the main redaction pass, strip any remaining `<!-- gdpr-end -->` markers. Log a warning with page ID. |
-| **Structured audit log for redacted pages** | Log when content redaction is applied to a page (not just when malformed markers are found). This creates an audit trail showing which pages had sensitive content redacted, useful for GDPR Article 30 compliance. | LOW | One `log.info` per page where at least one redaction occurred: `{ pageId, redactionCount, malformed: boolean }`. Do not log the redacted content. |
-| **Marker case tolerance** | Accept `<!-- GDPR-START -->`, `<!-- GDPR-Start -->`, etc. Wiki authors may use inconsistent casing. Case-insensitive matching prevents accidental data leaks from casing mistakes. | LOW | Add `i` flag to the regex: `/<!-- gdpr-start -->[\s\S]*?<!-- gdpr-end -->/gi`. Minimal implementation cost, significant safety benefit. |
-| **Whitespace tolerance in markers** | Accept `<!--gdpr-start-->`, `<!-- gdpr-start  -->`, `<!--  gdpr-start  -->`. Wiki editors and copy-paste can introduce spacing variations. | LOW | Adjust regex to `<!-- *gdpr-start *-->` (zero or more spaces around the marker text). Small regex change, prevents bypass via whitespace differences. |
-| **Redaction count in response metadata** | Include a count of how many sections were redacted in the MCP response, so the AI assistant knows content was removed and can inform the user. | LOW | Add a note at the end of the content string like `\n\n---\n_Note: N section(s) contained restricted content and were redacted._` or embed as a separate metadata field. The text approach is simpler since MCP tool responses are text-based. |
-| **URL injection for search results** | Extend URL injection beyond `get_page` to include URLs in `search_pages` and `list_pages` results. AI assistants can then provide links to any referenced page, not just the one they fetched in full. | MEDIUM | Map over results array and append `url` field to each page object before serialization. Same URL construction logic. |
+| **Multi-token query splitting** | When a user searches "mendix best practices", the full substring unlikely matches any single metadata field. Splitting the query into individual tokens and matching pages where ALL tokens appear (across any combination of path, title, description) dramatically improves recall. | MEDIUM | Split query on whitespace. For each page, check that every token appears in at least one of the three metadata fields (case-insensitive). This is an AND-join across tokens, not OR. OR would return too many results. |
+| **Path segment matching** | Wiki.js paths use `/` as a separator (e.g., `clients/coa/contracts`). Matching against individual path segments rather than the full path string would catch queries like "coa" matching the segment `coa` without also matching paths that happen to contain "coa" as a substring of another word (e.g., "coaching"). | LOW | Split path on `/`, check if any segment includes the query. This is a refinement of substring matching for the path field specifically. However, the current project scope says "case-insensitive substring matching" which is simpler and broader. Path segment matching could be a later refinement. |
+| **Relevance-weighted ordering of fallback results** | Not all metadata matches are equally relevant. A title match ("COA Project Guide") is more relevant than a description substring match. Ordering fallback results by match quality improves the AI assistant's ability to find the right page. | MEDIUM | Weight: title exact match > title substring > path segment match > description substring. Assign a simple numeric score and sort descending. This is purely client-side -- no search engine involved. |
+| **Configurable fallback threshold** | Instead of triggering only on 0 results, allow configuration of a minimum result count threshold (e.g., "trigger fallback if fewer than 3 results"). This handles the case where the search engine returns a few low-quality results but misses obvious metadata matches. | LOW | Add an optional threshold parameter (default: 0, meaning only trigger on empty results). A sensible default like 0 keeps behavior simple and predictable. The threshold could be bumped later if operators observe the fallback would have helped. |
+| **Metadata cache to avoid redundant pages.list calls** | The metadata fallback calls `pages.list` on every invocation. If search is called frequently, this creates redundant GraphQL requests. A short-lived in-memory cache (TTL 30-60 seconds) of the `pages.list` response would reduce load on Wiki.js without stale data risk. | MEDIUM | Simple `Map` with a timestamp check. Since the MCP server is stateless per-request (no SSE sessions), the cache lives in the `WikiJsApi` instance (which persists across requests). The existing `resolveViaPagesList` already calls `pages.list` with `limit: 500` -- the fallback could reuse the same call. |
 
-## Anti-Features
+### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to explicitly NOT build. Each has a rationale to prevent re-adding.
+Features that seem good but create problems. Each is explicitly scoped out with rationale.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| **Configurable marker syntax** | Adding configuration for the marker tag names (e.g., letting users change `gdpr-start` to `sensitive-start`) adds complexity with no clear benefit. The markers are invisible to end users (HTML comments) and only wiki authors need to know them. A single well-documented convention is simpler and safer than configurable patterns. | Hardcode `gdpr-start` / `gdpr-end` markers. Document in wiki author guidelines. |
-| **Redaction of `description` field** | The `description` field is a short metadata string (typically 1-2 sentences) set by the wiki author as a page summary. If it contains GDPR-sensitive data, the author should fix the description, not add markers to it. Applying marker-based redaction to a 100-character description string is over-engineering. | Wiki authors should not put GDPR-sensitive data in page descriptions. Document this as a guideline. |
-| **Nested marker support** | HTML comments cannot be nested per the HTML specification. `<!-- gdpr-start --> <!-- gdpr-start --> ... <!-- gdpr-end --> <!-- gdpr-end -->` is invalid and ambiguous. Supporting nesting would require a parser, not a regex, and adds complexity for a scenario that should never occur. | Document that markers must not be nested. The regex's non-greedy matching naturally handles this correctly for the well-formed case (each start matches the nearest end). |
-| **Content-type-specific redaction** | Wiki.js pages can use different editors (Markdown, HTML, Visual). Attempting to parse and redact differently based on content type adds complexity. HTML comments work in all three editor formats, so a single regex approach works universally. | Use HTML comment markers which are valid in Markdown, raw HTML, and Wiki.js visual editor output. |
-| **Regex-based PII detection** | Auto-detecting sensitive content via regex patterns (email addresses, phone numbers, etc.) is unreliable, prone to false positives, and creates a false sense of security. Manual marker placement by wiki authors who understand the content is more accurate. | Rely on wiki authors to place markers around sensitive content. Provide documentation and examples. |
-| **Encrypted content storage** | Encrypting the redacted content server-side (so it could be decrypted by authorized users) is out of scope. The MCP server is a read-only intermediary with a shared API token -- there is no per-user key management. | Content is simply removed from the response. The original content remains in Wiki.js, accessible to authorized wiki users through the Wiki.js UI. |
-| **Real-time marker validation** | Building a webhook or background job that checks wiki pages for malformed markers is scope creep. The fail-safe (redact to end) plus warning logs provide adequate protection and alerting. | Operators monitor logs for malformed marker warnings and fix wiki pages manually. |
-| **Redaction of page titles or paths** | Page titles and paths appear in `list_pages` and `search_pages` results which have no content field. Redacting titles would break page discovery and navigation. If a page title itself is GDPR-sensitive, path-based blocking (v2.5 approach) was the correct tool -- but the decision to replace it means these pages are acceptable to list by title. | If a title is sensitive, the wiki author should rename the page to use a non-sensitive title (e.g., "Client 42" instead of "Acme Corp"). |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| **Full content search in the fallback** | When metadata matching fails, searching page content would catch more results. | Fetching full content for all pages via `pages.list` would require N additional `getPageById` calls (one per page). For a 500-page wiki, this is 500 GraphQL round-trips per search query. Completely impractical. The existing search engine already does content search -- if it missed the query, client-side content search cannot do better without an index. | Rely on the GraphQL search engine for content search. The metadata fallback supplements it for metadata-specific queries (acronyms, path segments) that the search engine misses. |
+| **Fuzzy/Levenshtein matching** | Catches typos like "mendx" matching "mendix". | Fuzzy matching on 500 pages across 3 fields per page creates a combinatorial explosion of false positives. The search engine already handles fuzzy matching for content search. Adding another fuzzy layer for metadata creates unpredictable and confusing results. | Use exact substring matching for metadata. If the user typos a query, the search engine handles it. The metadata fallback is for structured tokens the search engine misses, not for typo correction. |
+| **Regex-based query syntax** | Power users want to search with patterns like `client-.*-2024`. | Regex support exposes the server to ReDoS attacks via malicious patterns, adds complexity to input validation, and breaks the simple mental model of "type keywords, get results." The Zod schema validates `query` as a plain string -- adding regex support would change the contract. | Keep the query as a plain string. If structured search is needed, add specific filter parameters (e.g., `pathPrefix`) rather than exposing regex. |
+| **Separate `search_metadata` tool** | Creating a new MCP tool specifically for metadata search would give AI assistants explicit control over when to use metadata vs. full-text search. | Adding a 4th tool increases the decision burden on the AI assistant. The assistant would need to decide between `search_pages` and `search_metadata` for every query, often guessing wrong. A single `search_pages` tool with internal fallback logic is simpler for the AI and for operators. The tool count is a design constraint (currently 3 tools -- get, list, search). | Keep one `search_pages` tool with the fallback built in. The tool description tells the AI what it does; the fallback is an internal implementation detail. |
+| **Indexing page content for client-side full-text search** | Building an in-memory search index (using something like Fuse.js or MiniSearch) from fetched page content to provide better search than Wiki.js natively offers. | The MCP server is a lightweight proxy, not a search engine. Maintaining an in-memory index requires fetching all page content at startup (slow, memory-heavy), keeping it synchronized (Wiki.js has no change notification API), and handling index corruption gracefully. This is a rewrite of the search architecture, not a fallback. | Let Wiki.js own content search. The metadata fallback addresses the specific gap of acronyms and path tokens. If search quality is broadly insufficient, the solution is to configure Wiki.js's search backend (PostgreSQL full-text, Elasticsearch, Algolia) rather than duplicating search in the MCP server. |
+| **Fallback to HTTP page scraping** | If GraphQL search and metadata matching both fail, scrape pages via HTTP to search their rendered content. | HTTP scraping is fragile (depends on Wiki.js HTML structure), slow (N HTTP requests), and duplicates what the search engine does. It also introduces a dependency on Wiki.js's HTML rendering pipeline, which could change between versions. The original codebase had an HTTP content search path that was removed as unreliable. | If both search and metadata fail, return 0 results honestly. An empty result is better than slow, unreliable scraping results. |
 
 ## Feature Dependencies
 
 ```
-Remove path-based filtering ─── prerequisite for ──> Marker-based redaction
-                                                      (cannot have both active)
+Existing pages.list call (resolveViaPagesList)
+    |
+    +-- reused by --> Metadata fallback data source
+                          |
+                          +-- requires --> Case-insensitive substring matching logic
+                          |
+                          +-- requires --> Unpublished-page filtering (already exists)
+                          |
+                          +-- requires --> Deduplication by page ID
+                          |
+                          +-- requires --> Limit enforcement on merged results
 
-Marker-based redaction ──────── required before ───> Malformed marker handling
-                                                      (fail-safe is part of redaction logic)
+Metadata fallback activation
+    |
+    +-- requires --> Trigger condition (0-result check after GraphQL search)
+    |
+    +-- produces --> Combined results fed to existing response serialization
 
-Marker-based redaction ──────── independent of ────> Page URL injection
-                                                      (no dependency between these features)
+Updated tool description
+    +-- independent of --> All implementation features (text-only change)
 
-Page URL injection ──────────── requires ──────────> Configurable base URL (env var)
-
-Malformed marker handling ───── requires ──────────> Warning log infrastructure
-                                                      (already exists via requestContext/pino)
+Structured logging
+    +-- requires --> requestContext / pino (already exists)
+    +-- independent of --> Matching logic
 ```
 
-## MVP Recommendation
+### Dependency Notes
 
-**Phase 1 (must-have, this milestone):**
+- **Metadata fallback reuses `pages.list`:** The existing `resolveViaPagesList` private method already calls `pages.list(limit: 500)` to batch-resolve unresolvable search IDs. The metadata fallback needs the same data. This is an opportunity to avoid a redundant GraphQL call by sharing the fetched page list between both resolution paths.
+- **Deduplication requires primary results to be resolved first:** The deduplication set is built from primary results (which have already gone through the `singleByPath` + `pages.list` resolution pipeline). The fallback results are then filtered against this set. This means the fallback MUST run after primary resolution completes, not in parallel.
+- **Tool description update is independent:** It can be shipped with the implementation or separately. No code dependency.
 
-1. **Remove path-based filtering** -- Clean deletion of `gdpr.ts`, all `isBlocked()` call sites, related tests, and the `logBlockedAccess()` helper. This is a prerequisite and should be done first to avoid merge conflicts.
+## MVP Definition
 
-2. **Marker-based content redaction with fail-safe** -- The core feature. A single `redactGdprContent(content: string): RedactionResult` function that:
-   - Replaces all `<!-- gdpr-start -->...<!-- gdpr-end -->` pairs with `[REDACTED]`
-   - Handles unclosed `<!-- gdpr-start -->` by redacting to end of content
-   - Returns `{ content: string, redactionCount: number, malformed: boolean }`
-   - Case-insensitive and whitespace-tolerant markers
+### Launch With (v2.7)
 
-3. **Malformed marker warning log** -- Structured log when fail-safe triggers. Uses existing logging infrastructure.
+Minimum viable metadata search fallback -- what is needed to solve the acronym/short-token search gap.
 
-4. **Page URL injection in `get_page`** -- Construct and inject page URL using `WIKIJS_BASE_URL` + path. This enriches AI assistant responses with source links.
+- [x] **0-result trigger condition** -- When `pages.search` returns 0 results, invoke the metadata fallback before returning an empty response
+- [x] **Case-insensitive substring matching on path, title, description** -- Filter `pages.list` results where the query appears as a substring in any of the three metadata fields
+- [x] **Deduplication by page ID** -- Prevent duplicates when primary and fallback results overlap (relevant if the trigger threshold is changed later)
+- [x] **Unpublished-page filtering** -- Apply `isPublished === true` filter to fallback results
+- [x] **Limit enforcement** -- Combine primary + fallback results, slice to the requested limit
+- [x] **Updated tool description** -- Reflect the fallback capability so AI assistants know short queries work
+- [x] **Structured logging** -- Log fallback activation with query, result counts, and timing
 
-**Defer to later:**
+### Add After Validation (v2.7.x)
 
-- **URL injection for `list_pages` / `search_pages`**: Nice to have but not required for the core GDPR use case. Can be added in a follow-up if AI assistants benefit from links in list results.
-- **Redaction count in response text**: Low priority UX improvement. The AI assistant can see the `[REDACTED]` placeholders and infer content was removed.
-- **Whitespace normalization**: Cosmetic improvement that can be added later without API changes.
+Features to add once the core fallback is working and operators have observed its behavior in production.
 
-## Implementation Notes
+- [ ] **Multi-token query splitting** -- If single-token substring matching proves insufficient for multi-word queries, split on whitespace and AND-match across tokens
+- [ ] **Relevance-weighted ordering** -- If AI assistants consistently pick the wrong page from fallback results, add title > path > description weighting
+- [ ] **Configurable fallback threshold** -- If operators observe cases where the search engine returns 1-2 low-quality results and the metadata fallback would have helped, add a configurable threshold
 
-### Regex Design
+### Future Consideration (v2.8+)
 
-The recommended regex pattern for paired markers:
+Features to defer until the metadata fallback has proven its value.
 
-```typescript
-const GDPR_PAIRED = /<!-- *gdpr-start *-->[\s\S]*?<!-- *gdpr-end *-->/gi;
-```
+- [ ] **Metadata cache** -- If monitoring shows `pages.list` calls are a performance bottleneck due to frequent search queries, add a short-TTL in-memory cache
+- [ ] **Path segment matching** -- If substring matching on paths produces too many false positives (e.g., "coa" matching "coaching"), refine to segment-aware matching
 
-Key design decisions:
-- `[\s\S]*?` instead of `.*?` with `s` flag: `[\s\S]` is universally supported across all JS engines and avoids confusion about whether the `s` flag is available. Both work in Node 20+, but `[\s\S]` is the more idiomatic choice.
-- `*?` (non-greedy): Matches the shortest possible span between a start and the nearest end marker. This prevents a single start marker from consuming content past multiple end markers.
-- `gi` flags: `g` for global (handle multiple pairs), `i` for case-insensitive.
-- ` *` around marker text: Zero or more spaces to handle whitespace variations.
+## Feature Prioritization Matrix
 
-For the fail-safe (unclosed start marker):
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| 0-result trigger condition | HIGH | LOW | P1 |
+| Case-insensitive substring matching | HIGH | LOW | P1 |
+| Deduplication by page ID | HIGH | LOW | P1 |
+| Unpublished-page filtering | HIGH | LOW | P1 |
+| Limit enforcement | HIGH | LOW | P1 |
+| Updated tool description | MEDIUM | LOW | P1 |
+| Structured logging | MEDIUM | LOW | P1 |
+| Multi-token query splitting | MEDIUM | MEDIUM | P2 |
+| Relevance-weighted ordering | LOW | MEDIUM | P2 |
+| Configurable fallback threshold | LOW | LOW | P3 |
+| Metadata cache | LOW | MEDIUM | P3 |
+| Path segment matching | LOW | LOW | P3 |
 
-```typescript
-const GDPR_ORPHANED_START = /<!-- *gdpr-start *-->[\s\S]*/gi;
-```
+**Priority key:**
+- P1: Must have for v2.7 launch -- solves the core problem
+- P2: Should have, add after v2.7 if operators observe gaps
+- P3: Nice to have, future consideration based on production telemetry
 
-This matches from an unclosed start marker to end of string. Applied after the paired regex has already consumed all complete pairs.
+## Implementation Context
 
-### Wiki.js Page URL Format
+### How the Existing Search Pipeline Works
 
-Wiki.js uses the URL format `{base_url}/{locale}/{page_path}`:
-- `https://wiki.company.com/en/Projects/SomePage`
-- The locale is typically `en` but is configurable per Wiki.js instance
-- The `WIKIJS_BASE_URL` env var already points to the Wiki.js base (e.g., `https://wiki.company.com`)
+The current `searchPages` method in `api.ts` follows a multi-step resolution pipeline:
 
-For URL injection, the simplest approach is `${WIKIJS_BASE_URL}/en/${page.path}` with the locale either hardcoded to `en` or pulled from an env var. The existing `WIKIJS_LOCALE` env var (mentioned in CLAUDE.md as optional, default `en-US`) could be adapted, but Wiki.js URL paths use the short locale code (`en`), not the full locale (`en-US`).
+1. **GraphQL `pages.search`** -- Executes the full-text search query, returns results with search index IDs (not database IDs), paths, titles, and descriptions
+2. **`singleByPath` resolution** -- For each result, resolves the path to a real database page via `pages.singleByPath` (requires admin-level API permissions)
+3. **`pages.list` fallback for unresolved IDs** -- When `singleByPath` fails (permission issues), batch-resolves via `pages.list(limit: 500)` and matches by path
 
-### Response Shape for URL Injection
+The metadata search fallback inserts a new step between the existing pipeline and the empty-result return:
 
-The current `get_page` response serializes the full `WikiJsPage` object as JSON:
+1. GraphQL `pages.search` -- (existing)
+2. `singleByPath` resolution -- (existing)
+3. `pages.list` fallback for ID resolution -- (existing)
+4. **NEW: If 0 results after resolution, metadata search against `pages.list` data**
+5. Merge, deduplicate, limit-enforce, return
 
-```json
-{
-  "id": 42,
-  "path": "Projects/SomePage",
-  "title": "Some Page",
-  "description": "...",
-  "content": "...",
-  "isPublished": true,
-  "createdAt": "...",
-  "updatedAt": "..."
-}
-```
+### Why the Gap Exists
 
-After URL injection:
+Wiki.js's search engine (regardless of backend -- Basic, PostgreSQL, Elasticsearch) tokenizes and indexes page content. Short tokens like acronyms ("COA", "ZDG"), single characters, and path segment names are often:
 
-```json
-{
-  "id": 42,
-  "path": "Projects/SomePage",
-  "title": "Some Page",
-  "description": "...",
-  "content": "... (with [REDACTED] placeholders) ...",
-  "url": "https://wiki.company.com/en/Projects/SomePage",
-  "isPublished": true,
-  "createdAt": "...",
-  "updatedAt": "..."
-}
-```
+- Below the minimum token length threshold (many search engines skip tokens < 3 chars)
+- Not indexed because they are common stopwords or too short
+- Split differently by the tokenizer than the user expects (e.g., "DSM-Firmenich" might be tokenized as "DSM" and "Firmenich" separately)
 
-The `url` field is injected into the serialized object, not stored in the database. This keeps the `WikiJsPage` type clean (the `url` field can be added via a response-level spread, not by modifying the interface).
+The metadata fields (path, title, description) are structured data that can be matched with simple string operations, bypassing the search engine's tokenization entirely. This is why a metadata fallback works: it is not trying to replace the search engine but to cover the specific cases where tokenized full-text search fails.
+
+### Data Source for Metadata Fallback
+
+The `pages.list(limit: 500, orderBy: UPDATED)` call is already made by the existing `resolveViaPagesList` method. For the metadata fallback, the same call provides the data -- there is an opportunity to share this call rather than making a redundant request. The `pages.list` response includes `id`, `path`, `title`, `description`, `isPublished`, `createdAt`, and `updatedAt` -- exactly the fields needed for metadata matching and for the response.
+
+The limit of 500 is a practical ceiling. For wikis with more than 500 pages, the metadata fallback will only search the 500 most recently updated pages. This is acceptable because:
+- Most company wikis have fewer than 500 published pages
+- Recently updated pages are more likely to be relevant
+- The fallback is a supplement, not a replacement for the search engine
 
 ## Sources
 
-### HTML Comments in Markdown
-- [Daring Fireball: Markdown Syntax](https://daringfireball.net/projects/markdown/syntax) -- HTML comments are valid in Markdown
-- [Wiki.js Markdown Reference](https://www.markdownguide.org/tools/wiki-js/) -- Wiki.js Markdown support
-- [Wiki.js Rendering Pipeline](https://docs.requarks.io/rendering) -- How content flows through rendering
-- [WHATWG HTML Comments Issue](https://github.com/whatwg/html/issues/10153) -- Nested comments not allowed per spec
+### Wiki.js Search Architecture
+- [Wiki.js GraphQL API](https://docs.requarks.io/dev/api) -- Official API documentation
+- [Incorrect pages ID when searching on PostgreSQL (Issue #2938)](https://github.com/Requarks/wiki/issues/2938) -- Confirms search IDs are not database IDs; this is the root cause of the existing `singleByPath` resolution pipeline
+- [Search page content through GraphQL API (Discussion #7335)](https://github.com/requarks/wiki/discussions/7335) -- Confirms `singleByPath` requires admin privileges; documents the search-then-resolve pattern
 
-### Regex Patterns for HTML Comments
-- [Webtips: Select Everything Between HTML Comments](https://webtips.dev/solutions/select-everything-between-html-comments) -- Regex pattern for matching between HTML comment markers
-- [MDN: RegExp dotAll](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/dotAll) -- `s` flag documentation
-- [html-comment-regex npm](https://www.npmjs.com/package/html-comment-regex) -- Reference regex for HTML comments
+### Fallback Search Patterns
+- [Elasticsearch fallback query proposal (Issue #51840)](https://github.com/elastic/elasticsearch/issues/51840) -- Canonical proposal for fallback queries: run fallback only when primary returns too few results; fallback hits listed after primary hits; deduplication needed
+- [Empathy Platform: Search Fallback Features](https://docs.empathy.co/play-with-empathy-platform/configure-empathy-platform/configure-search-service/search-fallback-features.html) -- Fallback activates on 0 results; two strategies: spell check (query correction) and partial results (query splitting)
+- [Verbolia: Fallback Search in Ecommerce](https://www.verbolia.com/the-power-of-fallback-search-in-ecommerce/) -- Fallback search shows related results instead of empty page; reduces user frustration
 
-### Fail-Safe / Fail-Closed Security
-- [AuthZed: Fail Open vs Fail Closed](https://authzed.com/blog/fail-open) -- Security principle definitions
-- [OpenText: Fail Open vs Fail Closed](https://community.opentext.com/cybersec/b/cybersecurity-blog/posts/security-fundamentals-part-1-fail-open-vs-fail-closed) -- GDPR mandates fail-closed for data protection
-- [RFC 7103: Advice for Safe Handling of Malformed Messages](https://datatracker.ietf.org/doc/html/rfc7103) -- Tolerance vs. strictness in parsing
+### MCP Tool Design
+- [MCP Tool Descriptions Best Practices (Merge.dev)](https://www.merge.dev/blog/mcp-tool-description) -- Tool descriptions should be concise, mention capabilities, guide the AI assistant
+- [MCP Specification: Tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) -- Tool definition structure, annotations, schema requirements
 
-### GDPR Redaction Conventions
-- [TermsFeed: Data Redaction Under GDPR](https://www.termsfeed.com/blog/gdpr-data-redaction/) -- `[REDACTED]` as standard placeholder
-- [Redactable: GDPR Redaction Guidelines](https://www.redactable.com/blog/gdpr-redaction-guidelines) -- Consistency in placeholder text
-- [Ailance: GDPR-compliant Redaction](https://2b-advice.com/en/2025/01/24/blackening-of-documents-and-images-dsgvo-compliant-implementation/) -- Deletion preferred over masking; placeholders acceptable
-
-### Wiki.js URL Structure
-- [Wiki.js Locales](https://docs.requarks.io/locales) -- Locale prefix in page URLs
-- [Wiki.js Pages](https://docs.requarks.io/guide/pages) -- Path-based page structure
-- [Wiki.js GraphQL API](https://docs.requarks.io/dev/api) -- Content field returns raw editor content
+---
+*Feature research for: v2.7 Metadata Search Fallback*
+*Researched: 2026-03-27*
