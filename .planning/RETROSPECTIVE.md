@@ -2,6 +2,48 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.5 — GDPR Path Filter
+
+**Shipped:** 2026-03-27
+**Phases:** 3 | **Plans:** 3
+
+### What Was Built
+- `isBlocked()` GDPR path-blocking predicate with 20 unit tests covering all normalization variants
+- GDPR path filtering in all 3 MCP tool handlers (get_page, list_pages, search_pages)
+- Timing-safe get_page responses — byte-identical to genuine "not found" (prevents existence oracle)
+- Structured audit logging for blocked access (tool name, user identity, correlation ID — no company names)
+- 14 end-to-end integration tests via Fastify inject() verifying MCP response shapes
+- Instructions security audit confirming no GDPR filter information leakage
+
+### What Worked
+- **Strict TDD discipline across all 3 phases** — RED/GREEN commit pairs caught a real bug: Phase 24 integration tests revealed Phase 23's hardcoded error text wasn't byte-identical to genuine not-found
+- **Security-first design** — timing-safe responses, no path content in logs, instructions audit all caught in requirements phase
+- **Zero new dependencies** — pure TypeScript built-ins only, keeping attack surface minimal for security-sensitive code
+- **Phase 24 integration tests as safety net** — caught the error format mismatch between blocked and genuine not-found paths
+
+### What Was Inefficient
+- **Nyquist VALIDATION.md left in draft for all 3 phases** — recurring pattern; validation step consistently skipped during fast execution
+- **Phase 23 plan checkbox not updated** — ROADMAP.md showed `- [ ]` for completed plans (cosmetic, caught during milestone completion)
+
+### Patterns Established
+- **GDPR predicate pattern** — `split('/').filter(Boolean)` for slash normalization, case-insensitive first-segment match
+- **Post-fetch security checks** — always complete upstream call before policy check to prevent timing oracles
+- **logBlockedAccess at module level** — audit logging helper doesn't need handler-scoped state, only request context
+- **wikiJsApiOverride for integration tests** — custom mock injection via Fastify plugin options for domain-specific test scenarios
+- **assertNoForbiddenKeywords helper** — reusable keyword scanning for security hygiene tests
+
+### Key Lessons
+1. **Integration tests catch what unit tests miss** — Phase 24 tests revealed that Phase 23's error text format diverged from the catch-block format; only an end-to-end byte comparison caught it
+2. **Throw, don't hardcode error strings** — both blocked and genuine not-found must flow through the same catch block to guarantee identical output
+3. **GDPR filtering is a server-side responsibility** — client-side hints would reveal which paths exist; silent filtering is the only safe approach
+
+### Cost Observations
+- Model mix: ~50% sonnet (execution), ~40% opus (planning/audit/completion), ~10% haiku (research)
+- Sessions: ~3 (planning/research, execution, audit/completion)
+- Notable: Fastest 3-phase milestone; ~10 minutes total execution across all phases
+
+---
+
 ## Milestone: v2.4 — MCP Instructions Field
 
 **Shipped:** 2026-03-27
@@ -136,6 +178,7 @@
 | v2.2 | 5 | 5 | OAuth proxy with research-driven planning, zero rework |
 | v2.3 | 4 | 8 | Aggressive consolidation (17→3 tools, 3→1 scopes), fastest milestone |
 | v2.4 | 3 | 4 | Audit-driven gap closure, smallest milestone, zero-config Docker deploys |
+| v2.5 | 3 | 3 | GDPR compliance, security-first design, integration tests catch error format mismatch |
 
 ### Cumulative Quality
 
@@ -146,6 +189,7 @@
 | v2.2 | 209 | 6,583 | @fastify/formbody |
 | v2.3 | 304 | 6,305 | None (removed msal-node) |
 | v2.4 | 321 | 3,225 (src/) | None |
+| v2.5 | 371 | 7,663 | None |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -154,3 +198,4 @@
 3. **Pure function utilities as foundation** — extracting logic into tested pure functions before wiring routes has been consistently successful (scopes.ts in v2.0, scope-mapper.ts in v2.2)
 4. **Aggressive simplification pays dividends** — v2.3 removal of 14 tools and 2 scopes reduced maintenance without losing value
 5. **Milestone audits catch real gaps** — v2.4 audit identified Docker flow gap that led to Phase 21; validates the audit step as non-ceremonial
+6. **Integration tests catch what unit tests miss** — v2.5 byte-identical comparison caught error format divergence between blocked and genuine not-found paths that passed all unit tests
