@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.5
 milestone_name: GDPR Path Filter
-status: ready_to_plan
-stopped_at: Roadmap created, ready to plan Phase 22
-last_updated: "2026-03-27T15:00:00.000Z"
-last_activity: 2026-03-27 -- v2.5 roadmap created (3 phases, 8 requirements mapped)
+status: planning
+stopped_at: Phase 22 context gathered
+last_updated: "2026-03-27T13:52:24.556Z"
+last_activity: 2026-03-27 -- v2.5 roadmap created
 progress:
   total_phases: 3
   completed_phases: 0
@@ -54,6 +54,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-27
-Stopped at: Roadmap created, ready to plan Phase 22
-Resume file: None
+Last session: 2026-03-27T13:52:24.554Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-core-gdpr-predicate/22-CONTEXT.md
