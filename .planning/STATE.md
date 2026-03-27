@@ -4,7 +4,7 @@ milestone: v2.4
 milestone_name: MCP Instructions Field
 status: completed
 stopped_at: Completed 21-01 (Docker Instructions Path Default)
-last_updated: "2026-03-27T11:23:15.029Z"
+last_updated: "2026-03-27T11:26:28.892Z"
 last_activity: 2026-03-27 -- Completed 20-01 (Docker Integration and Default Instructions)
 progress:
   total_phases: 3
