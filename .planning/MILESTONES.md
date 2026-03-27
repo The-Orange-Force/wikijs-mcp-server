@@ -1,5 +1,33 @@
 # Milestones
 
+## v2.5 GDPR Path Filter (Shipped: 2026-03-27)
+
+**Phases:** 22-24 (3 phases, 3 plans)
+**Tests:** 371 passing (50 GDPR-specific across 2 files)
+**LOC:** 7,663 TypeScript
+**Timeline:** 1 day (2026-03-27)
+**Commits:** 13 | **Lines changed:** +1,069 / -2
+**Requirements:** 8/8 satisfied
+**Audit:** tech_debt (v2.5-MILESTONE-AUDIT.md) — 0 blockers, Nyquist drafts only
+
+**Delivered:** GDPR-compliant path filtering that blocks access to direct client directory pages at the MCP server level, with timing-safe responses and zero information leakage.
+
+**Key accomplishments:**
+1. `isBlocked()` GDPR path-blocking predicate with full edge-case unit test coverage (20 tests)
+2. GDPR path filtering in all 3 MCP tool handlers with timing-safe error responses
+3. Structured audit logging for blocked access attempts (no company names in logs)
+4. Byte-identical get_page blocked responses vs genuine "not found" (prevents existence oracle)
+5. End-to-end integration tests verifying MCP response shapes for blocked/non-blocked paths (14 tests)
+6. Instructions security audit confirming no GDPR filter information leakage
+
+**Known Tech Debt:**
+- Nyquist VALIDATION.md in draft state for all 3 phases
+- Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
+
+**Archives:** [ROADMAP](milestones/v2.5-ROADMAP.md) | [REQUIREMENTS](milestones/v2.5-REQUIREMENTS.md) | [AUDIT](milestones/v2.5-MILESTONE-AUDIT.md)
+
+---
+
 ## v2.4 MCP Instructions Field (Shipped: 2026-03-27)
 
 **Phases:** 19-21 (3 phases, 4 plans, 8 tasks)
