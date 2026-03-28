@@ -88,10 +88,11 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
         }
 
         // Build response with explicit field ordering and URL
-        const responseObj = {
+        const pageUrl = buildPageUrl(config.wikijs.baseUrl, config.wikijs.locale, page.path);
+        const responseObj: Record<string, unknown> = {
           id: page.id,
           path: page.path,
-          url: buildPageUrl(config.wikijs.baseUrl, config.wikijs.locale, page.path),
+          url: pageUrl,
           title: page.title,
           description: page.description,
           content: redactionResult.content,
@@ -99,6 +100,13 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
           createdAt: page.createdAt,
           updatedAt: page.updatedAt,
         };
+
+        if (redactionResult.redactionCount > 0) {
+          responseObj.piiRedacted = {
+            count: redactionResult.redactionCount,
+            notice: `${redactionResult.redactionCount} section(s) contained personal data and were redacted. The user MUST be informed. Direct them to the full page: ${pageUrl}`,
+          };
+        }
 
         return {
           content: [

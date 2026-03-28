@@ -12,9 +12,9 @@ describe("docker-compose.yml", () => {
 });
 
 describe("instructions.txt", () => {
-  it("exists at repo root with [TOPIC placeholder content", async () => {
+  it("exists at repo root with MCP tool instructions", async () => {
     const content = await readFile(join(ROOT, "instructions.txt"), "utf-8");
-    expect(content).toContain("[TOPIC");
+    expect(content).toContain("search_pages");
   });
 });
 
