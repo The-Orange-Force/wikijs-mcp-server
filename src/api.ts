@@ -249,6 +249,13 @@ export class WikiJsApi {
       const existingIds = new Set<number>();
       const metadataResults = await this.searchPagesByMetadata(query, limit, existingIds);
       const finalResults = metadataResults.slice(0, limit);
+      if (finalResults.length > 0) {
+        const ctx = requestContext.getStore();
+        ctx?.log.info(
+          { query, metadataHits: finalResults.length, totalResolved: finalResults.length },
+          "Metadata fallback supplemented search results"
+        );
+      }
       return {
         results: finalResults,
         totalHits: Math.max(totalHits, finalResults.length),
@@ -307,6 +314,14 @@ export class WikiJsApi {
       const metadataResults = await this.searchPagesByMetadata(query, limit, existingIds, allPages);
       const remainingSlots = limit - resolved.length;
       resolved.push(...metadataResults.slice(0, remainingSlots));
+      const metadataHits = Math.min(metadataResults.length, remainingSlots);
+      if (metadataHits > 0) {
+        const ctx = requestContext.getStore();
+        ctx?.log.info(
+          { query, metadataHits, totalResolved: resolved.length },
+          "Metadata fallback supplemented search results"
+        );
+      }
       totalHits = Math.max(totalHits, resolved.length);
     }
 

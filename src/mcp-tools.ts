@@ -27,7 +27,7 @@ import { buildPageUrl } from "./url.js";
 export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, config: AppConfig): McpServer {
   const mcpServer = new McpServer({
     name: "wikijs-mcp",
-    version: "2.6.0",
+    version: "2.7.0",
   }, {
     instructions,
   });
@@ -190,7 +190,7 @@ export function createMcpServer(wikiJsApi: WikiJsApi, instructions: string, conf
     TOOL_SEARCH_PAGES,
     {
       description:
-        "Search Wiki.js pages by keyword query. Returns matching pages with metadata and content excerpts. Only searches published pages (unpublished pages are not indexed). Note: recently published pages may take a moment to appear in search results due to indexing delay. Use get_page with a result's ID to retrieve the full page content.",
+        "Search Wiki.js pages by keyword query. Returns matching pages with metadata and content excerpts. Only searches published pages (unpublished pages are not indexed). Also matches against page paths, titles, and descriptions for acronyms and short tokens. Note: recently published pages may take a moment to appear in search results due to indexing delay. Use get_page with a result's ID to retrieve the full page content.",
       inputSchema: {
         query: z
           .string()
