@@ -2,6 +2,49 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.7 — Metadata Search Fallback
+
+**Shipped:** 2026-03-28
+**Phases:** 2 | **Plans:** 2
+
+### What Was Built
+- `searchPagesByMetadata()` private method with title-before-path ranking and deduplication by page ID
+- Extended `resolveViaPagesList()` return type with `allPages` field for zero-duplication data sharing
+- Two metadata fallback integration points in `searchPages()` (zero-result and post-step-3 shortfall)
+- Structured info-level logging with `{ query, metadataHits, totalResolved }` via requestContext pino logger
+- Updated `search_pages` tool description for AI discoverability of path/title matching
+- Dedicated test file with 12 test cases covering full fallback matrix
+- Version bump to 2.7.0
+
+### What Worked
+- **Two-phase milestone was clean** — Phase 28 (implementation) and Phase 29 (observability/testing) had zero overlap; Phase 29 depended on Phase 28 cleanly
+- **Fastest milestone: 7 minutes total execution** — 4 min Phase 28 + 3 min Phase 29; smallest scope, cleanest execution
+- **Research settled the threshold disagreement upfront** — `resolved.length < limit` vs `=== 0` was decided during research, preventing implementation-time debate
+- **Data sharing via extended return type** — no duplicate `pages.list` GraphQL calls; `allPages` field on `resolveViaPagesList()` return value was elegant and zero-cost
+
+### What Was Inefficient
+- **Nyquist validation still incomplete** — both phases have VALIDATION.md files but neither achieved full compliance; recurring pattern across milestones
+- **Documentation/implementation mismatch** — META-01 text and TOOL-01 description mention "descriptions" but implementation only matches title/path (locked design decision, but copy should have been updated during requirements phase)
+- **One-liner extraction from SUMMARY.md returned null** — `gsd-tools summary-extract --fields one_liner` failed; field not populated in frontmatter
+
+### Patterns Established
+- **Metadata fallback search pattern** — supplement API search with substring matching on list data; dedup by ID, filter unpublished, enforce limit
+- **Extended return type for data sharing** — when a downstream consumer needs intermediate data, extend the return type rather than making a separate call
+- **Conditional observability logging** — only emit logs when `metadataHits > 0` (silent when fallback runs but finds nothing)
+- **Capability-only tool descriptions** — describe what the tool does, not implementation details ("Also matches against page paths, titles, and descriptions")
+
+### Key Lessons
+1. **Lock design decisions during research** — the threshold disagreement (`< limit` vs `=== 0`) was caught and resolved in research phase, saving implementation time
+2. **Data sharing beats duplicate calls** — extending a return type is cheaper than a second GraphQL call; watch for opportunities where intermediate data is useful downstream
+3. **Capability-only wording prevents coupling** — tool descriptions that mention implementation details ("fallback") create expectations about behavior that may change; describe capabilities only
+
+### Cost Observations
+- Model mix: ~50% opus (planning/audit/completion), ~40% sonnet (execution), ~10% haiku (research)
+- Sessions: ~3 (planning/research, execution, audit/completion)
+- Notable: 7 minutes total execution — fastest milestone by far; 2 phases with minimal scope
+
+---
+
 ## Milestone: v2.6 — GDPR Content Redaction
 
 **Shipped:** 2026-03-27
@@ -222,6 +265,7 @@
 | v2.4 | 3 | 4 | Audit-driven gap closure, smallest milestone, zero-config Docker deploys |
 | v2.5 | 3 | 3 | GDPR compliance, security-first design, integration tests catch error format mismatch |
 | v2.6 | 3 | 4 | Marker-based redaction replaces path blocking, URL injection, fastest per-plan average |
+| v2.7 | 2 | 2 | Metadata search fallback, fastest milestone (7 min total), research-settled design decisions |
 
 ### Cumulative Quality
 
@@ -234,13 +278,15 @@
 | v2.4 | 321 | 3,225 (src/) | None |
 | v2.5 | 371 | 7,663 | None |
 | v2.6 | 366 | 7,700 | None |
+| v2.7 | 441 | 4,075 (src/) | None |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. **TDD catches integration issues early** — validated in v2.0 (auth middleware), v2.2 (scope mapping, AADSTS normalization), v2.3 (API method removal)
-2. **Research before planning prevents rework** — v2.2 had zero plan revisions due to thorough research phases
+2. **Research before planning prevents rework** — v2.2 had zero plan revisions; v2.7 research settled threshold disagreement before implementation
 3. **Pure function utilities as foundation** — extracting logic into tested pure functions before wiring routes has been consistently successful (scopes.ts in v2.0, scope-mapper.ts in v2.2)
 4. **Aggressive simplification pays dividends** — v2.3 removal of 14 tools and 2 scopes reduced maintenance without losing value
 5. **Milestone audits catch real gaps** — v2.4 audit identified Docker flow gap that led to Phase 21; validates the audit step as non-ceremonial
 6. **Integration tests catch what unit tests miss** — v2.5 byte-identical comparison caught error format divergence between blocked and genuine not-found paths that passed all unit tests
 7. **Plan research must verify current file contents** — v2.6 Phase 27 plan incorrectly assumed file scope from prior milestone state; always read current files during research
+8. **Lock design decisions during research** — v2.7 threshold disagreement resolved in research phase, preventing implementation-time debate; smallest milestones benefit most from upfront clarity
