@@ -23,11 +23,11 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 
 ### Observability
 
-- [ ] **OBSV-01**: Metadata fallback logs at info level with query, hit count, and total resolved count
+- [x] **OBSV-01**: Metadata fallback logs at info level with query, hit count, and total resolved count
 
 ### Tool Description
 
-- [ ] **TOOL-01**: `search_pages` tool description is updated to mention path, title, and description matching capability
+- [x] **TOOL-01**: `search_pages` tool description is updated to mention path, title, and description matching capability
 
 ## Future Requirements
 
@@ -60,8 +60,8 @@ Requirements for v2.7 Metadata Search Fallback. Each maps to roadmap phases.
 | META-06 | Phase 28 | Complete |
 | INTG-01 | Phase 28 | Complete |
 | INTG-02 | Phase 28 | Complete |
-| OBSV-01 | Phase 29 | Pending |
-| TOOL-01 | Phase 29 | Pending |
+| OBSV-01 | Phase 29 | Complete |
+| TOOL-01 | Phase 29 | Complete |
 
 **Coverage:**
 - v2.7 requirements: 10 total

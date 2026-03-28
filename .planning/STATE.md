@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.7
 milestone_name: Metadata Search Fallback
 status: completed
-stopped_at: Completed 28-01-PLAN.md
-last_updated: "2026-03-27T23:45:14.050Z"
-last_activity: 2026-03-28 -- Metadata fallback implementation complete
+stopped_at: Completed 29-01-PLAN.md
+last_updated: "2026-03-28T00:03:33Z"
+last_activity: 2026-03-28 -- Test coverage, observability, and tool description complete
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 50
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -21,27 +21,28 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.7 Metadata Search Fallback -- Phase 28
+**Current focus:** v2.7 Metadata Search Fallback -- Complete
 
 ## Current Position
 
-Phase: 28 of 29 (Metadata Fallback Implementation)
+Phase: 29 of 29 (Test Coverage, Observability, and Tool Description)
 Plan: 1 of 1 (complete)
-Status: Phase 28 Plan 01 complete
-Last activity: 2026-03-28 -- Metadata fallback implementation complete
+Status: Phase 29 Plan 01 complete
+Last activity: 2026-03-28 -- Test coverage, observability, and tool description complete
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 4min
-- Total execution time: 4min
+- Total plans completed: 2
+- Average duration: 3.5min
+- Total execution time: 7min
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 28 | 01 | 4min | 2 | 2 |
+| 29 | 01 | 3min | 2 | 3 |
 
 ## Completed Milestones
 
@@ -61,6 +62,9 @@ Progress: [█████░░░░░] 50%
 - Phase 28: No internal cap on metadata results -- pages.list(500) already bounds the dataset
 - Phase 28: Graceful degradation on pages.list failure (try-catch returns empty array)
 - Phase 28: resolved.length < limit as metadata fallback trigger (settled the threshold disagreement)
+- Phase 29: Structured log fields { query, metadataHits, totalResolved } per CONTEXT.md locked decision
+- Phase 29: Capability-only wording in tool description (no mention of "fallback" implementation detail)
+- Phase 29: fs.readFileSync approach for tool description keyword test (avoids McpServer SDK internals)
 
 ### Blockers/Concerns
 
@@ -70,6 +74,6 @@ Progress: [█████░░░░░] 50%
 
 ## Session Continuity
 
-Last session: 2026-03-27T23:41:59.411Z
-Stopped at: Completed 28-01-PLAN.md
+Last session: 2026-03-28T00:03:33Z
+Stopped at: Completed 29-01-PLAN.md
 Resume file: None
