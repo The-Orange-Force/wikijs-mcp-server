@@ -1,5 +1,35 @@
 # Milestones
 
+## v2.7 Metadata Search Fallback (Shipped: 2026-03-28)
+
+**Phases:** 28-29 (2 phases, 2 plans, 4 tasks)
+**Tests:** 441 passing across 26 files
+**LOC:** 4,075 TypeScript (src/)
+**Timeline:** 1 day (2026-03-27 → 2026-03-28)
+**Commits:** 19 | **Lines changed:** +742 / -11
+**Requirements:** 10/10 satisfied
+**Audit:** tech_debt (v2.7-MILESTONE-AUDIT.md) — 0 blockers, 5 non-critical items
+
+**Delivered:** Metadata search fallback that supplements GraphQL search with case-insensitive substring matching on page titles and paths, ensuring acronyms, path segments, and short tokens always surface results.
+
+**Key accomplishments:**
+1. `searchPagesByMetadata()` private method with title-before-path ranking and deduplication by page ID
+2. Data sharing between `resolveViaPagesList()` and `searchPagesByMetadata()` via extended return type (no duplicate GraphQL calls)
+3. Two integration points in `searchPages()`: zero-result early return and post-step-3 shortfall check
+4. Structured info-level logging with `{ query, metadataHits, totalResolved }` fields via requestContext pino logger
+5. Updated `search_pages` tool description for AI client discoverability of path/title/description matching
+6. Comprehensive 12-test dedicated test file covering full fallback matrix (deduplication, unpublished filtering, limit enforcement, observability)
+
+**Known Tech Debt:**
+- Documentation discrepancy: META-01 text mentions "descriptions" but implementation only matches title/path (locked design decision)
+- TOOL-01: search_pages description says "descriptions" but searchPagesByMetadata() only matches title and path
+- Nyquist validation incomplete for both phases (partial compliance)
+- Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
+
+**Archives:** [ROADMAP](milestones/v2.7-ROADMAP.md) | [REQUIREMENTS](milestones/v2.7-REQUIREMENTS.md) | [AUDIT](milestones/v2.7-MILESTONE-AUDIT.md)
+
+---
+
 ## v2.6 GDPR Content Redaction (Shipped: 2026-03-27)
 
 **Phases:** 25-27 (3 phases, 4 plans, 7 tasks)

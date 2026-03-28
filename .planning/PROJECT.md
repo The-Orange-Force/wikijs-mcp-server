@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials. Returns contextual instructions in the MCP initialize response that guide Claude to auto-search the wiki for relevant topics. Enforces GDPR-compliant marker-based content redaction for sensitive data within wiki pages.
+A Model Context Protocol server that bridges AI assistants with Wiki.js, secured by Azure AD OAuth 2.1 authentication and deployed as a Docker container. Includes a built-in OAuth authorization proxy so Claude Desktop can complete the full auth flow without pre-configured client credentials. Returns contextual instructions in the MCP initialize response that guide Claude to auto-search the wiki for relevant topics. Enforces GDPR-compliant marker-based content redaction for sensitive data within wiki pages. Supplements GraphQL search with metadata fallback matching for acronyms, path segments, and short tokens.
 
 ## Core Value
 
@@ -10,10 +10,10 @@ Only Azure AD-authenticated colleagues can invoke MCP tools against the company 
 
 ## Current State
 
-**Latest shipped:** v2.6 GDPR Content Redaction (2026-03-27)
-**Current milestone:** v2.7 Metadata Search Fallback
+**Latest shipped:** v2.7 Metadata Search Fallback (2026-03-28)
+**Current milestone:** Planning next milestone
 
-The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only tools, marker-based GDPR content redaction, page URL injection, and Docker deployment support. All path-based blocking has been replaced with surgical content redaction.
+The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only tools, marker-based GDPR content redaction, page URL injection, metadata search fallback for improved acronym/path/short-token discovery, and Docker deployment support.
 
 ## Requirements
 
@@ -47,21 +47,17 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 - ✓ Marker-based GDPR content redaction via <!-- gdpr-start/end --> markers — v2.6
 - ✓ Page URL injection in get_page responses — v2.6
 - ✓ Path-based filtering removed, all published pages accessible — v2.6
+- ✓ Metadata search fallback supplements GraphQL search for short tokens and acronyms — v2.7
+- ✓ Case-insensitive substring matching on page titles and paths — v2.7
+- ✓ Deduplication, unpublished filtering, and limit enforcement for fallback — v2.7
+- ✓ Structured info-level logging for metadata fallback activity — v2.7
+- ✓ search_pages tool description updated for AI discoverability — v2.7
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-## Current Milestone: v2.7 Metadata Search Fallback
-
-**Goal:** Supplement the GraphQL search with a metadata fallback that matches queries against page paths, titles, and descriptions — so acronyms, path segments, and short tokens always surface results.
-
-**Target features:**
-- Metadata search fallback when GraphQL search returns insufficient results
-- Case-insensitive substring matching on path, title, and description
-- Deduplication, unpublished-page filtering, and limit enforcement
-- Updated tool description reflecting the fallback capability
-- Structured logging for fallback activity
+(Planning next milestone)
 
 ### Out of Scope
 
@@ -85,6 +81,10 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 - Hot-reload of instructions without restart — startup-time loading is simpler and sufficient
 - Dynamic GDPR marker rules via runtime config — code change with tests is safer for compliance
 - Per-user path permissions for GDPR — shared API token model, no per-user mapping
+- Full content search in metadata fallback — requires N getPageById calls per search, impractical
+- Fuzzy/Levenshtein matching in fallback — false positives for structured token search
+- Regex-based query syntax — ReDoS exposure from user-controlled pattern input
+- Separate search_metadata MCP tool — fallback must be automatic and transparent
 
 ## Context
 
@@ -97,8 +97,9 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 - Claude Desktop discovers auth via `/.well-known/oauth-protected-resource` → `/.well-known/openid-configuration` → registration → authorize → token
 - **v2.3 consolidation:** 3 read-only tools (get_page, list_pages, search_pages), single wikijs:read scope
 - **v2.4 instructions:** MCP initialize response includes instructions field, file-based customization via MCP_INSTRUCTIONS_PATH, Docker volume mount
-- **v2.5->v2.6 GDPR:** Marker-based content redaction replaces path-blocking; all published pages accessible with PII surgically redacted
-- **Codebase:** 7,700 LOC TypeScript, 366 tests across 25 files
+- **v2.5→v2.6 GDPR:** Marker-based content redaction replaces path-blocking; all published pages accessible with PII surgically redacted
+- **v2.7 metadata fallback:** searchPagesByMetadata() supplements GraphQL search with title/path substring matching, two integration points (zero-result and under-limit), data sharing with resolveViaPagesList
+- **Codebase:** ~8,000 LOC TypeScript, 441 tests across 26 files
 - **Tech stack:** TypeScript, Fastify, @modelcontextprotocol/sdk, graphql-request, jose, Zod, Vitest
 
 ## Constraints
@@ -144,13 +145,18 @@ The MCP server is fully operational with OAuth 2.1 authentication, 3 read-only t
 | "clients" literal hardcoded, not configurable | Code change with tests is safer than runtime config for GDPR compliance | Superseded by v2.6 marker-based redaction |
 | Post-fetch path check (timing-safe) | Prevents timing oracle that could reveal blocked page existence | Superseded by v2.6 marker-based redaction |
 | Structured audit logging without path content | GDPR compliance — log blocked access but never leak company names | Superseded by v2.6 marker-based redaction |
+| Case-insensitive matching via toLowerCase + includes | No regex to avoid ReDoS risk from user-controlled query input | ✓ Shipped v2.7 |
+| resolved.length < limit as metadata trigger | Supplements results when GraphQL returns fewer than requested (not just zero) | ✓ Shipped v2.7 |
+| Data sharing via extended return type | resolveViaPagesList returns allPages for searchPagesByMetadata reuse; no duplicate GraphQL call | ✓ Shipped v2.7 |
+| Capability-only tool description wording | No mention of "fallback" implementation detail; describes what it does, not how | ✓ Shipped v2.7 |
+| Graceful degradation on pages.list failure | try-catch returns empty array; search works without metadata fallback if pages.list fails | ✓ Shipped v2.7 |
 
 ## Known Issues
 
 - Claude Desktop redirect_uri format needs live tenant testing (http://localhost port handling)
 - Shared client_id token theft deferred — consent interstitial needed later (CONSENT-01)
-
 - Pre-existing: tests/docker-config.test.ts fails (instructions.txt missing at repo root)
+- search_pages description mentions "descriptions" but metadata fallback only matches title/path (locked design decision)
 
 ---
-*Last updated: 2026-03-27 after v2.7 milestone started*
+*Last updated: 2026-03-28 after v2.7 milestone*

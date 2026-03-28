@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.7
 milestone_name: Metadata Search Fallback
-status: completed
-stopped_at: Completed 29-01-PLAN.md
-last_updated: "2026-03-28T00:07:32.627Z"
-last_activity: 2026-03-28 -- Test coverage, observability, and tool description complete
+status: shipped
+stopped_at: Milestone v2.7 archived
+last_updated: "2026-03-28T00:21:02.810Z"
+last_activity: 2026-03-28 -- Milestone v2.7 completed and archived
 progress:
   total_phases: 2
   completed_phases: 2
@@ -18,19 +18,15 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-27)
+See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Only Azure AD-authenticated colleagues can invoke MCP tools against the company WikiJS instance
-**Current focus:** v2.7 Metadata Search Fallback -- Complete
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 29 of 29 (Test Coverage, Observability, and Tool Description)
-Plan: 1 of 1 (complete)
-Status: Phase 29 Plan 01 complete
-Last activity: 2026-03-28 -- Test coverage, observability, and tool description complete
-
-Progress: [██████████] 100%
+Milestone v2.7 shipped. No active milestone.
+Last activity: 2026-03-28 -- Milestone v2.7 completed and archived
 
 ## Performance Metrics
 
@@ -53,27 +49,20 @@ Progress: [██████████] 100%
 - v2.4 MCP Instructions Field (2026-03-27)
 - v2.5 GDPR Path Filter (2026-03-27)
 - v2.6 GDPR Content Redaction (2026-03-27)
+- v2.7 Metadata Search Fallback (2026-03-28)
 
 ## Accumulated Context
 
 ### Decisions
 
-- Phase 28: Case-insensitive matching via toLowerCase + includes (no regex, avoids ReDoS risk)
-- Phase 28: No internal cap on metadata results -- pages.list(500) already bounds the dataset
-- Phase 28: Graceful degradation on pages.list failure (try-catch returns empty array)
-- Phase 28: resolved.length < limit as metadata fallback trigger (settled the threshold disagreement)
-- Phase 29: Structured log fields { query, metadataHits, totalResolved } per CONTEXT.md locked decision
-- Phase 29: Capability-only wording in tool description (no mention of "fallback" implementation detail)
-- Phase 29: fs.readFileSync approach for tool description keyword test (avoids McpServer SDK internals)
+(Cleared at milestone boundary. See PROJECT.md Key Decisions for full history.)
 
 ### Blockers/Concerns
 
-- Research identified fallback trigger threshold disagreement: ARCHITECTURE.md suggests `resolved.length < limit`, PITFALLS.md argues for `resolved.length === 0`. Resolve before Phase 28 implementation.
-- `pages.list` data sharing pattern between `resolveViaPagesList` and `searchPagesByMetadata` needs to be decided before Phase 28.
-- `totalHits` update strategy: option (a) `Math.max(originalTotalHits, mergedResults.length)` preferred over adding new type field.
+(None — milestone shipped.)
 
 ## Session Continuity
 
-Last session: 2026-03-28T00:03:33Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-03-28
+Stopped at: Milestone v2.7 archived
 Resume file: None
